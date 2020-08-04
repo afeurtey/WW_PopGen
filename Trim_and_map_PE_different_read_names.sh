@@ -1,11 +1,9 @@
 #!/bin/bash
 
 source $1
-read_name=$2
-sample=$3
-
-read1=${RAW_READS}${read_name}_R1.fastq.gz
-read2=${RAW_READS}${read_name}_R2.fastq.gz
+read1=$2
+read2=$3
+sample=$4
 
 java -jar ${TRIMMOPATH}trimmomatic-0.39.jar PE \
   ${read1} ${read2} \

@@ -8,25 +8,6 @@ echo $p
 # TE reads and RIP per isolate
 # ----------------------------
 
-#Aligning paired reads as single on the TE consensus sequences
-${BOWTIE_PATH}  --no-unal -x ${TE_REF} \
-  -U ${FILTERED_READS}${p}_1_paired.fq.gz,${FILTERED_READS}${p}_2_paired.fq.gz \
-  -S ${RIP_aln}${p}.sam \
-  --very-sensitive-local --no-unal 
-
-#Getting back the aligning reads as fq
-${BEDTOOLS_PATH} bamtofastq -i ${RIP_aln}${p}.sam \
-  -fq ${RIP_aln}${p}.fq
-
-${SAMTOOLS_PATH} sort -O bam -o ${RIP_aln}${p}.bam  ${RIP_aln}${p}.sam
-${SAMTOOLS_PATH} index ${RIP_aln}${p}.bam
-rm ${RIP_aln}${p}.sam
-
-#Measuring RIP stats in the aligning reads
-python ${SCRIPTS_PATH}GC_RIP_per_read_fastq.py \
-   --out ${RIP_est}${p}.RIP_est \
-   --input_format fastq  \
-   ${RIP_aln}${p}.fq
 gzip ${RIP_aln}${p}.fq
 
 # Per TE

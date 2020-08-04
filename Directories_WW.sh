@@ -7,19 +7,25 @@ BWAPATH=${SOFTPATH}bwa-0.7.17/
 BEDTOOLS_PATH=${SOFTPATH}bedtools
 SAMTOOLS_PATH=${SOFTPATH}samtools-1.10/samtools
 BOWTIE_PATH=${SOFTPATH}bowtie2-2.4.1-linux-x86_64/bowtie2 
-SCRIPTS_PATH=/userhome/alice/Scripts/
+SCRIPTS_PATH=/home/alice/Scripts/
 SPADES_PATH=${SOFTPATH}SPAdes-3.14.1-Linux/bin/
 BLAST_PATH=${SOFTPATH}ncbi-blast-2.10.0+/bin/
 GATK_PATH=${SOFTPATH}gatk-4.1.8.0/gatk
+BCFTOOLS_PATH=${SOFTPATH}bcftools-1.10.2/bcftools
+TABIX_PATH=${SOFTPATH}htslib-1.10.2/tabix
 
 # Files directories
 #------------------
-DATA_DIR=/data2/alice/WW_project/Data/
+project_dir=/data2/alice/WW_project/
+
+#Data
+DATA_DIR=${project_dir}Data/
 RAW_READS=${DATA_DIR}0_Raw_reads/
 FILTERED_READS=${DATA_DIR}1_Filtered_reads/
+DENOVO_ASSEMB=${DATA_DIR}2_Denovo_assemblies/
 
 #TE and RIP
-WWTERIP_DIR=/data2/alice/WW_project/WW_TE_RIP/
+WWTERIP_DIR=${project_dir}WW_TE_RIP/
 RIP_DIR=${WWTERIP_DIR}0_RIP_estimation/
 RIP_raw0=${RIP_DIR}0_BAM_temp/
 RIP_raw1=${RIP_DIR}1_Fastq_from_bam/
@@ -30,26 +36,25 @@ DIM_denovo=${DIM2_DIR}0_Spades/
 DIM_blast=${DIM2_DIR}1_Blast_dim2_deRIPped/
 
 #Population genomics
-pop_genome=/data2/alice/WW_project/WW_GEA/
+pop_genome=${project_dir}WW_GEA/
 
 #Pangenome
 pan_dir=${pop_genome}On_pangenome_ref/
 pan_mapped=${pan_dir}0_Mappings/
+pan_DP_win=${pan_dir}1_Depth_per_window/
+pan_DP_gene=${pan_dir}2_Depth_per_gene/
 
-pan_counts=${pan_dir}1_SGSGeneLoss_counts/
-pan_counts_raw=${pan_counts}0_Raw_outputs/
-pan_counts_concat=${pan_counts}1_Concatenated_per_sample/
-pan_counts_sum=${pan_counts}2_Custom_present_or_absent/
 
-pan_SNPcall=${pan_dir}2_SNP_calling/
-pan_SNPcall_per_sample=${pan_SNPcall}0_Per_sample/
-pan_SNPcall_all=${pan_SNPcall}1_Gathered/
-
+#Fungicides
+WW_fung_dir=${project_dir}WW_fungicides/
 
 
 
 # File paths
 #-----------
 adapt_file=${SOFTPATH}Trimmomatic-0.39/adapters/adapters_all.fasta
-TE_REF=/home/alice/WW_project/WW_TE_RIP/Badet_BMC_Biology_2020_TE_consensus_sequences
+TE_REF=${DATA_DIR}Badet_BMC_Biology_2020_TE_consensus_sequences
 PAN_REF=${DATA_DIR}all_19_pangenome
+IPO323_REF=${DATA_DIR}Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa
+dim2_seq=${DATA_DIR}Zt10_dim2_from_MgDNMT_deRIP.fa
+IPO323_VCF=${pop_genome}Ztritici_global_March2020.filtered.vcf.gz 
