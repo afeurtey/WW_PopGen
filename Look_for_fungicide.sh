@@ -6,7 +6,7 @@ source $1
 SAMPLES=$2
 BED=$3 # tab-delim table with loci/codons (see below) NOT A BED AT ALL
 
-cd ${WW_fung_dir}
+cd ${fung_dir}
 #$TABIX_PATH -p vcf $IPO323_VCF
 mkdir -p temp_files
 

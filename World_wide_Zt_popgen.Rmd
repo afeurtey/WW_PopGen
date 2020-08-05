@@ -59,7 +59,6 @@ TE_RIP_dir=paste0(project_dir, "4_TE_RIP/")
 GEA_dir=paste0(project_dir, "5_GEA/")
 
 
-#Files
 vcf_name=paste0(project_dir, "Ztritici_global_March2020.filtered-clean.SNP.max-m-0.8.maf-0.05.thin-1000bp")
 Zt_list = paste0(project_dir, "Ztritici_list")
 gff_file = paste0(metadata_dir, "Zymoseptoria_tritici.MG2.Grandaubert2015.gff3")
