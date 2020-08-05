@@ -49,16 +49,17 @@ library(lfmm)
 world <- map_data("world")
 project_dir="/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_PopGen/"
 
-#Data directionaries
+#Data directories
 data_dir=paste0(project_dir, "0_Data/")
 metadata_dir=paste0(project_dir, "Metadata/")
 
-#
+#Analysis directories
 CNV_dir = paste0(project_dir, "1_Variant_calling/")
 TE_RIP_dir=paste0(project_dir, "4_TE_RIP/")
 GEA_dir=paste0(project_dir, "5_GEA/")
+fung_dir=paste0(project_dir, "6_Fungicide_resistance/")
 
-
+#Files
 vcf_name=paste0(project_dir, "Ztritici_global_March2020.filtered-clean.SNP.max-m-0.8.maf-0.05.thin-1000bp")
 Zt_list = paste0(project_dir, "Ztritici_list")
 gff_file = paste0(metadata_dir, "Zymoseptoria_tritici.MG2.Grandaubert2015.gff3")
@@ -1352,29 +1353,29 @@ done
 #--------------------------------------
 #Gather all results
 grep "Compo" /data3/alice/WW_project/WW_TE_RIP/0_RIP_estimation/3_RIP_estimation/*txt  | \
-  sed 's|/data3/alice/WW_project/WW_TE_RIP/0_RIP_estimation/3_RIP_estimation/||' | \
+  sed 's|/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/3_RIP_estimation/||' | \
   sed 's/.txt:Composite//' | sed 's/\./ /' \
   > /userhome/alice/WW_project/WW_TE_RIP/Composite_index.txt
 
 
 #Gathering with too many files
-rm /userhome/alice/WW_project/WW_TE_RIP/Composite_index.txt
-grep "Compo" /data3/alice/WW_project/WW_TE_RIP/0_RIP_estimation/3_RIP_estimation/*RIP_est.txt | \
-  sed 's|/data3/alice/WW_project/WW_TE_RIP/0_RIP_estimation/3_RIP_estimation/||' | \
+rm /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/Composite_index.txt
+grep "Compo" /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/3_RIP_estimation/*RIP_est.txt | \
+  sed 's|/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/3_RIP_estimation/||' | \
   sed 's/.txt:Composite//' | sed 's/\./\t/' \
-  >> /userhome/alice/WW_project/WW_TE_RIP/Composite_index.txt
+  >> /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/Composite_index.txt
 
-grep "GC" /data3/alice/WW_project/WW_TE_RIP/0_RIP_estimation/3_RIP_estimation/*RIP_est.txt | \
-  sed 's|/data3/alice/WW_project/WW_TE_RIP/0_RIP_estimation/3_RIP_estimation/||' | \
+grep "GC" /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/3_RIP_estimation/*RIP_est.txt | \
+  sed 's|/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/3_RIP_estimation/||' | \
   sed 's/.txt:GC//' | sed 's/\./\t/' \
-  >> /userhome/alice/WW_project/WW_TE_RIP/GC_percent.txt
+  >> /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/GC_percent.txt
 
 REF_NAME=/userhome/alice/WW_project/WW_TE_RIP/Badet_BMC_Biology_2020_TE_consensus_sequences
 ls_TE=$(grep ">" ${REF_NAME}.fasta | sed 's/>//')
 for TE in $ls_TE; 
 do
-  grep "Compo" /data3/alice/WW_project/WW_TE_RIP/0_RIP_estimation/3_RIP_estimation/*${TE}.txt  | \
-  sed 's|/data3/alice/WW_project/WW_TE_RIP/0_RIP_estimation/3_RIP_estimation/||' | \
+  grep "Compo" /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/3_RIP_estimation/*${TE}.txt  | \
+  sed 's|/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/3_RIP_estimation/||' | \
   sed 's/.txt:Composite//' | sed 's/\./\t/' \
   >> /userhome/alice/WW_project/WW_TE_RIP/Composite_index.txt
 done
@@ -1383,19 +1384,19 @@ done
 
 #Get read number per sample
 echo "ID_file Te_aligned_reads Total_reads" > /userhome/alice/WW_project/WW_TE_RIP/Nb_reads.txt
-for fq in /data3/alice/WW_project/WW_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/*fq; 
+for fq in /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/*fq; 
 do
- name=$(echo $fq | sed 's|/data3/alice/WW_project/WW_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/||' | sed 's/.fq//' )
- total_reads=$(zcat /data3/alice/WW_project/WW_TE_RIP/0_RIP_estimation/1_Fastq_from_bam/${name}.fq.gz | paste - - - - | wc -l | cut -f 1)
- aln_reads=$(cat /data3/alice/WW_project/WW_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/${name}.fq | paste - - - - | wc -l | cut -f 1)
+ name=$(echo $fq | sed 's|/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/||' | sed 's/.fq//' )
+ total_reads=$(zcat /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/1_Fastq_from_bam/${name}.fq.gz | paste - - - - | wc -l | cut -f 1)
+ aln_reads=$(cat /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/${name}.fq | paste - - - - | wc -l | cut -f 1)
  echo $name $aln_reads $total_reads >> /userhome/alice/WW_project/WW_TE_RIP/Nb_reads.txt
 done
 
 #Get read number per sample per TE
-for bamF in /data3/alice/WW_project/WW_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/*bam ;  
+for bamF in /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/*bam ;  
 do 
   echo $bamF ;  
-  name=$(echo $bamF | sed 's|/data3/alice/WW_project/WW_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/||' | sed 's/.bam//' ) ; .
+  name=$(echo $bamF | sed 's|/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/||' | sed 's/.bam//' ) ; .
   /Software/samtools-1.10/samtools idxstats $bamF > temp.txt ;  
   awk -v var="$name"  '{OFS="\t"} {print var, $1, $2, $3, $4}' temp.txt >> \
     /userhome/alice/WW_project/WW_TE_RIP/Nb_reads_per_TE.txt ; 
@@ -1482,7 +1483,7 @@ p1 = cbind(TE_PCA_mat, as.data.frame(TE.pca$x)) %>%
   labs(title = "PCA based on normalized reads mapping on each TE consensus")
 ggplotly(p1)
 
-p2 = cbind(TE_PCA_mat, as.data.frame(TE.pca$x)) %>%
+p2 = cbind(TE_PCA_mat, as.data.frame(TE.pca$x)) %>%d
   ggplot(aes(x = PC3, y = PC4, col = Continent_Region, text = for_display)) +
   geom_point(alpha = 0.6) + theme_bw() + Color_Continent
 ggplotly(p2)
@@ -1748,7 +1749,7 @@ Here, I use **de novo** genome assemblies and try to identify copies of dim2. Fo
 #Here the Zt10_dim2_from_MgDNMT_deRIP.fa is the sequence of Zt10_6.417 which corresponds to the deRIPPed version of dim2 in the reference IPO323 https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2940312/pdf/GEN186167.pdf
 dir_source=/legserv/NGS_data/Zymoseptoria/Data_files/Illumina_Denovo/Hartmann_2017_Denovo/
 list_spades=$(ls $dir_source)
-out_file=/data3/alice/WW_project/WW_TE_RIP/1_Ztdim2_detection/1_Blast_from_denovo_assemblies/Results_blast_dim2.txt
+out_file=/data2/alice/WW_project/4_TE_RIP/1_Ztdim2_detection/1_Blast_from_denovo_assemblies/Results_blast_dim2.txt
 echo "sample qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore" > $out_file
 for x in $list_spades ; 
   do 
@@ -1756,21 +1757,21 @@ for x in $list_spades ;
 
 rsync -avP \
   ${dir_source}${x}/scaffolds.fasta \
-  /data3/alice/WW_project/WW_TE_RIP/1_Ztdim2_detection/1_Blast_from_denovo_assemblies/
+  /data2/alice/WW_project/4_TE_RIP/1_Ztdim2_detection/1_Blast_from_denovo_assemblies/
   
 python2 /userhome/alice/Scripts/Rename_fragments_in_fasta.py  \
-    -i /data3/alice/WW_project/WW_TE_RIP/1_Ztdim2_detection/1_Blast_from_denovo_assemblies/scaffolds.fasta \
-    -o /data3/alice/WW_project/WW_TE_RIP/1_Ztdim2_detection/1_Blast_from_denovo_assemblies/${sample}.fasta \
+    -i /data2/alice/WW_project/4_TE_RIP/1_Ztdim2_detection/1_Blast_from_denovo_assemblies/scaffolds.fasta \
+    -o /data2/alice/WW_project/4_TE_RIP/1_Ztdim2_detection/1_Blast_from_denovo_assemblies/${sample}.fasta \
     --simple -f spades
     
 ~/Software/ncbi-blast-2.10.0+/bin/makeblastdb \
   -dbtype nucl \
-  -in /data3/alice/WW_project/WW_TE_RIP/1_Ztdim2_detection/1_Blast_from_denovo_assemblies/${sample}.fasta \
-  -out /data3/alice/WW_project/WW_TE_RIP/1_Ztdim2_detection/1_Blast_from_denovo_assemblies/${sample}
+  -in /data2/alice/WW_project/4_TE_RIP/1_Ztdim2_detection/1_Blast_from_denovo_assemblies/${sample}.fasta \
+  -out /data2/alice/WW_project/4_TE_RIP/1_Ztdim2_detection/1_Blast_from_denovo_assemblies/${sample}
   
 ~/Software/ncbi-blast-2.10.0+/bin/blastn \
   -query /userhome/alice/WW_project/WW_TE_RIP/Zt10_dim2_from_MgDNMT_deRIP.fa \
-  -db /data3/alice/WW_project/WW_TE_RIP/1_Ztdim2_detection/1_Blast_from_denovo_assemblies/${sample} \
+  -db /data2/alice/WW_project/4_TE_RIP/1_Ztdim2_detection/1_Blast_from_denovo_assemblies/${sample} \
   -outfmt 6  | \
   awk -v sample="${sample}" 'BEGIN {OFS = " "} {print sample, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12}' >> \
   $out_file
@@ -1781,7 +1782,7 @@ python2 /userhome/alice/Scripts/Rename_fragments_in_fasta.py  \
 while read sample ;
 do 
 
-out_file=/data3/alice/WW_project/WW_TE_RIP/1_Ztdim2_detection/1_Blast_from_denovo_assemblies/Results_blast_dim2_${sample}.txt
+out_file=/data2/alice/WW_project/4_TE_RIP/1_Ztdim2_detection/1_Blast_from_denovo_assemblies/Results_blast_dim2_${sample}.txt
 #Software directories
 BWAPATH=/userhome/alice/Software/bwa-0.7.17/
 BEDTOOLS_PATH=/userhome/alice/Software/
@@ -2364,7 +2365,7 @@ temp %>%
 ***
 
 ```{r}
-genotypes_resistance = read_tsv(paste0(project_dir, "genotypes_tidy_format.tab"),
+genotypes_resistance = read_tsv(paste0(fung_dir, "genotypes_tidy_format.tab"),
                                 col_names = c("temp", "ID_file", "Allele")) %>%
   separate(temp, into = c("Gene", "AA_change"), sep = "\\.") %>%
    dplyr::mutate(AA_REF = str_sub(AA_change, 1, 1)) %>%
