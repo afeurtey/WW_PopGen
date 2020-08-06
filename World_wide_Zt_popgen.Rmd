@@ -36,6 +36,8 @@ library(plotly)
 library(cowplot)
 library(GGally)
 library(corrplot)
+library(pheatmap)
+library(ggstance)
 
 #Pop structure and pop genomic
 library(SNPRelate) #PCA
@@ -47,15 +49,21 @@ library(lfmm)
 
 #Variables
 world <- map_data("world")
-project_dir="/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_PopGen/"
+project_dir="/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/"
 
 #Data directories
 data_dir=paste0(project_dir, "0_Data/")
 metadata_dir=paste0(project_dir, "Metadata/")
 
 #Analysis directories
+#--------------------
 CNV_dir = paste0(project_dir, "1_Variant_calling/")
+
+#TE and RIP
 TE_RIP_dir=paste0(project_dir, "4_TE_RIP/")
+RIP_DIR=paste0(TE_RIP_dir, "0_RIP_estimation/")
+DIM2_DIR=paste0(TE_RIP_dir, "1_Blast_from_denovo_assemblies/")
+
 GEA_dir=paste0(project_dir, "5_GEA/")
 fung_dir=paste0(project_dir, "6_Fungicide_resistance/")
 
@@ -82,6 +90,34 @@ knitr::opts_chunk$set(results = T)
 
 greens=c("#1B512D", "#669046", "#8CB053", "#B1CF5F", "#514F59")
 blues=c("#08386E", "#1C89C9", "#28A7C0", "#B0DFE8", "grey")
+```
+
+
+```{bash Importation from cluster, eval = F}
+# 1 - Variant calling 
+rsync -avP \
+  alice@130.125.25.187:/data2/alice/WW_project/1_Variant_calling/1* \
+  /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/1_Variant_calling/
+
+rsync -avP \
+  alice@130.125.25.187:/data2/alice/WW_project/1_Variant_calling/2* \
+  /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/
+
+
+# 4 - TE and RIP
+rsync -avP \
+  alice@130.125.25.187:/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/*txt \
+  /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/0_RIP_estimation/
+#Composite_index.txt
+#GC_percent.txt
+#Nb_reads.txt
+#Nb_reads_per_TE.txt
+
+rsync -avP \
+  alice@130.125.25.187:/data2/alice/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/1_Blast_dim2_deRIPped/*txt \
+  /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/
+  
+  
 ```
 
 # Sampling
@@ -385,9 +421,9 @@ plot_grid(bar_Ndepth_per_CHR, bottom_row, labels = c('A', ''), label_size = 12, 
 
 Here is a table including the isolates with supernumerary _core_ chromosomes.
 ```{r Supernumerary chromosomes table}
-kable(depth  %>%
+depth  %>%
   filter(Depth_is == "High") %>%
-  filter(CHROM < 13))
+  filter(CHROM < 13)
 ```
 
 And an overlook of the accessory chromosomes PAV per continent (only considering continents with more than 10 isolates). 
@@ -710,7 +746,7 @@ In order to investiage more precisely the population structure in Europe, the Mi
 Zt_meta  %>%
   filter(is.na(Duplicate_Clone_LowQual_Flags) | Duplicate_Clone_LowQual_Flags != "DUPLICATE_remove") %>%
   #filter(is.na(Duplicate_Clone_LowQual_Flags) | Duplicate_Clone_LowQual_Flags != "Publication_embargo") %>%
-  inner_join(., depth %>% filter(MEAN_DEPTH >= 5), by = c("ID_file" = "INDV")) %>%
+  inner_join(., depth %>% filter(MEAN_DEPTH >= 5)) %>%
   filter(Continent_Region != "Oceania") %>% 
   dplyr::select(ID_file) %>% write_delim(paste0(Zt_list, "_wo_oceania.txt"))
 
@@ -1377,29 +1413,30 @@ do
   grep "Compo" /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/3_RIP_estimation/*${TE}.txt  | \
   sed 's|/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/3_RIP_estimation/||' | \
   sed 's/.txt:Composite//' | sed 's/\./\t/' \
-  >> /userhome/alice/WW_project/WW_TE_RIP/Composite_index.txt
+  >> /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/Composite_index.txt
 done
 
 
 
 #Get read number per sample
 echo "ID_file Te_aligned_reads Total_reads" > /userhome/alice/WW_project/WW_TE_RIP/Nb_reads.txt
-for fq in /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/*fq; 
-do
- name=$(echo $fq | sed 's|/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/||' | sed 's/.fq//' )
- total_reads=$(zcat /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/1_Fastq_from_bam/${name}.fq.gz | paste - - - - | wc -l | cut -f 1)
- aln_reads=$(cat /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/${name}.fq | paste - - - - | wc -l | cut -f 1)
- echo $name $aln_reads $total_reads >> /userhome/alice/WW_project/WW_TE_RIP/Nb_reads.txt
+for fq in /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/*fq.gz ;  
+do  
+  name=$(echo $fq | sed 's|/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/||' | sed 's/.fq.gz//' ); 
+  echo $name
+  total_reads=$(~/Software/samtools-1.10/samtools flagstat /data2/alice/WW_project/1_Variant_calling/0_Mappings/${name}.bam | grep "mapped" | grep "with" -v | cut -f1 -d " ");    
+  aln_reads=$(zcat /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/${name}.fq.gz | paste - - - - | wc -l | cut -f 1);  
+  echo $name $aln_reads $total_reads >> /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/Nb_reads.txt; 
 done
 
 #Get read number per sample per TE
 for bamF in /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/*bam ;  
 do 
   echo $bamF ;  
-  name=$(echo $bamF | sed 's|/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/||' | sed 's/.bam//' ) ; .
-  /Software/samtools-1.10/samtools idxstats $bamF > temp.txt ;  
+  name=$(echo $bamF | sed 's|/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/||' | sed 's/.bam//' ) ; 
+  /home/alice/Software/samtools-1.10/samtools idxstats $bamF > temp.txt ;  
   awk -v var="$name"  '{OFS="\t"} {print var, $1, $2, $3, $4}' temp.txt >> \
-    /userhome/alice/WW_project/WW_TE_RIP/Nb_reads_per_TE.txt ; 
+    /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/Nb_reads_per_TE.txt ; 
 done
 ```
 
@@ -1407,7 +1444,7 @@ done
 First, I mapped the reads on the TE consensus created by Ursula based on Thomas's pangenome. I visualize the results here in terms of percentage of reads mapping on these consensus.
 ```{r TE content estimation plots}
 
-TE_qty = read_delim(paste0(TE_RIP_dir, "Nb_reads.txt"), delim = " ") %>%
+TE_qty = read_delim(paste0(RIP_DIR, "Nb_reads.txt"), delim = " ") %>%
   filter(Total_reads > Te_aligned_reads) %>%
   mutate(Percent_TE_Reads = Te_aligned_reads * 100 / Total_reads) %>% 
   left_join(readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_DC_AFperso.xlsx"), 
@@ -1438,7 +1475,7 @@ TE_prop
 
 ```{r reads per TE}
 
-reads_per_TE = read_delim(paste0(TE_RIP_dir, "Nb_reads_per_TE.txt"), delim = "\t", 
+reads_per_TE = read_delim(paste0(RIP_DIR, "Nb_reads_per_TE.txt"), delim = "\t", 
                     col_names = c("ID_file", "TE", "Length", 
                                   "# mapped read-segments",  "# unmapped read-segments")) %>%
   separate(TE, into = c("Superfamily", "TE_id"), sep = "_", remove = F) %>% 
@@ -1483,7 +1520,7 @@ p1 = cbind(TE_PCA_mat, as.data.frame(TE.pca$x)) %>%
   labs(title = "PCA based on normalized reads mapping on each TE consensus")
 ggplotly(p1)
 
-p2 = cbind(TE_PCA_mat, as.data.frame(TE.pca$x)) %>%d
+p2 = cbind(TE_PCA_mat, as.data.frame(TE.pca$x)) %>%
   ggplot(aes(x = PC3, y = PC4, col = Continent_Region, text = for_display)) +
   geom_point(alpha = 0.6) + theme_bw() + Color_Continent
 ggplotly(p2)
@@ -1515,7 +1552,7 @@ It does look like there is clustering of samples according to geography. This is
 I now look at the repeat-induced point mutations in reads that map on the TE consensus. We expect to see differences in the different geographical groups so I start by visualizing this. 
 ```{r RIP input and plot per geography}
 
-RIP=read_tsv(paste0(TE_RIP_dir, "Composite_index.txt"), 
+RIP=read_tsv(paste0(RIP_DIR, "Composite_index.txt"), 
              col_names = c("ID_file", "TE",  "Composite_median", "Composite_mean" )) %>%
   separate(TE, into = c("Superfamily", "TE_id"), sep = "_", remove = F) %>% 
   mutate(Order = ifelse(!grepl('^D',TE), "Class II (DNA transposons)", "Class I (retrotransposons)"))%>%
@@ -1853,7 +1890,7 @@ Let's look at the results as dot plots and compare the results from the dim2 bla
 length_dim2 = 3846
 threshold_length = 0.8 * length_dim2
 
-dim2_blast_results = read_delim(paste0(TE_RIP_dir, "Results_blast_dim2_correct_names.txt"), delim = " ")
+dim2_blast_results = read_delim(paste0(DIM2_DIR, "Results_blast_dim2_correct_names.txt"), delim = " ")
 
 dim2_blast_results %>% 
   ggplot(aes(length)) + 
@@ -2364,6 +2401,8 @@ temp %>%
 # Fungicide resistance
 ***
 
+This is based on the same scripts made for Fanny Hartmann's paper on the pairs of populations: looking for alleles already known to be involved in resistance to fungicide. 
+
 ```{r}
 genotypes_resistance = read_tsv(paste0(fung_dir, "genotypes_tidy_format.tab"),
                                 col_names = c("temp", "ID_file", "Allele")) %>%
@@ -2372,8 +2411,10 @@ genotypes_resistance = read_tsv(paste0(fung_dir, "genotypes_tidy_format.tab"),
   dplyr::mutate(Allele_type = ifelse(AA_REF == Allele, "Origin", "Mutant")) %>%
   left_join(Zt_meta)
 
-library(ggstance)
-genotypes_resistance %>%
+
+genotypes_resistance %>% 
+  filter(Country == "Switzerland") %>% 
+  filter(Date_Year == "2016") %>%
   count(AA_change, Gene, Allele_type) %>%
   ggplot(aes(x=n, y=AA_change, fill = Allele_type)) +
   geom_barh(stat="identity") +
@@ -2382,6 +2423,7 @@ genotypes_resistance %>%
 
 ```
 
+I suspect that there will be effect of both geography and time on the frequency of these alleles and so I try to represent this here.
 ```{r}
 genotypes_resistance %>%
   filter(Gene == "CYP51") %>%
@@ -2390,14 +2432,49 @@ genotypes_resistance %>%
   geom_bar(stat = "identity", position = "fill") +
   facet_grid(AA_change ~ ., scales = "free_y", space = "free_y")
 
-#TODO: Change to proportion of Mutant vs Original
+#
 genotypes_resistance %>%
   filter(Gene == "CYP51") %>%
   count(AA_change, Continent_Region,Date_Year, Allele_type) %>%
-  filter(Allele_type == "Mutant") %>%
-    ggplot(aes(x=Date_Year, y=Continent_Region, size = n, col = n)) +
-  geom_point() + scale_color_viridis_c() +
-  facet_grid(AA_change ~ ., scales = "free_y", space = "free_y")
+  pivot_wider(names_from = Allele_type, values_from = n, values_fill = list(n = 0)) %>%
+  mutate(prop_mutant = Mutant/(Mutant + Origin)) %>%
+    ggplot(aes(x=Date_Year, y=Continent_Region, size = prop_mutant)) +
+  geom_point(col = myColors[3], alpha =0.7) + theme_bw() +
+  facet_wrap(.~AA_change)
 
+genotypes_resistance %>%
+  filter(Gene == "CYP51") %>%
+  count(AA_change, Continent_Region,Date_Year, Allele_type) %>%
+  pivot_wider(names_from = Allele_type, values_from = n, values_fill = list(n = 0)) %>%
+  mutate(Number_all = Mutant + Origin) %>%
+  mutate(prop_mutant = Mutant/Number_all) %>%
+  filter(Number_all > 5) %>%
+    ggplot(aes(x=Date_Year, y=prop_mutant, col = Continent_Region)) +
+  geom_point() + theme_bw() +
+  facet_wrap(.~AA_change) + Color_Continent
+
+```
+```{r}
+genotypes_resistance %>%
+  filter(Gene == "beta_tubulin") %>%
+  count(AA_change, Continent_Region,Date_Year, Allele_type) %>%
+  pivot_wider(names_from = Allele_type, values_from = n, values_fill = list(n = 0)) %>%
+  mutate(Number_all = Mutant + Origin) %>%
+  mutate(prop_mutant = Mutant/Number_all) %>%
+  filter(Number_all > 5) %>%
+    ggplot(aes(x=Date_Year, y=prop_mutant, col = Continent_Region)) +
+  geom_point() + theme_bw() +
+  facet_wrap(.~AA_change) + Color_Continent
+
+genotypes_resistance %>%
+  filter(Gene == "mitochondrial_cytb") %>%
+  count(AA_change, Continent_Region,Date_Year, Allele_type) %>%
+  pivot_wider(names_from = Allele_type, values_from = n, values_fill = list(n = 0)) %>%
+  mutate(Number_all = Mutant + Origin) %>%
+  mutate(prop_mutant = Mutant/Number_all) %>%
+  filter(Number_all > 5) %>%
+    ggplot(aes(x=Date_Year, y=prop_mutant, col = Continent_Region)) +
+  geom_point() + theme_bw() +
+  facet_wrap(.~AA_change) + Color_Continent
 ```
 
