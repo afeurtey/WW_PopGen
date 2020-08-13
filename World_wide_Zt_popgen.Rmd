@@ -501,7 +501,8 @@ depth_per_contig = depth_per_locus %>%
 for_pheatmap = spread(depth_per_contig[, c(1, 2, 7)], "Contig", "Normalized_depth") 
 
 for_pheatmap = Zt_meta %>% dplyr::select(ID_file, Continent_Region) %>%
-  inner_join(., for_pheatmap)
+  inner_join(., for_pheatmap) %>%
+  filter(complete.cases(.))
 
 temp = as.data.frame(for_pheatmap) 
 rownames(temp) = temp[,1]
@@ -511,6 +512,7 @@ my_palette <- colorRampPalette(c("white", "black"))(n = 299)
 annot_continent = as.data.frame(temp[, 1])
 row.names(annot_continent) <- row.names(temp)
 colnames(annot_continent) <- "Continent"
+
 
 core_chr = c("chr_1", "chr_2", "chr_3", "chr_4", "chr_5", "chr_6", "chr_7", 
              "chr_8", "chr_9", "chr_10", "chr_11", "chr_12", "chr_13")
@@ -529,7 +531,7 @@ my_colour = list(
                       `Pangenome fragment` = "#ffa62b")
 )
 
-pheatmap(as.matrix(temp[,c(2:ncol(temp))]), 
+pheatmap(as.matrix(temp[,c(3:ncol(temp))]), 
          color=my_palette, 
          cluster_cols = TRUE, 
          cluster_rows=TRUE, 
@@ -570,7 +572,8 @@ depth_per_PacBio = depth_per_locus %>%
 
 for_pheatmap = spread(depth_per_PacBio[, c(1, 2, 7)], "PacBio", "Normalized_depth") 
 for_pheatmap = Zt_meta %>% dplyr::select(ID_file, Continent_Region) %>%
-  inner_join(., for_pheatmap)
+  inner_join(., for_pheatmap) %>%
+  filter(complete.cases(.))
 
 temp = as.data.frame(for_pheatmap) 
 rownames(temp) = temp[,1]
@@ -665,6 +668,154 @@ out.close()
 
 ```
 
+
+
+
+
+
+
+
+```{r Depth per gene on pangenome}
+
+files <- list.files(paste0(CNV_dir,"2_Depth_per_gene/"), pattern = ".depth_per_gene.txt$")
+
+depth_per_gene = data.frame()
+
+for (i in files) {
+  file_name=paste0(CNV_dir,"2_Depth_per_gene/", i)
+  sample_name = dplyr::last(str_split(file_name, "/")[[1]]) %>%
+  str_replace(., pattern = ".depth_per_gene.txt", replacement = "")
+  temp = read_tsv(file_name, col_names = c("Locus_name", "Depth")) %>%
+    mutate(ID_file = sample_name)
+  depth_per_gene = bind_rows(depth_per_gene, temp)
+}
+
+depth_per_gene = left_join(depth_per_gene,Zt_meta) %>%
+  separate(col = Locus_name, 
+           sep = "\\.", 
+           into= c("sample", "rest"),
+           remove = F, 
+           fill = "left", extra = "merge") %>%
+  separate(col = rest, 
+           into = c("chr", "id", "Gene_ID"), 
+           sep = ";",  
+           remove = T) %>% 
+  mutate(Gene_ID = str_remove(Gene_ID, "geneID=")) %>%
+  unite(sample, chr, 
+        col = "Contig", 
+        sep="_", 
+        na.rm = TRUE, 
+        remove = F) 
+
+#For each sample, we are estimating the median depth of genes along the core chromosomes
+median_depth_cor_per_ind = depth_per_gene %>% 
+  filter(grepl("Zt09", Locus_name)) %>% 
+  dplyr::select(Contig, Depth, ID_file) %>%
+  mutate(chr = str_remove(Contig, "chr_")) %>%
+  filter(as.numeric(chr) <= 13) %>%
+  group_by(ID_file) %>% 
+  dplyr::summarise(Median_core_depth = median(as.numeric(Depth), na.rm = T))
+
+
+depth_per_gene = left_join(depth_per_gene, median_depth_cor_per_ind) %>%
+  mutate(Normalized_depth = Depth / Median_core_depth) 
+
+
+
+
+```
+
+
+```{r}
+depth_per_PacBio = depth_per_gene %>% 
+  filter(grepl("\\[", Locus_name)) %>%
+  separate(col = Locus_name, 
+           sep = "\\.", 
+           into= c("PacBio", "rest"),
+           remove = F, 
+           fill = "left") %>%
+  group_by(ID_file, PacBio, Continent_Region) %>% 
+  dplyr::summarise(Median_depth = median(as.numeric(Depth), na.rm = T),
+                   Nb_windows = n())  %>%
+  left_join(., median_depth_cor_per_ind) %>% 
+  mutate(Normalized_depth = Median_depth / Median_core_depth)
+
+for_pheatmap = spread(depth_per_PacBio[, c(1, 2, 7)], "PacBio", "Normalized_depth") 
+for_pheatmap = Zt_meta %>% dplyr::select(ID_file, Continent_Region) %>%
+  inner_join(., for_pheatmap) %>%
+  filter(complete.cases(.))
+
+temp = as.data.frame(for_pheatmap) 
+rownames(temp) = temp[,1]
+temp = temp[,-1]
+my_palette <- colorRampPalette(c("white", "black"))(n = 299)
+
+annot_continent = as.data.frame(temp[, 1])
+row.names(annot_continent) <- row.names(temp)
+colnames(annot_continent) <- "Continent"
+
+
+color_PacBio = data.frame(Continent = c("Europe", "Europe",  "Europe", "Europe", "South America", 
+                           "Oceania", "South America", "North America", "Europe", 
+                           "North America", "Middle East", "Middle East", "Middle East", "Africa",
+                           "North America", "Africa", "Europe", "Middle East"))
+  
+rownames(color_PacBio) <- c("1A5", "1E4",  "3D1", "3D7", "Arg00_1D1a1", 
+                           "Aus01_1H8", "CH95_3B2a", "CNR93_D3a1", "CRI10_0616", 
+                           "I93_11a_2", "IR01_26b", "IR01_48b", "ISY92_Ar4f", "KE94_MF1a",
+                           "OregS90_a15_4A_10", "TN09_26_2-0", "UR95_E2C_2", "YEQ92_4")
+
+my_colour = list(Continent = myColors)
+
+
+
+pheatmap(as.matrix(temp[,c(2:ncol(temp))]), 
+         color=my_palette, 
+         cluster_cols = TRUE, 
+         cluster_rows=TRUE, 
+         border_color = NA,
+         show_rownames = F, 
+         annotation_row = annot_continent,
+         annotation_col = color_PacBio,
+         annotation_colors = my_colour)
+
+```
+
+```{r}
+library(FactoMineR)
+depth_genes_PCA = depth_per_gene %>%
+  dplyr::select(ID_file, Gene_ID, Normalized_depth) %>%
+  mutate(Normalized_depth = as.numeric(Normalized_depth)) %>%
+  pivot_wider(names_from = Gene_ID, values_from = Normalized_depth)
+
+temp = as.data.frame(depth_genes_PCA)[complete.cases(depth_genes_PCA),2:ncol(depth_genes_PCA)]
+temp2 = temp[, sample(ncol(temp), size=1000,replace=FALSE)]
+temp2 = sapply( temp2, as.numeric )
+
+res.pca = PCA(temp2, scale.unit=TRUE, ncp=10, graph=T)
+
+results = as.tibble(res.pca$ind$coord) %>%
+   mutate(ID_file = as.data.frame(depth_genes_PCA)[complete.cases(depth_genes_PCA),1]) %>%
+  left_join(.,readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_DC_AFperso.xlsx"), 
+                           sheet = 1, n_max = 1000))
+
+p = ggplot(results, aes(x = Dim.1, y = Dim.2, text = ID_file, color = Continent_Region)) + 
+  geom_point(aes(color = Continent_Region)) +
+  labs(x = paste0("PC 1 (", round(res.pca$eig[1,2]), "%)"),
+       y = paste0("PC 2 (", round(res.pca$eig[2,2]), "%)")) + 
+  Color_Continent + 
+  theme_bw()
+ggplotly(p)
+
+p = ggplot(results, aes(x = Dim.1, y = Dim.2, text = ID_file, color = Collection)) + 
+  geom_point() +
+  labs(x = paste0("PC 1 (", round(res.pca$eig[1,2]), "%)"),
+       y = paste0("PC 2 (", round(res.pca$eig[2,2]), "%)")) + 
+  theme_bw()
+ggplotly(p)
+p
+
+```
 
 <br><br>
 
@@ -1430,6 +1581,7 @@ do
 done
 
 #Get read number per sample per TE
+rm /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/Nb_reads_per_TE.txt
 for bamF in /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/*bam ;  
 do 
   echo $bamF ;  
@@ -1649,13 +1801,14 @@ TE_consensus_faidx =read_tsv(paste0(TE_RIP_dir, "Badet_BMC_Biology_2020_TE_conse
 p = inner_join(RIP, TE_consensus_faidx) %>%
   dplyr::group_by(Order, TE, length) %>%
   filter (TE != "RIP_est") %>%
+  filter(!is.na(Normalized_nb_reads_mapped)) %>%
   dplyr::summarize(median_per_consensus=median(Composite_median, na.rm = T),
                    read_mapped = median(Normalized_nb_reads_mapped), na.rm = T) %>%
   ggplot(aes(x = log(length), 
              y = median_per_consensus,
              color = Order)) +
   geom_point(aes( text = TE, 
-             alpha = log2(read_mapped)))  + theme_bw() +
+             alpha = log(read_mapped)))  + theme_bw() +
   ylim(c(-2, 4)) + geom_hline(yintercept = 0) +
   labs(x = "TE length (log-scale)",
        y = "Median of RIP composite index",
@@ -1678,7 +1831,7 @@ p = inner_join(RIP, TE_consensus_faidx) %>%
   geom_point()  + theme_bw() +
   ylim(c(-2, 4)) + geom_hline(yintercept = 0)
 
-#ggplotly(p)
+ggplotly(p)
 ```
 
 Finally, I look at the relation between the amount of reads mapping on TE consensus and the level of RIP detected. I also investigate several possible bias.  
@@ -1887,10 +2040,16 @@ done
 
 Let's look at the results as dot plots and compare the results from the dim2 blast to the RIP composite index. So far the Middle-Eastern samples seem quite similar to one another, whereas other regions contain way more variability such as Europe.
 ```{r dim2 blast results dots}
+
+system(paste0("cat ", DIM2_DIR, "Results_blast_dim2*txt > ", DIM2_DIR, "Overall_results_blast_dim2.txt"))
+
 length_dim2 = 3846
 threshold_length = 0.8 * length_dim2
 
-dim2_blast_results = read_delim(paste0(DIM2_DIR, "Results_blast_dim2_correct_names.txt"), delim = " ")
+dim2_blast_results = read_delim(paste0(DIM2_DIR, "Overall_results_blast_dim2.txt"), delim = " ",
+                                col_names = c("sample", "qseqid", "sseqid", "pident", "length", 
+                                              "mismatch", "gapopen", "qstart", "qend", 
+                                              "sstart", "send", "evalue", "bitscore"))
 
 dim2_blast_results %>% 
   ggplot(aes(length)) + 
@@ -2418,7 +2577,8 @@ genotypes_resistance %>%
   count(AA_change, Gene, Allele_type) %>%
   ggplot(aes(x=n, y=AA_change, fill = Allele_type)) +
   geom_barh(stat="identity") +
-  facet_grid(Gene ~ ., scales = "free_y", space = "free_y")
+  facet_grid(Gene ~ ., scales = "free_y", space = "free_y") 
+
 
 
 ```
