@@ -1,17 +1,18 @@
 #!/bin/sh
 
 source $1
-sample=$2
+sample_list=$2
 
 genes_gff=all_19_pangenome.fasta_names.converted_coord
 
 #grep "mRNA" ${DATA_DIR}${genes_gff}.gff > ${DATA_DIR}${genes_gff}.mRNA.gff
 
 
-echo $sample ; 
-head ${DATA_DIR}all_19_pangenome.windows.bed
-
-#Per window
+while read sample; 
+do echo $sample ; 
+  head ${DATA_DIR}all_19_pangenome.windows.bed
+  
+  #Per window
   $BEDTOOLS_PATH coverage \
      -a ${DATA_DIR}all_19_pangenome.windows.bed \
      -b ${pan_mapped}${sample}.bam \
@@ -21,7 +22,7 @@ head ${DATA_DIR}all_19_pangenome.windows.bed
       ${pan_DP_win}${sample}.depth_per_window.txt ;
   echo "Windows are done"
 
-#Per gene
+  #Per gene
   $BEDTOOLS_PATH coverage \
      -a ${DATA_DIR}${genes_gff}.mRNA.gff \
      -b ${pan_mapped}${sample}.bam \
@@ -30,3 +31,6 @@ head ${DATA_DIR}all_19_pangenome.windows.bed
    $BEDTOOLS_PATH groupby -g 1 -c 3 -o median > \
      ${pan_DP_gene}${sample}.depth_per_gene.txt ;
   echo "Genes are done!"
+
+done < $sample_list
+

@@ -7,19 +7,10 @@ sample=$3
 read1=${RAW_READS}${read_name}_R1.fastq.gz
 read2=${RAW_READS}${read_name}_R2.fastq.gz
 
-java -jar ${TRIMMOPATH}trimmomatic-0.39.jar PE \
-  ${read1} ${read2} \
-  ${FILTERED_READS}${sample}_1_paired.fq.gz ${FILTERED_READS}${sample}_1_unpaired.fq.gz \
-  ${FILTERED_READS}${sample}_2_paired.fq.gz ${FILTERED_READS}${sample}_2_unpaired.fq.gz \
-  ILLUMINACLIP:${adapt_file}:2:30:10 \
-  LEADING:20 TRAILING:20 SLIDINGWINDOW:5:20 MINLEN:50
 
 ${SPADES_PATH}spades.py  \
   -o ${DENOVO_ASSEMB}${sample} \
-  --careful \
-  --threads 5 \
-  -1 ${read1} \
-  -2 ${read2}
+  --continue
 
 ${BOWTIE_PATH} \
  --very-sensitive-local \
