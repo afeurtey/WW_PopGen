@@ -497,6 +497,8 @@ vcftools --vcf ${VCFDIR}${VCFNAME}.recode.vcf \
   --non-ref-ac-any 1 \
   --remove-filtered-all --recode --recode-INFO-all \
   --out ${VCFDIR}${VCFNAME}.pass
+  
+  
 ```
 
 ```{r PCA All run, results = F}
@@ -794,7 +796,8 @@ chosen_threshold = 0.8
 snmf_results_per_K %>% 
   filter(K == chosen_K) %>%
   group_by(Continent_Region, for_display, Cluster) %>%
-  summarize(Ave_admix_coef = mean(Admix_coef)) %>%
+  summarize(Ave_admix_coef = round(mean(Admix_coef), 2)) %>%
+  filter(Ave_admix_coef >= 0.02) %>%
   ggplot(aes(x = for_display, y = Cluster, 
              size =  Ave_admix_coef, color = Continent_Region)) + 
   geom_point(alpha = 0.5) + Color_Continent+ theme_bw() +
@@ -844,7 +847,7 @@ In the steps before, I have learned about population history indirectly by infer
 
 Because the populations in the clustering were not perfectly distinct from one another, I start with "discretized" populations by choosing only the isolates with high ancestry in one of the sNMF clusters.
 ```{bash discretized pop vcf, eval = F}
-vcftools --vcf ${POPSTR}$VCFNAME.pass_noNA.recode.vcf \
+vcftools --vcf ${VCFDIR}$VCFNAME.recode.vcf \
   --keep ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.ind \
   --remove-filtered-all --extract-FORMAT-info GT \
   --max-missing 1.0 --min-alleles 2 --max-alleles 2 \
@@ -856,7 +859,7 @@ cat  ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.GT.FORMAT | cut -f 3- \
 ```
 
 
-```{python convert genotype file to treemix, result = F, eval = F}
+```{python convert genotype file to treemix}
 from collections import defaultdict
 
 #For each isolate, store its pop (as in sampling site) in a dictionary
@@ -866,8 +869,10 @@ dict_pop = dict(zip(r.high_anc_coef_snmf["Sample"],
 #Keep a list of the pop names/coordinates to write in the same order later
 all_pops = sorted(list(set(r.high_anc_coef_snmf["Cluster"])))
 out_name = r.PopStr_dir + r.vcf_name + ".pass_noNA.high_anc_coef_snmf.treemix"
+
+
 out = open(out_name, "w")
-out.write(" ".join(all_pops) + "\n")
+shutup = out.write(" ".join(all_pops) + "\n")
 
 with open(r.PopStr_dir + r.vcf_name + ".pass_noNA.high_anc_coef_snmf.GT.FORMAT2", "r") as input_snps :
   for i, snp in enumerate(input_snps) :
@@ -894,7 +899,7 @@ with open(r.PopStr_dir + r.vcf_name + ".pass_noNA.high_anc_coef_snmf.GT.FORMAT2"
           Lets_write = False
     #If I have not found anything weird, I will write the result to the output file.
     if Lets_write :
-      out.write(" ".join([",".join([str(dict_snp0[pop]), str(dict_snp1[pop])])  for pop in all_pops]) + "\n")
+      shutup = out.write(" ".join([",".join([str(dict_snp0[pop]), str(dict_snp1[pop])])  for pop in all_pops]) + "\n")
           
 out.close() 
 ```
@@ -905,7 +910,7 @@ gzip ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix
 treemix \
   -i ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.gz \
   -o ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.out \
-  -m 10 -root V3
+  -m 10 -root V1
 
 ```
 
@@ -928,11 +933,6 @@ fourpop -i ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.gz -k 500
 ```
 
 
-
-```{r}
-read_tsv(paste0(PopStr_dir, vcf_name, ".pass_noNA.high_anc_coef_snmf.treemix"))
-```
-
 <br><br>
 
 
@@ -942,7 +942,8 @@ read_tsv(paste0(PopStr_dir, vcf_name, ".pass_noNA.high_anc_coef_snmf.treemix"))
 # Basic statistics: diversity and differenciation
 ***
 
-As of July 2020, this is done on the thinned vcf file. It should be run on the whole filtered vcf file instead. But at least the code is ready.
+## Summary statistics
+As of July 2020, this is done on the thinned vcf file. The part for the SFS is fine in this way. But the statistics should be run on the whole filtered vcf file instead. At least the code is ready.
 
 ```{bash prep for PopGenome, eval = F}
 mkdir ${SUMST}PopGenome_splitchr
@@ -955,7 +956,7 @@ cd ${SUMST}PopGenome_splitchr
 # split into individual chromosome files starting form a complete vcf that contains exactly the loci you want
 java -jar /Users/feurtey/Documents/Software/snpEff/SnpSift.jar \
     split ${VCFDIR}${VCFNAME_NOMAF}.recode.vcf
-cd vcf
+
 # create directories named after each vcf file, moves each file into its own folder
 for x in {1..21} ; 
 do 
@@ -1003,6 +1004,7 @@ V6 <- high_anc_coef_snmf %>%
 
 chr_vec <- system(paste0("ls ", Pop_vcf_dir), intern=T)
 PopGenome_results_list = list()
+syn_PopGenome_results_list = list()
 # use this line below for testing (without running a loop)
 #chr <- chr_vec[1]
 
@@ -1032,8 +1034,6 @@ GENOME.class@n.biallelic.sites
 # Important: the output only refers to pop1, pop2, pop3 instead of the listed pops below. You must record the correct order of pop names
 GENOME.class <- set.populations(GENOME.class, list(all, V1, V2, V3, V4, V5, V6), diploid = FALSE)
 GENOME.class <- set.synnonsyn(GENOME.class, ref.chr=paste0(Pop_ref_dir, chr,".fa"),save.codons=TRUE)
-GENOME.class <- neutrality.stats(GENOME.class)
-GENOME.class <- diversity.stats(GENOME.class)
 
 # estimate pairwise Fst and creates a slightly more convenient format
 GENOME.class <- F_ST.stats(GENOME.class, mode="nucleotide")
@@ -1049,6 +1049,25 @@ results = data.frame(CHROM = chr,
 colnames(results) = c("#CHROM", "POS", "CodingSNPS", "synonymous", "ExonSNPS")
 
 PopGenome_results_list[[chr]] = results
+
+
+#Getting statistics from the synonymous positions
+GENOME.class.syn <- neutrality.stats(GENOME.class,subsites="syn")
+GENOME.class.syn  <- diversity.stats(GENOME.class.syn,subsites="syn")
+
+data.Number_SNPs <- data.frame(GENOME.class.syn@n.segregating.sites, statistic="Number_SNPs", chromosome = chr)
+data.TajD <- data.frame(GENOME.class.syn@Tajima.D, statistic="TajimaD", chromosome = chr)
+data.theta <- data.frame(GENOME.class.syn@theta_Watterson, statistic="theta_Watterson", chromosome = chr)
+data.Nucl_div <- data.frame(GENOME.class.syn@nuc.diversity.within, statistic="Nuc_Div", chromosome = chr)
+data.Nucl_div_per_site <- data.frame(GENOME.class.syn@nuc.diversity.within/GENOME.class.syn@n.sites,
+                                     statistic="Nuc_Div_per_site", chromosome = chr)
+
+
+data.full <- rbind(data.Number_SNPs, data.theta, 
+                   data.TajD, data.Nucl_div, data.Nucl_div_per_site)
+
+
+syn_PopGenome_results_list[[chr]] = data.full
   # used to abort loop
   }, error=function(e){})
 }   
@@ -1059,82 +1078,40 @@ PopGenome_results_whole %>%
   filter(synonymous == 1) %>%
   select(`#CHROM`, POS) %>%
   write_tsv(paste0(Sumstats_dir, "Synonymous_SNPs.list.txt"), col_names = F)
-```
 
-
-
-##Site frequency spectrum
-```{bash prepare dadi inputs}
-
-#Filter vcf file for only synonymous SNPs
-vcftools \
-  --vcf ${VCFDIR}${VCFNAME_NOMAF}.recode.vcf \
-  --positions ${SUMST}Synonymous_SNPs.list.txt \
-  --remove-filtered-all \
-  --max-missing 1.0 --min-alleles 2 --max-alleles 2 \
-  --recode \
-  --out ${SUMST}${VCFNAME_NOMAF}.pass_noNA.syn
-  
-#Create one count file per population
-for x in {1..6} ;
-do 
-cut -f 1,2 ${SUMST}${VCFNAME_NOMAF}.pass_noNA.high_anc_coef_snmf.tsv \
-  | grep -w "V${x}" | cut -f 1 \
-  > ${SUMST}${VCFNAME_NOMAF}.pass_noNA.high_anc_coef_snmf.pop${x}.ind
-
-vcftools \
-  --vcf ${SUMST}${VCFNAME_NOMAF}.pass_noNA.syn.recode.vcf \
-  --keep ${SUMST}${VCFNAME_NOMAF}.pass_noNA.high_anc_coef_snmf.pop${x}.ind \
-  --remove-filtered-all \
-  --counts \
-  --out ${SUMST}${VCFNAME_NOMAF}.pass_noNA.high_anc_coef_snmf.pop${x} 
-
-done
-
-
-#TODO: Filter vcf file for monomorphic SNP in outgroup and use to create dadi output?
-/Users/feurtey/Documents/Software/vcftools_jydu/src/cpp/vcftools \
-  --vcf ${SUMST}${VCFNAME_NOMAF}.pass_noNA.syn.recode.vcf \
-  --recode-INFO-all --recode \
-	--out ${SUMST}${VCFNAME_NOMAF}.pass_noNA.syn.for_dadi \
-	--max-indv 1
-	
-
-/Users/feurtey/Documents/Software/bcftools/bcftools query -f '%CHROM\t%POS\t%REF[\t%TGT]\n' \
-  ${SUMST}${VCFNAME_NOMAF}.pass_noNA.syn.for_dadi.recode.vcf > \
-  ${SUMST}${VCFNAME_NOMAF}.pass_noNA.syn.for_dadi.tab
+syn_PopGenome_results_per_chr = bind_rows(syn_PopGenome_results_list) %>% 
+  na_if(., "NaN") %>%
+  mutate_at(vars(starts_with("pop")), funs(as.numeric)) %>%
+  pivot_longer(-c(statistic, chromosome), names_to = "Population", values_to = "Estimate")
 
 ```
 
-```{r}
-SFS_counts_list = list()
+```{r Popgenome per chr heatmaps}
+p1 = syn_PopGenome_results_per_chr %>%
+  filter(statistic == "TajimaD") %>%
+  ggplot(aes(x = Population, y = as.numeric(chromosome), fill = Estimate)) + 
+  geom_tile() +
+  scale_fill_viridis_c() +
+  labs (x = "Populations", y = "Chromosome", 
+        title = "Tajima's D in synonymous positions",
+        subtitle = str_wrap(paste(""), width = 70),
+        fill = "Tajima's D")+
+  theme_light()
 
-for (x in c(1:6)) {
-count_file = paste0(Sumstats_dir, vcf_name_nomaf, 
-                    ".pass_noNA.high_anc_coef_snmf.pop", 
-                    x,".frq.count")
-
-counts = read_tsv(count_file,
-                  skip = 1, col_names = F) %>% 
-         separate(X5, into = c("REF allele", "REF_count")) %>% 
-         separate(X6, into = c("ALT allele", "ALT_count")) %>%
-         mutate(MAC = pmin(as.numeric(REF_count), as.numeric(ALT_count))) %>%
-         mutate(Pop = x)
-SFS_counts_list[[x]] = counts
-}
-SFS_counts = bind_rows(SFS_counts_list)
-
-SFS_counts %>%
-  filter(MAC > 0) %>%
-  group_by(Pop, MAC) %>%
-  count(name = "count") %>%
-  ggplot(aes(as.numeric(x = as.numeric(MAC)), y = count)) + 
-    geom_bar(stat = "identity") +
-    labs(title = paste0("Nb of SNPs is: ", nrow(SFS_counts))) +
-    theme_bw() +
-    facet_wrap(Pop~., scales = "free_x")
-
+p2 = syn_PopGenome_results_per_chr %>%
+  filter(statistic == "Nuc_Div_per_site") %>%
+  ggplot(aes(x = Population, y = as.numeric(chromosome), fill = Estimate)) + 
+  geom_tile() +
+  scale_fill_viridis_c(option = "magma") +
+  labs (x = "Populations", y = "Chromosome", 
+        title = str_wrap(paste("Nucleotide diversity per site ",
+                               "in synonymous positions"), width = 40),
+        subtitle = str_wrap(paste(""), width = 70),
+        fill = "Nucleotide diversity")+
+  theme_light()
 ```
+
+
 
 ```{r PopGenome per gene, message = F, warning = F, results = F}
 
@@ -1221,7 +1198,7 @@ temp_sum = temp %>% group_by(Population) %>%
 
 temp = full_join(temp,temp_sum)
 
-p1 = ggplot(temp, aes(x = Population, y = as.numeric(Estimate), fill = Median_value)) + 
+p3 = ggplot(temp, aes(x = Population, y = as.numeric(Estimate), fill = Median_value)) + 
   geom_violin() +
   geom_boxplot(width = 0.1,
                  outlier.shape = NA, color = "white")+ 
@@ -1245,7 +1222,7 @@ temp_sum = temp %>% group_by(Population) %>%
   dplyr::summarize(Median_value = median(Estimate, na.rm = T))
 
 temp = full_join(temp,temp_sum)
-p2 = ggplot(temp, aes(x = Population, y = log(as.numeric(Estimate)), fill = Median_value)) + 
+p4 = ggplot(temp, aes(x = Population, y = log(as.numeric(Estimate)), fill = Median_value)) + 
   geom_violin() + 
   labs (x = "", y = str_wrap(paste("Nucleotide diversity per site",
                                    "in log scale"), width = 30), 
@@ -1259,86 +1236,90 @@ p2 = ggplot(temp, aes(x = Population, y = log(as.numeric(Estimate)), fill = Medi
                  outlier.shape = NA, color = "white")
 
 
-
 ```
 
-
-```{r PopGene per chr, message = F, warning = F, results = F}
-PopGenome_results_list = list()
-# use this line below for testing (without running a loop)
-#chr <- chr_vec[1]
-
-### Looping through each chromosome, generate and record all statistics
-PopGenome_results_list = list()
-for (chr in chr_vec) {
-vcf.path <- paste0(Pop_vcf_dir, chr)
-gff.path <- paste0(Pop_gff_dir, chr)
-GENOME.class <- readData(vcf.path, format="VCF", include.unknown=TRUE, gffpath=gff.path)
-
-# check how many SNPs were loaded using 
-GENOME.class@n.biallelic.sites
-
-
-# Important: the output only refers to pop1, pop2, pop3 instead of the listed pops below. You must record the correct order of pop names
-pop_list = c(all, V1, V2, V3, V4, V5, V6)
-GENOME.class <- set.populations(GENOME.class, list(all, V1, V2, V3, V4, V5, V6), diploid = FALSE)
-GENOME.class <- set.synnonsyn(GENOME.class, ref.chr=paste0(Pop_ref_dir, chr,".fa"))
-
-GENOME.class.syn <- neutrality.stats(GENOME.class,subsites="syn")
-GENOME.class.syn  <- diversity.stats(GENOME.class.syn,subsites="syn")
-
-data.Number_SNPs <- data.frame(GENOME.class.syn@n.segregating.sites, statistic="Number_SNPs", chromosome = chr)
-data.TajD <- data.frame(GENOME.class.syn@Tajima.D, statistic="TajimaD", chromosome = chr)
-data.theta <- data.frame(GENOME.class.syn@theta_Watterson, statistic="theta_Watterson", chromosome = chr)
-data.Nucl_div <- data.frame(GENOME.class.syn@nuc.diversity.within, statistic="Nuc_Div", chromosome = chr)
-data.Nucl_div_per_site <- data.frame(GENOME.class.syn@nuc.diversity.within/GENOME.class.syn@n.sites,
-                                     statistic="Nuc_Div_per_site", chromosome = chr)
-
-
-data.full <- rbind(data.Number_SNPs, data.theta, 
-                   data.TajD, data.Nucl_div, data.Nucl_div_per_site)
-
-PopGenome_results_list[[chr]] = data.full
-
-}
-
-PopGenome_results = bind_rows(PopGenome_results_list) %>% 
-  na_if(., "NaN") %>%
-  mutate_at(vars(starts_with("pop")), funs(as.numeric)) %>%
-  pivot_longer(-c(statistic, chromosome), names_to = "Population", values_to = "Estimate")
-```
-
-```{r Popgenome per chr heatmaps}
-p3 = PopGenome_results %>%
-  filter(statistic == "TajimaD") %>%
-  ggplot(aes(x = Population, y = as.numeric(chromosome), fill = Estimate)) + 
-  geom_tile() +
-  scale_fill_viridis_c() +
-  labs (x = "Populations", y = "Chromosome", 
-        title = "Tajima's D in synonymous positions",
-        subtitle = str_wrap(paste(""), width = 70),
-        fill = "Tajima's D")+
-  theme_light()
-
-p4 = PopGenome_results %>%
-  filter(statistic == "Nuc_Div_per_site") %>%
-  ggplot(aes(x = Population, y = as.numeric(chromosome), fill = Estimate)) + 
-  geom_tile() +
-  scale_fill_viridis_c(option = "magma") +
-  labs (x = "Populations", y = "Chromosome", 
-        title = str_wrap(paste("Nucleotide diversity per site ",
-                               "in synonymous positions"), width = 40),
-        subtitle = str_wrap(paste(""), width = 70),
-        fill = "Nucleotide diversity")+
-  theme_light()
-
-bottom_row <- plot_grid(p1, p2, labels = c('A', 'B'), label_size = 12)
-top_row <- plot_grid(p3, p4, labels = c('C', 'D'), label_size = 12)
+```{r}
 
 plot_grid(p1, p2, p3, p4, labels = c('A', 'B', 'C', 'D'), label_size = 12, ncol = 2)
+
 ```
 
 
+
+## Site frequency spectrum
+```{bash prepare dadi inputs}
+
+#Filter vcf file for only synonymous SNPs
+vcftools \
+  --vcf ${VCFDIR}${VCFNAME_NOMAF}.recode.vcf \
+  --positions ${SUMST}Synonymous_SNPs.list.txt \
+  --remove-filtered-all \
+  --keep $ZTLIST.txt \
+  --non-ref-ac-any 1 \
+  --max-missing 1.0 --min-alleles 2 --max-alleles 2 \
+  --recode \
+  --out ${SUMST}${VCFNAME_NOMAF}.pass_noNA.syn
+  
+#Create one count file per population
+for x in {1..6} ;
+do 
+cut -f 1,2 ${POPSTR}${VCFNAME}.pass_noNA.high_anc_coef_snmf.tsv \
+  | grep -w "V${x}" | cut -f 1 \
+  > ${SUMST}${VCFNAME}.pass_noNA.high_anc_coef_snmf.pop${x}.ind
+
+vcftools \
+  --vcf ${SUMST}${VCFNAME_NOMAF}.pass_noNA.syn.recode.vcf \
+  --keep ${SUMST}${VCFNAME}.pass_noNA.high_anc_coef_snmf.pop${x}.ind \
+  --remove-filtered-all \
+  --counts \
+  --out ${SUMST}${VCFNAME_NOMAF}.pass_noNA.high_anc_coef_snmf.pop${x} 
+
+done
+
+
+#TODO: Filter vcf file for monomorphic SNP in outgroup and use to create dadi output?
+/Users/feurtey/Documents/Software/vcftools_jydu/src/cpp/vcftools \
+  --vcf ${SUMST}${VCFNAME_NOMAF}.pass_noNA.syn.recode.vcf \
+  --recode-INFO-all --recode \
+	--out ${SUMST}${VCFNAME_NOMAF}.pass_noNA.syn.for_dadi \
+	--max-indv 1
+	
+
+/Users/feurtey/Documents/Software/bcftools/bcftools query -f '%CHROM\t%POS\t%REF[\t%TGT]\n' \
+  ${SUMST}${VCFNAME_NOMAF}.pass_noNA.syn.for_dadi.recode.vcf > \
+  ${SUMST}${VCFNAME_NOMAF}.pass_noNA.syn.for_dadi.tab
+
+```
+
+```{r plot SFS}
+SFS_counts_list = list()
+
+for (x in c(1:6)) {
+count_file = paste0(Sumstats_dir, vcf_name_nomaf, 
+                    ".pass_noNA.high_anc_coef_snmf.pop", 
+                    x,".frq.count")
+
+counts = read_tsv(count_file,
+                  skip = 1, col_names = F) %>% 
+         separate(X5, into = c("REF allele", "REF_count")) %>% 
+         separate(X6, into = c("ALT allele", "ALT_count")) %>%
+         mutate(MAC = pmin(as.numeric(REF_count), as.numeric(ALT_count))) %>%
+         mutate(Pop = x)
+SFS_counts_list[[x]] = counts
+}
+SFS_counts = bind_rows(SFS_counts_list)
+
+SFS_counts %>%
+  filter(MAC > 0) %>%
+  group_by(Pop, MAC) %>%
+  count(name = "count") %>%
+  ggplot(aes(as.numeric(x = as.numeric(MAC)), y = count)) + 
+    geom_bar(stat = "identity") +
+    labs(title = "Site frequency spectrum from the different populations") +
+    theme_bw() +
+    facet_wrap(Pop~., scales = "free")
+
+```
 
 <br><br>
 
