@@ -4,7 +4,7 @@ author: "Alice Feurtey"
 date: "5/5/2020"
 logo: "/Users/feurtey/Documents/Postdoc_Bruce/Communication/Logo_WWZt.png"
 output:
-  html_document:
+  html_notebook:
     toc: true
     toc_float: true
     css: "/Users/feurtey/Documents/epur_css.css"
@@ -42,6 +42,7 @@ library(ggstance)
 #Pop structure and pop genomic
 library(SNPRelate) #PCA
 library(LEA) #Clustering
+library(pophelper)
 library(PopGenome) #Statistics
 
 #GEA
@@ -57,28 +58,38 @@ metadata_dir=paste0(project_dir, "Metadata/")
 
 #Analysis directories
 #--------------------
-CNV_dir = paste0(project_dir, "1_Variant_calling/")
-
-#TE and RIP
+VAR_dir = paste0(project_dir, "1_Variant_calling/")
+  vcf_dir = paste0(VAR_dir, "4_Joint_calling/")
+PopStr_dir = paste0(project_dir, "2_Population_structure/")
+Sumstats_dir = paste0(project_dir, "3_Sumstats_demography/")
 TE_RIP_dir=paste0(project_dir, "4_TE_RIP/")
-RIP_DIR=paste0(TE_RIP_dir, "0_RIP_estimation/")
-DIM2_DIR=paste0(TE_RIP_dir, "1_Blast_from_denovo_assemblies/")
-
+   RIP_DIR=paste0(TE_RIP_dir, "0_RIP_estimation/")
+   DIM2_DIR=paste0(TE_RIP_dir, "1_Blast_from_denovo_assemblies/")
 GEA_dir=paste0(project_dir, "5_GEA/")
 fung_dir=paste0(project_dir, "6_Fungicide_resistance/")
 
 #Files
-vcf_name=paste0(project_dir, "Ztritici_global_March2020.filtered-clean.SNP.max-m-0.8.maf-0.05.thin-1000bp")
-Zt_list = paste0(project_dir, "Ztritici_list")
-gff_file = paste0(metadata_dir, "Zymoseptoria_tritici.MG2.Grandaubert2015.gff3")
-ref_fasta_file = paste0(metadata_dir, "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa")
+#vcf_name=paste0(project_dir, "Ztritici_global_March2020.filtered-clean.SNP.max-m-0.8.maf-0.05.thin-1000bp")
+vcf_name="Ztritici_global_March2020.filtered-clean.SNP.max-m-0.8.maf-0.05.thin-1000bp"
+#vcf_name_nomaf=paste0(project_dir, "Ztritici_global_March2020.filtered-clean.SNP.max-m-0.8.thin-1000bp")
+vcf_name_nomaf="Ztritici_global_March2020.filtered-clean.SNP.max-m-0.8.thin-1000bp"
+Zt_list = paste0(metadata_dir, "Ztritici_list")
+gff_file = paste0(data_dir, "Zymoseptoria_tritici.MG2.Grandaubert2015.gff3")
+ref_fasta_file = paste0(data_dir, "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa")
   
+
 Sys.setenv(PROJECTDIR=project_dir)
-Sys.setenv(VCFNAME=vcf_name)
+Sys.setenv(VARDIR=VAR_dir)
+Sys.setenv(VCFDIR=vcf_dir) 
+Sys.setenv(POPSTR=PopStr_dir)
+Sys.setenv(SUMST=Sumstats_dir)
 Sys.setenv(GEADIR=GEA_dir)
+
 Sys.setenv(ZTLIST=Zt_list)
 Sys.setenv(GFFFILE = gff_file)
 Sys.setenv(REFFILE = ref_fasta_file)
+Sys.setenv(VCFNAME=vcf_name)
+Sys.setenv(VCFNAME_NOMAF=vcf_name_nomaf)
 
 #knitr::opts_chunk$set(echo = F)
 knitr::opts_chunk$set(message = F)
@@ -123,13 +134,13 @@ rsync -avP \
 # Sampling
 ***
 ```{bash, eval = F}
-vcftools --vcf $VCFNAME.recode.vcf \
---depth --out $VCFNAME
+vcftools --vcf ${VCFDIR}${VCFNAME}.recode.vcf \
+--depth --out ${VCFDIR}${VCFNAME}
 ```
 
 
 ```{r metadata summary, message = F, warning=F}
-depth = read_delim(paste0(vcf_name, ".idepth"), delim = "\t") 
+depth = read_delim(paste0(vcf_dir, vcf_name, ".idepth"), delim = "\t") 
 
 
 Zt_meta=readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_onlyWW.xlsx"), 
@@ -216,7 +227,7 @@ isolate_map = ggplot() + theme_void() +
   scale_size("Number of genomes", limits = c(1, max_circle))
 
 #ggplotly(isolate_map)
-isolate_map
+#isolate_map
 temp2 = Zt_meta_for_shiny %>%
    filter(Sampling_collection == "Future sequencing") %>%
    dplyr::count(Country, Latitude, Longitude, name = "Number_genomes") %>%
@@ -271,25 +282,28 @@ __Methods__: Based on the depth of coverage for all samples, we can identify for
 
 
 ```{bash, eval = F}
-nb_sites_table=${VCFNAME}.nb_sites.txt #NB: this table is currently not used. See TODO in next chunk.
+#NB: this table is currently not used. See TODO in next chunk.
+nb_sites_table=${VCFDIR}Nb_sites.txt
 echo "CHROM NB_SITES" > ${nb_sites_table}
 for i in {1..21}; 
 do 
-  vcftools --vcf ${VCFNAME}.pass.recode.vcf \
-   --out ${VCFNAME}.pass.chr_${i} \
+  vcftools --vcf ${VCFDIR}${VCFNAME}.recode.vcf \
+   --out ${VCFDIR}${VCFNAME}.chr_${i} \
    --chr ${i} \
    --depth &> \
-   /${VCFNAME}.pass.chr_${i}.log ;
-  nb_sites=$(grep "After filtering" ${VCFNAME}.pass.chr_${i}.log \
+   /${VCFDIR}${VCFNAME}.chr_${i}.log ;
+  nb_sites=$(grep "After filtering" ${VCFDIR}${VCFNAME}.chr_${i}.log \
    | grep "Sites" | cut -f 4 -d " ")
   echo chr_${i} ${nb_sites} >> $nb_sites_table
 done
+
+rm ${VCFDIR}${VCFNAME}.chr_*.log
 ```
 
 
 ```{r, results = F}
 
-depth_prefix = paste0(vcf_name, ".pass.chr_")
+depth_prefix = paste0(vcf_dir, vcf_name, ".chr_")
 depth_suffix = ".idepth"
 
 depth_results = list()
@@ -446,376 +460,11 @@ depth %>%
 __Question__: Could genes PAV be related to phylogeny, environment, host or time? What about predicted effector genes?
  
 __Methods__: Based on depth of coverage + SGSGeneloss
-For this section, it would actually be really cool to expand the gene selection from all genes in the pangenome. This means remapping everything unfortunately, but it would capture more or the overall diversity and might be the only way to catch some population specific variants. => Talk with Thomas
+For this section, iI expanded the gene selection from all genes in the pangenome. This means remapping everything unfortunately, but it captures more or the overall diversity and might be the only way to catch some population specific variants.
 
-```{r Depth per locus on pangenome}
+See PAV from pangenome file (had to be separated because it was way too long to run)
 
-files <- list.files(paste0(CNV_dir,"1_Depth_per_window/"), pattern = ".depth_per_window.txt$")
 
-depth_per_locus = data.frame()
-
-for (i in files) {
-  file_name=paste0(CNV_dir,"1_Depth_per_window/", i)
-  sample_name = dplyr::last(str_split(file_name, "/")[[1]]) %>%
-  str_replace(., pattern = ".depth_per_window.txt", replacement = "")
-  temp = read_tsv(file_name, col_names = c("Locus_name", "Depth")) %>%
-    mutate(ID_file = sample_name)
-  depth_per_locus = bind_rows(depth_per_locus, temp)
-}
-
-
-median_depth_cor_per_ind = depth_per_locus %>% 
-  filter(!grepl("\\[", Locus_name)) %>%
-  separate(col = Locus_name, into = c("ignore", "chr", "start", "end")) %>%
-  filter(as.numeric(chr) <= 13) %>%
-  group_by(ID_file) %>% 
-  dplyr::summarise(Median_core_depth = median(as.numeric(Depth), na.rm = T))
-
-depth_per_locus = left_join(depth_per_locus, median_depth_cor_per_ind) %>% 
-  left_join(., Zt_meta) %>%
-  mutate(Normalized_depth = Depth / Median_core_depth) 
-
-depth_per_contig = depth_per_locus %>%
-  separate(col = Locus_name, 
-           sep = "\\.", 
-           into= c("sample", "rest"),
-           remove = F, 
-           fill = "left") %>%
-  separate(col = rest, 
-           into = c("temp1", "chr", "start", "end"), 
-           sep = "_", 
-           remove = F) %>%
-  unite(sample, temp1, chr, 
-        col = "Contig", 
-        sep="_", 
-        na.rm = TRUE) %>%
-  group_by(ID_file, Contig, Continent_Region) %>% 
-  dplyr::summarise(Median_depth = median(as.numeric(Depth), na.rm = T),
-                   Nb_windows = n())  %>%
-  left_join(., median_depth_cor_per_ind) %>% 
-  mutate(Normalized_depth = Median_depth / Median_core_depth) 
-```
-
-
-```{r }
-for_pheatmap = spread(depth_per_contig[, c(1, 2, 7)], "Contig", "Normalized_depth") 
-
-for_pheatmap = Zt_meta %>% dplyr::select(ID_file, Continent_Region) %>%
-  inner_join(., for_pheatmap) %>%
-  filter(complete.cases(.))
-
-temp = as.data.frame(for_pheatmap) 
-rownames(temp) = temp[,1]
-temp = temp[,-1]
-my_palette <- colorRampPalette(c("white", "black"))(n = 299)
-
-annot_continent = as.data.frame(temp[, 1])
-row.names(annot_continent) <- row.names(temp)
-colnames(annot_continent) <- "Continent"
-
-
-core_chr = c("chr_1", "chr_2", "chr_3", "chr_4", "chr_5", "chr_6", "chr_7", 
-             "chr_8", "chr_9", "chr_10", "chr_11", "chr_12", "chr_13")
-acc_chr = c("chr_14", "chr_15", "chr_16", "chr_17", "chr_18", "chr_19", "chr_20", "chr_21")
-
-contig_colors <- data.frame(Contig_type = ifelse(colnames(temp)[-1] %in% core_chr, "Core reference chr",
-                                                ifelse(colnames(temp)[-1] %in% acc_chr, 
-                                                       "Accessory reference chr",
-                                                       "Pangenome fragment")))
-rownames(contig_colors) <- colnames(temp)[-1]
-
-my_colour = list(
-    Continent = myColors,
-    Contig_type = c(`Core reference chr` = "#16697a",
-                      `Accessory reference chr` = "#82C0CC",
-                      `Pangenome fragment` = "#ffa62b")
-)
-
-pheatmap(as.matrix(temp[,c(3:ncol(temp))]), 
-         color=my_palette, 
-         cluster_cols = TRUE, 
-         cluster_rows=TRUE, 
-         border_color = NA,
-         show_rownames = F, 
-         annotation_row = annot_continent,
-         annotation_col = contig_colors,
-         annotation_colors = my_colour)
-
-pheatmap(t(as.matrix(temp[,c(2:ncol(temp))])), 
-         color=my_palette, 
-         cluster_cols = TRUE, 
-         cluster_rows=TRUE, 
-         border_color = NA,
-         show_rownames = F, 
-         show_colnames = F, 
-         annotation_col = annot_continent,
-         annotation_row = contig_colors,
-         annotation_colors = my_colour)
-
-```
-
-
-
-```{r}
-depth_per_PacBio = depth_per_locus %>% 
-  filter(grepl("\\[", Locus_name)) %>%
-  separate(col = Locus_name, 
-           sep = "\\.", 
-           into= c("PacBio", "rest"),
-           remove = F, 
-           fill = "left") %>%
-  group_by(ID_file, PacBio, Continent_Region) %>% 
-  dplyr::summarise(Median_depth = median(as.numeric(Depth), na.rm = T),
-                   Nb_windows = n())  %>%
-  left_join(., median_depth_cor_per_ind) %>% 
-  mutate(Normalized_depth = Median_depth / Median_core_depth)
-
-for_pheatmap = spread(depth_per_PacBio[, c(1, 2, 7)], "PacBio", "Normalized_depth") 
-for_pheatmap = Zt_meta %>% dplyr::select(ID_file, Continent_Region) %>%
-  inner_join(., for_pheatmap) %>%
-  filter(complete.cases(.))
-
-temp = as.data.frame(for_pheatmap) 
-rownames(temp) = temp[,1]
-temp = temp[,-1]
-my_palette <- colorRampPalette(c("white", "black"))(n = 299)
-
-annot_continent = as.data.frame(temp[, 1])
-row.names(annot_continent) <- row.names(temp)
-colnames(annot_continent) <- "Continent"
-
-
-color_PacBio = data.frame(Continent = c("Europe", "Europe",  "Europe", "Europe", "South America", 
-                           "Oceania", "South America", "North America", "Europe", 
-                           "North America", "Middle East", "Middle East", "Middle East", "Africa",
-                           "North America", "Africa", "Europe", "Middle East"))
-  
-rownames(color_PacBio) <- c("1A5", "1E4",  "3D1", "3D7", "Arg00_1D1a1", 
-                           "Aus01_1H8", "CH95_3B2a", "CNR93_D3a1", "CRI10_0616", 
-                           "I93_11a_2", "IR01_26b", "IR01_48b", "ISY92_Ar4f", "KE94_MF1a",
-                           "OregS90_a15_4A_10", "TN09_26_2-0", "UR95_E2C_2", "YEQ92_4")
-
-my_colour = list(Continent = myColors)
-
-
-
-pheatmap(as.matrix(temp[,c(2:ncol(temp))]), 
-         color=my_palette, 
-         cluster_cols = TRUE, 
-         cluster_rows=TRUE, 
-         border_color = NA,
-         show_rownames = F, 
-         annotation_row = annot_continent,
-         annotation_col = color_PacBio,
-         annotation_colors = my_colour)
-
-```
-
-
-```{python, eval = F}
-from Bio import SeqIO
-from collections import defaultdict
-Contigs = defaultdict(list)
-CNV_dir = "/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_PopGen/CNV/"
-for record in SeqIO.parse(CNV_dir + "all_19_pangenome.fa",  "fasta"):
-    if "_0[" in record.id :
-        contig = record.id.split("_0[")[0]
-        coord = record.id.strip("]").split("_0[")[1].split(":")
-        Contigs[contig].append([record.id] + coord)
-    elif record.id.startswith("chr") :
-        pass
-    else :
-        contig = record.id.split("_1[")[0]
-        coord = record.id.strip("]").split("_1[")[1].split(":")
-        Contigs[contig].append([record.id] + coord)
-
-out = open(CNV_dir + "all_19_pangenome.fasta_names.converted_coord.gff", "w")
-
-with open(CNV_dir + "all_19_pangenome.fasta_names.gff") as gff:
-    for i, ligne in enumerate(gff) :
-        written = False
-
-        sp = ligne.strip().split()
-
-        # The genes from the reference genome have their own treatment
-        if sp[0].startswith("chr") :
-             out.write("\t".join(sp) + "\n")
-
-        # Removing "non-content" lines
-        elif not ligne.strip() :
-            pass
-        elif ligne.startswith("#") :
-            pass
-
-        #Checking whether the whole mRNA is included in the pangenome contigs
-        elif sp[2] == "mRNA" :
-            good_coords = False
-            for coords in Contigs[sp[0]] :
-                if int(coords[1]) <= int(sp[3]) <= int(coords[2]) :
-                    if int(coords[1]) <= int(sp[4]) <= int(coords[2]) :
-                        good_coords = True
-                        to_write = [coords[0]] + sp[1:3] +  [str(int(sp[3]) - int(coords[1])), str(int(sp[4]) - int(coords[1]))] + sp[5:]
-                        out.write("\t".join(to_write) + "\n")
-                        break
-        # For every exon for which the whole parent mRNA is included
-        # I will convert the coordinates using the variable "coords" which is the last one from above
-        else :
-            if good_coords :
-                to_write = [coords[0]] + sp[1:3] +  [str(int(sp[3]) - int(coords[1])), str(int(sp[4]) - int(coords[1]))] + sp[5:]
-                out.write("\t".join(to_write) + "\n")
-
-out.close()
-
-```
-
-
-
-
-
-
-
-
-```{r Depth per gene on pangenome}
-
-files <- list.files(paste0(CNV_dir,"2_Depth_per_gene/"), pattern = ".depth_per_gene.txt$")
-
-depth_per_gene = data.frame()
-
-for (i in files) {
-  file_name=paste0(CNV_dir,"2_Depth_per_gene/", i)
-  sample_name = dplyr::last(str_split(file_name, "/")[[1]]) %>%
-  str_replace(., pattern = ".depth_per_gene.txt", replacement = "")
-  temp = read_tsv(file_name, col_names = c("Locus_name", "Depth")) %>%
-    mutate(ID_file = sample_name)
-  depth_per_gene = bind_rows(depth_per_gene, temp)
-}
-
-depth_per_gene = left_join(depth_per_gene,Zt_meta) %>%
-  separate(col = Locus_name, 
-           sep = "\\.", 
-           into= c("sample", "rest"),
-           remove = F, 
-           fill = "left", extra = "merge") %>%
-  separate(col = rest, 
-           into = c("chr", "id", "Gene_ID"), 
-           sep = ";",  
-           remove = T) %>% 
-  mutate(Gene_ID = str_remove(Gene_ID, "geneID=")) %>%
-  unite(sample, chr, 
-        col = "Contig", 
-        sep="_", 
-        na.rm = TRUE, 
-        remove = F) 
-
-#For each sample, we are estimating the median depth of genes along the core chromosomes
-median_depth_cor_per_ind = depth_per_gene %>% 
-  filter(grepl("Zt09", Locus_name)) %>% 
-  dplyr::select(Contig, Depth, ID_file) %>%
-  mutate(chr = str_remove(Contig, "chr_")) %>%
-  filter(as.numeric(chr) <= 13) %>%
-  group_by(ID_file) %>% 
-  dplyr::summarise(Median_core_depth = median(as.numeric(Depth), na.rm = T))
-
-
-depth_per_gene = left_join(depth_per_gene, median_depth_cor_per_ind) %>%
-  mutate(Normalized_depth = Depth / Median_core_depth) 
-
-
-
-
-```
-
-
-```{r}
-depth_per_PacBio = depth_per_gene %>% 
-  filter(grepl("\\[", Locus_name)) %>%
-  separate(col = Locus_name, 
-           sep = "\\.", 
-           into= c("PacBio", "rest"),
-           remove = F, 
-           fill = "left") %>%
-  group_by(ID_file, PacBio, Continent_Region) %>% 
-  dplyr::summarise(Median_depth = median(as.numeric(Depth), na.rm = T),
-                   Nb_windows = n())  %>%
-  left_join(., median_depth_cor_per_ind) %>% 
-  mutate(Normalized_depth = Median_depth / Median_core_depth)
-
-for_pheatmap = spread(depth_per_PacBio[, c(1, 2, 7)], "PacBio", "Normalized_depth") 
-for_pheatmap = Zt_meta %>% dplyr::select(ID_file, Continent_Region) %>%
-  inner_join(., for_pheatmap) %>%
-  filter(complete.cases(.))
-
-temp = as.data.frame(for_pheatmap) 
-rownames(temp) = temp[,1]
-temp = temp[,-1]
-my_palette <- colorRampPalette(c("white", "black"))(n = 299)
-
-annot_continent = as.data.frame(temp[, 1])
-row.names(annot_continent) <- row.names(temp)
-colnames(annot_continent) <- "Continent"
-
-
-color_PacBio = data.frame(Continent = c("Europe", "Europe",  "Europe", "Europe", "South America", 
-                           "Oceania", "South America", "North America", "Europe", 
-                           "North America", "Middle East", "Middle East", "Middle East", "Africa",
-                           "North America", "Africa", "Europe", "Middle East"))
-  
-rownames(color_PacBio) <- c("1A5", "1E4",  "3D1", "3D7", "Arg00_1D1a1", 
-                           "Aus01_1H8", "CH95_3B2a", "CNR93_D3a1", "CRI10_0616", 
-                           "I93_11a_2", "IR01_26b", "IR01_48b", "ISY92_Ar4f", "KE94_MF1a",
-                           "OregS90_a15_4A_10", "TN09_26_2-0", "UR95_E2C_2", "YEQ92_4")
-
-my_colour = list(Continent = myColors)
-
-
-
-pheatmap(as.matrix(temp[,c(2:ncol(temp))]), 
-         color=my_palette, 
-         cluster_cols = TRUE, 
-         cluster_rows=TRUE, 
-         border_color = NA,
-         show_rownames = F, 
-         annotation_row = annot_continent,
-         annotation_col = color_PacBio,
-         annotation_colors = my_colour)
-
-```
-
-```{r}
-library(FactoMineR)
-depth_genes_PCA = depth_per_gene %>%
-  dplyr::select(ID_file, Gene_ID, Normalized_depth) %>%
-  mutate(Normalized_depth = as.numeric(Normalized_depth)) %>%
-  pivot_wider(names_from = Gene_ID, values_from = Normalized_depth)
-
-temp = as.data.frame(depth_genes_PCA)[complete.cases(depth_genes_PCA),2:ncol(depth_genes_PCA)]
-temp2 = temp[, sample(ncol(temp), size=1000,replace=FALSE)]
-temp2 = sapply( temp2, as.numeric )
-
-res.pca = PCA(temp2, scale.unit=TRUE, ncp=10, graph=T)
-
-results = as.tibble(res.pca$ind$coord) %>%
-   mutate(ID_file = as.data.frame(depth_genes_PCA)[complete.cases(depth_genes_PCA),1]) %>%
-  left_join(.,readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_DC_AFperso.xlsx"), 
-                           sheet = 1, n_max = 1000))
-
-p = ggplot(results, aes(x = Dim.1, y = Dim.2, text = ID_file, color = Continent_Region)) + 
-  geom_point(aes(color = Continent_Region)) +
-  labs(x = paste0("PC 1 (", round(res.pca$eig[1,2]), "%)"),
-       y = paste0("PC 2 (", round(res.pca$eig[2,2]), "%)")) + 
-  Color_Continent + 
-  theme_bw()
-ggplotly(p)
-
-p = ggplot(results, aes(x = Dim.1, y = Dim.2, text = ID_file, color = Collection)) + 
-  geom_point() +
-  labs(x = paste0("PC 1 (", round(res.pca$eig[1,2]), "%)"),
-       y = paste0("PC 2 (", round(res.pca$eig[2,2]), "%)")) + 
-  theme_bw()
-ggplotly(p)
-p
-
-```
 
 <br><br>
 
@@ -843,20 +492,23 @@ As a first method to investigate the population structure of _Z.tritici_ at the 
 
 ```{bash, eval = F}
 
-vcftools --vcf $VCFNAME.recode.vcf \
+vcftools --vcf ${VCFDIR}${VCFNAME}.recode.vcf \
   --keep $ZTLIST.txt \
   --non-ref-ac-any 1 \
   --remove-filtered-all --recode --recode-INFO-all \
-  --out $VCFNAME.pass
+  --out ${VCFDIR}${VCFNAME}.pass
 ```
 
 ```{r PCA All run, results = F}
-snpgdsVCF2GDS(paste0(vcf_name, ".pass.recode.vcf"), paste0(vcf_name, ".pass.recode.gds"), method="biallelic.only")
-genofile <- snpgdsOpen(paste0(vcf_name, ".pass.recode.gds"))
+snpgdsVCF2GDS(paste0(vcf_dir, vcf_name, ".pass.recode.vcf"), 
+              paste0(PopStr_dir, vcf_name, ".pass.recode.gds"), method="biallelic.only")
+genofile <- snpgdsOpen(paste0(PopStr_dir, vcf_name, ".pass.recode.gds"))
 pca <-snpgdsPCA(genofile)
 snpgdsClose(genofile)
 
-pca2 = as.tibble(pca$eigenvect) %>% dplyr::select(V1:V4) %>%
+pca2 = as.tibble(pca$eigenvect) %>% dplyr::select(V1:V4) 
+colnames(pca2) = c("PC1", "PC2", "PC3", "PC4")
+pca2 = pca2 %>%
   mutate(sample_id = pca$sample.id ) %>%
   right_join(., Zt_meta, by = c("sample_id" = "ID_file")) %>%
   unite(sample_id, Country, col = "for_display", remove = F)
@@ -869,7 +521,7 @@ as.tibble(pca$eigenval[!is.na(pca$eigenval)]) %>%
 
 ```{r PCA All plot}
 eigen_sum = sum(pca$eigenval[!is.na(pca$eigenval)])
-p = ggplot(pca2, aes(x = V1, y= V2, text = for_display)) + 
+p = ggplot(pca2, aes(x = PC1, y= PC2, text = for_display)) + 
   geom_point(aes(color = Continent_Region)) +
   labs(x = paste0("PC 1 (", round(pca$eigenval[1]*100/eigen_sum, 2), "%)"),
        y = paste0("PC 2 (", round(pca$eigenval[2]*100/eigen_sum, 2), "%)")) + 
@@ -879,7 +531,7 @@ p = ggplot(pca2, aes(x = V1, y= V2, text = for_display)) +
 #p
 ggplotly(p)
 
-q = ggplot(pca2, aes(x = V3, y= V4, text = for_display)) + 
+q = ggplot(pca2, aes(x = PC3, y= PC4, text = for_display)) + 
   geom_point(aes(color = Continent_Region)) +
   labs(x = paste0("PC 3 (", round(pca$eigenval[3]*100/eigen_sum, 2), "%)"),
        y = paste0("PC 4 (", round(pca$eigenval[4]*100/eigen_sum, 2), "%)")) + 
@@ -890,6 +542,21 @@ q = ggplot(pca2, aes(x = V3, y= V4, text = for_display)) +
 ggplotly(q)
 ```
 
+``` {r PCA ggpairs}
+
+p = ggpairs(pca2, columns = c(1:4), 
+            ggplot2::aes(col=Continent_Region, fill = Continent_Region, alpha = 0.6),
+            title = "PCA based thinned SNPs", 
+            upper = list(continuous = "points", combo = "box_no_facet"))
+
+for(i in 1:p$nrow) {
+  for(j in 1:p$ncol){
+    p[i,j] <- p[i,j] + theme_bw() + Color_Continent +Fill_Continent 
+  }
+}
+
+p
+```
 
 ### PCA without Oceania
 In order to investiage more precisely the population structure in Europe, the Middle-East and America, I removed the Oceanian isolates and recreated the PCA. This highlights the different between the North America samples and the rest of the samples, in Europe, South America and the Middle-East. These last locations do not separate as distinct clusters but as a gradient, visible on PC2 (from Europe to the Middle-East) and PC4.
@@ -899,24 +566,24 @@ Zt_meta  %>%
   #filter(is.na(Duplicate_Clone_LowQual_Flags) | Duplicate_Clone_LowQual_Flags != "Publication_embargo") %>%
   inner_join(., depth %>% filter(MEAN_DEPTH >= 5)) %>%
   filter(Continent_Region != "Oceania") %>% 
-  dplyr::select(ID_file) %>% write_delim(paste0(Zt_list, "_wo_oceania.txt"))
+  dplyr::select(ID_file) %>% write_delim(paste0(PopStr_dir, "Zt_list_wo_oceania.txt"))
 
 ```
 
 
 ```{bash, eval = F}
-vcftools --vcf $VCFNAME.recode.vcf \
-  --keep ${ZTLIST}_wo_oceania.txt \
+vcftools --vcf ${VCFDIR}${VCFNAME}.recode.vcf \
+  --keep ${POPSTR}Zt_list_wo_oceania.txt \
   --remove-filtered-all --recode --recode-INFO-all \
   --non-ref-ac-any 1 \
-  --out $VCFNAME.pass.wo_oceania
+  --out ${POPSTR}${VCFNAME}.pass.wo_oceania
 ```
 
 ```{r PCA woOc run, results = F}
-snpgdsVCF2GDS(paste0(vcf_name, ".pass.wo_oceania.recode.vcf"), 
-              paste0(vcf_name, ".pass.wo_oceania.recode.gds"), 
+snpgdsVCF2GDS(paste0(PopStr_dir, vcf_name, ".pass.wo_oceania.recode.vcf"), 
+              paste0(PopStr_dir, vcf_name, ".pass.wo_oceania.recode.gds"), 
               method="biallelic.only")
-genofile <- snpgdsOpen(paste0(vcf_name, ".pass.wo_oceania.recode.gds"))
+genofile <- snpgdsOpen(paste0(PopStr_dir, vcf_name, ".pass.wo_oceania.recode.gds"))
 pca <-snpgdsPCA(genofile)
 snpgdsClose(genofile)
 
@@ -958,27 +625,27 @@ This subsection was created to satisfy my own curiosity, but I guess this is wha
 Zt_meta %>%
   filter(is.na(Duplicate_Clone_LowQual_Flags) | Duplicate_Clone_LowQual_Flags != "DUPLICATE_remove") %>%
   filter(is.na(Duplicate_Clone_LowQual_Flags) | Duplicate_Clone_LowQual_Flags != "Publication_embargo") %>%
-  inner_join(., depth %>% filter(MEAN_DEPTH >= 5), by = c("ID_file" = "INDV")) %>%
+  inner_join(., depth %>% filter(MEAN_DEPTH >= 5)) %>%
   filter(Continent_Region == "Oceania") %>% 
-  dplyr::select(ID_file) %>% write_delim(paste0(Zt_list, "_only_oceania.txt"))
+  dplyr::select(ID_file) %>% write_delim(paste0(PopStr_dir, "Zt_list_only_oceania.txt"))
 
 ```
 
 ```{bash, eval = F}
 
-vcftools --vcf $VCFNAME.recode.vcf \
-  --keep ${ZTLIST}_only_oceania.txt \
+vcftools --vcf ${VCFDIR}$VCFNAME.recode.vcf \
+  --keep ${POPSTR}Zt_list_only_oceania.txt \
   --remove-filtered-all --recode --recode-INFO-all \
   --non-ref-ac-any 1 \
-  --out $VCFNAME.pass.only_oceania
+  --out ${POPSTR}$VCFNAME.pass.only_oceania
   
 ```
 
 ```{r PCA onlyOC run, results = F}
-snpgdsVCF2GDS(paste0(vcf_name, ".pass.only_oceania.recode.vcf"), 
-              paste0(vcf_name, ".pass.only_oceania.recode.gds"), 
+snpgdsVCF2GDS(paste0(PopStr_dir, vcf_name, ".pass.only_oceania.recode.vcf"), 
+              paste0(PopStr_dir, vcf_name, ".pass.only_oceania.recode.gds"), 
               method="biallelic.only")
-genofile <- snpgdsOpen(paste0(vcf_name, ".pass.only_oceania.recode.gds"))
+genofile <- snpgdsOpen(paste0(PopStr_dir, vcf_name, ".pass.only_oceania.recode.gds"))
 pca <-snpgdsPCA(genofile)
 snpgdsClose(genofile)
 
@@ -1024,28 +691,32 @@ The clustering here is done by using the snmf method from the LEA R package (htt
 ```{bash, eval = F}
 
 
-vcftools --vcf $VCFNAME.recode.vcf \
+vcftools --vcf ${VCFDIR}$VCFNAME.recode.vcf \
   --keep $ZTLIST.txt \
   --remove-filtered-all --extract-FORMAT-info GT \
   --max-missing 1.0 --min-alleles 2 --max-alleles 2 \
   --maf 0.05 \
-  --out $VCFNAME.pass_noNA
+  --out ${POPSTR}$VCFNAME.pass_noNA
   
   
-cat  $VCFNAME.pass_noNA.GT.FORMAT | cut -f 3- > $VCFNAME.pass_noNA.GT.FORMAT2
-cat  $VCFNAME.pass_noNA.GT.FORMAT | cut -f 1,2 > $VCFNAME.pass_noNA.GT.FORMAT.pos
-head -n1 $VCFNAME.pass_noNA.GT.FORMAT2 | gsed "s/\t/\n/g"  > $VCFNAME.pass_noNA.ind
-gsed "s/\t//g"  $VCFNAME.pass_noNA.GT.FORMAT2 | tail -n +2 > $VCFNAME.pass_noNA.geno
+cat  ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT | cut -f 3- \
+    > ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT2
+cat  ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT | cut -f 1,2 \
+    > ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT.pos
+head -n1 ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT2 | gsed "s/\t/\n/g"  \
+    > ${POPSTR}$VCFNAME.pass_noNA.ind
+gsed "s/\t//g"  ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT2 | tail -n +2 \
+    > ${POPSTR}$VCFNAME.pass_noNA.geno
   
 ```
 
 ```{r, eval =F}
-project = snmf(paste0(vcf_name, ".pass_noNA.geno"), K=1:15, entropy = TRUE, 
+project = snmf(paste0(PopStr_dir, vcf_name, ".pass_noNA.geno"), K=1:15, entropy = TRUE, 
                         repetitions = 10, project = "new", ploidy = 1) 
 ```
 First, let's look at the cross-validation results. sNMF estimates an entropy criterion which evaluates the quality of fit of the model to the data, potentially helping to find the best number of ancestral populations. 
 ```{r Cross-entropy plot}
-project = load.snmfProject(paste0(vcf_name, ".pass_noNA.snmfProject"))
+project = load.snmfProject(paste0(PopStr_dir, vcf_name, ".pass_noNA.snmfProject"))
 
 plot(project, col = "goldenrod", pch = 19, cex = 1.2)
 
@@ -1055,7 +726,7 @@ In the case of our analysis, we do not have a very clear-cut minimum value for t
 The results from the PCA and from the clutering analysis are coherent: Oceania separates into 3 clusters (one in New_Zealand, and two in Australia) and the North American isolates form a separate cluster. Higher K values also distinguish a Middle-Eastern/African cluster from the European cluster, representing the two extreme points of the gradient found between these populations in the PCA. 
 ```{r sNMF barplots}
 
-indv_snmf = read_tsv(paste0(vcf_name, ".pass_noNA.ind"), col_names = F)
+indv_snmf = read_tsv(paste0(PopStr_dir, vcf_name, ".pass_noNA.ind"), col_names = F)
 names(indv_snmf) = "Sample"
 
 datalist = list()
@@ -1086,6 +757,35 @@ ggplotly(p)
 
   
 ```
+
+```{r sNMF pretty plots}
+library('pophelper')
+library(gridExtra)
+K_list = c(1:15)
+afiles = character(length(K_list))
+for (i in K_list){
+  best = which.min(cross.entropy(project, K = i))
+  afiles[i] = Sys.glob(paste0(PopStr_dir, vcf_name, ".pass_noNA.snmf/K",i, "/run", best, "/*Q"))
+}
+
+# create a qlist
+qlist <- readQBasic(afiles)
+al_qlist = alignK(qlist)
+
+lab_set = inner_join(indv_snmf, Zt_meta, by = c("Sample" = "ID_file")) %>%
+  dplyr::select(Continent_Region, Country)
+from = 4
+up_to = 7
+p1 <-   plotQ(alignK(qlist[from:up_to], type = "across"),
+            imgoutput="join",
+            returnplot=T,exportplot=F,
+            quiet=T,basesize=11,
+            splab= paste0("K=", K_list[from:up_to]),
+            grplab=lab_set, ordergrp=T, grplabangle = 40, grplabheight = 2, grplabsize = 2)
+#TODO: add own colors clustercol=c("#A6CEE3", "#3F8EAA", "#79C360", "#E52829", "#FDB762",)
+grid.arrange(p1$plot[[1]])
+```
+
 
 ```{r}
 chosen_K = 6
@@ -1125,30 +825,34 @@ p_cluster
 
 ##Writing out tables for later
 high_anc_coef_snmf %>% dplyr::select(Sample) %>%
-  write_tsv(., path = paste0(vcf_name, ".pass_noNA.high_anc_coef_snmf.ind"),
+  write_tsv(., path = paste0(PopStr_dir, vcf_name, ".pass_noNA.high_anc_coef_snmf.ind"),
             col_names = F)
 high_anc_coef_snmf %>% 
-  write_tsv(., path = paste0(vcf_name, ".pass_noNA.high_anc_coef_snmf.tsv"),
+  write_tsv(., path = paste0(PopStr_dir, vcf_name, ".pass_noNA.high_anc_coef_snmf.tsv"),
             col_names = T)
 ```
 
 
 __Note__: I am not entirely sure about whether the high density of isolates from specific fields could bias the results. I remember it was the case with STRUCTURE, not sure if it is also the case of sNMF. To be checked.
 
+
+
+
+
 ## Population trees
 In the steps before, I have learned about population history indirectly by inferring genetic populations from the genomic data. The relationship between the population and the underlying demography is not explicit in these however. It is possible however to infer splits between populations and create a population tree. Here, I use [treemix](https://journals.plos.org/plosgenetics/article?id=10.1371/journal.pgen.1002967), which takes into account the possibility of gene flow between populations and indeed test of it in the process of creating a population tree. 
 
 Because the populations in the clustering were not perfectly distinct from one another, I start with "discretized" populations by choosing only the isolates with high ancestry in one of the sNMF clusters.
 ```{bash discretized pop vcf, eval = F}
-vcftools --vcf $VCFNAME.pass_noNA.recode.vcf \
-  --keep $VCFNAME.pass_noNA.high_anc_coef_snmf.ind \
+vcftools --vcf ${POPSTR}$VCFNAME.pass_noNA.recode.vcf \
+  --keep ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.ind \
   --remove-filtered-all --extract-FORMAT-info GT \
   --max-missing 1.0 --min-alleles 2 --max-alleles 2 \
   --maf 0.05 \
-  --out $VCFNAME.pass_noNA.high_anc_coef_snmf
+  --out ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf
   
-cat  $VCFNAME.pass_noNA.high_anc_coef_snmf.GT.FORMAT | cut -f 3- \
-   > $VCFNAME.pass_noNA.high_anc_coef_snmf.GT.FORMAT2
+cat  ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.GT.FORMAT | cut -f 3- \
+   >  ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.GT.FORMAT2
 ```
 
 
@@ -1161,11 +865,11 @@ dict_pop = dict(zip(r.high_anc_coef_snmf["Sample"],
 
 #Keep a list of the pop names/coordinates to write in the same order later
 all_pops = sorted(list(set(r.high_anc_coef_snmf["Cluster"])))
-out_name = r.vcf_name + ".pass_noNA.high_anc_coef_snmf.treemix"
+out_name = r.PopStr_dir + r.vcf_name + ".pass_noNA.high_anc_coef_snmf.treemix"
 out = open(out_name, "w")
 out.write(" ".join(all_pops) + "\n")
 
-with open(r.vcf_name + ".pass_noNA.high_anc_coef_snmf.GT.FORMAT2", "r") as input_snps :
+with open(r.PopStr_dir + r.vcf_name + ".pass_noNA.high_anc_coef_snmf.GT.FORMAT2", "r") as input_snps :
   for i, snp in enumerate(input_snps) :
     #Setting two dictionaries with values at 0
     dict_snp0 = defaultdict(int)
@@ -1196,18 +900,18 @@ out.close()
 ```
 
 ```{bash run treemix, eval = F, message = F}
-gzip $VCFNAME.pass_noNA.high_anc_coef_snmf.treemix
+gzip ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix
 
 treemix \
-  -i $VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.gz \
-  -o $VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.out \
+  -i ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.gz \
+  -o ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.out \
   -m 10 -root V3
 
 ```
 
 ```{r plot treemix}
 source("/Users/feurtey/Documents/Software/treemix-1.13/src/plotting_funcs.R")
-t = plot_tree(paste0(vcf_name, ".pass_noNA.high_anc_coef_snmf.treemix.out"))
+t = plot_tree(paste0(PopStr_dir, vcf_name, ".pass_noNA.high_anc_coef_snmf.treemix.out"))
 p_cluster
 ```
 
@@ -1215,12 +919,18 @@ Along with the treemix software, are distribution the software treepop and fourp
 
 The three-population test is of the form f3(A;B;C), where a significantly negative value of the f3 statistic implies that population A is admixed. The output is four columns: populations | f3 statistic | standard error | Z-score 
 ```{bash run threepop}
-threepop -i $VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.gz -k 500
+threepop -i ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.gz -k 500
 ```
 
 The four-population test is of the form f4(A;B;C;D), where a significantly negative value of the f4 statistic implies gene flow in the tree. The output is four columns: populations | f4 statistic | standard error | Z-score
 ```{bash run fourpop}
-fourpop -i $VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.gz -k 500
+fourpop -i ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.gz -k 500
+```
+
+
+
+```{r}
+read_tsv(paste0(PopStr_dir, vcf_name, ".pass_noNA.high_anc_coef_snmf.treemix"))
 ```
 
 <br><br>
@@ -1235,25 +945,25 @@ fourpop -i $VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.gz -k 500
 As of July 2020, this is done on the thinned vcf file. It should be run on the whole filtered vcf file instead. But at least the code is ready.
 
 ```{bash prep for PopGenome, eval = F}
-mkdir ${PROJECTDIR}PopGenome_splitchr
-mkdir ${PROJECTDIR}PopGenome_splitchr/vcf
-mkdir ${PROJECTDIR}PopGenome_splitchr/gff
-mkdir ${PROJECTDIR}PopGenome_splitchr/fasta
+mkdir ${SUMST}PopGenome_splitchr
+mkdir ${SUMST}PopGenome_splitchr/vcf
+mkdir ${SUMST}PopGenome_splitchr/gff
+mkdir ${SUMST}PopGenome_splitchr/fasta
 
-cd ${PROJECTDIR}PopGenome_splitchr
+cd ${SUMST}PopGenome_splitchr
 
 # split into individual chromosome files starting form a complete vcf that contains exactly the loci you want
 java -jar /Users/feurtey/Documents/Software/snpEff/SnpSift.jar \
-    split ${VCFNAME}.recode.vcf
+    split ${VCFDIR}${VCFNAME_NOMAF}.recode.vcf
 cd vcf
 # create directories named after each vcf file, moves each file into its own folder
 for x in {1..21} ; 
 do 
   mkdir vcf/$x 
-  mv ${VCFNAME}.recode.${x}.vcf vcf/${x}/${x}.vcf
+  mv ${VCFDIR}${VCFNAME_NOMAF}.recode.${x}.vcf vcf/${x}/${x}.vcf
   
   mkdir gff/$x 
-  grep "^${x}\t" ${GFFFILE} > ${PROJECTDIR}PopGenome_splitchr/gff/${x}/${x}.gff
+  grep "^${x}\t" ${GFFFILE} > ${SUMST}PopGenome_splitchr/gff/${x}/${x}.gff
 
 ~/Documents/Software/samtools-1.10/samtools faidx \
    ${REFFILE} ${x} > fasta/${x}.fa
@@ -1262,12 +972,12 @@ done
 ```
 
 
-```{r PopGenome per gene, message = F, warning = F, results = F}
+```{r PopGenome whole genome, message = F, warning = F, results = F}
 
 # collect the set of chromosomes to process by scanning the vcf folders
-Pop_vcf_dir = paste0(project_dir, "PopGenome_splitchr/vcf/")
-Pop_gff_dir = paste0(project_dir, "PopGenome_splitchr/gff/")
-Pop_ref_dir = paste0(project_dir, "PopGenome_splitchr/fasta/")
+Pop_vcf_dir = paste0(Sumstats_dir, "PopGenome_splitchr/vcf/")
+Pop_gff_dir = paste0(Sumstats_dir, "PopGenome_splitchr/gff/")
+Pop_ref_dir = paste0(Sumstats_dir, "PopGenome_splitchr/fasta/")
 
 ### Define population structure (can even be overlapping among groups if this is necessary)
 # define individuals per pop (here it includes also a group that comprises all)
@@ -1305,6 +1015,139 @@ for (chr in chr_vec) {
 
 
 # skip the loop if the gff file is empty! Empty gff files can happen if a chromosome has no annotated genes.
+info <- file.info(paste0(Sumstats_dir, "PopGenome_splitchr/gff/", chr,"/", chr,".gff"))[,"size"]
+if (info==0) stop(paste("No genes on chr", chr,"- skipping!"))
+
+### define paths and load data
+vcf.path <- paste0(Pop_vcf_dir, chr)
+gff.path <- paste0(Pop_gff_dir, chr)
+GENOME.class <- readData(vcf.path, format="VCF", include.unknown=TRUE, gffpath=gff.path)
+all <- unlist(get.individuals(GENOME.class))
+
+# check how many SNPs were loaded using 
+GENOME.class@n.biallelic.sites
+
+
+
+# Important: the output only refers to pop1, pop2, pop3 instead of the listed pops below. You must record the correct order of pop names
+GENOME.class <- set.populations(GENOME.class, list(all, V1, V2, V3, V4, V5, V6), diploid = FALSE)
+GENOME.class <- set.synnonsyn(GENOME.class, ref.chr=paste0(Pop_ref_dir, chr,".fa"),save.codons=TRUE)
+GENOME.class <- neutrality.stats(GENOME.class)
+GENOME.class <- diversity.stats(GENOME.class)
+
+# estimate pairwise Fst and creates a slightly more convenient format
+GENOME.class <- F_ST.stats(GENOME.class, mode="nucleotide")
+pairwise.FST <- t(GENOME.class@nuc.F_ST.pairwise)
+pairwise.FST <- as.data.frame(GENOME.class@nuc.F_ST.pairwise) %>% 
+  mutate(pops = rownames(GENOME.class@nuc.F_ST.pairwise)) %>% 
+  separate(pops, into = c("Pop1", "Pop2"), sep = "/")
+results = data.frame(CHROM = chr, 
+                     position = GENOME.class@region.data@biallelic.sites,
+                     CodingSNPS = GENOME.class@region.data@CodingSNPS[[1]],
+                     synonymous = GENOME.class@region.data@synonymous[[1]],
+                     ExonSNPS = GENOME.class@region.data@ExonSNPS[[1]])
+colnames(results) = c("#CHROM", "POS", "CodingSNPS", "synonymous", "ExonSNPS")
+
+PopGenome_results_list[[chr]] = results
+  # used to abort loop
+  }, error=function(e){})
+}   
+
+PopGenome_results_whole = bind_rows(PopGenome_results_list)
+
+PopGenome_results_whole %>%
+  filter(synonymous == 1) %>%
+  select(`#CHROM`, POS) %>%
+  write_tsv(paste0(Sumstats_dir, "Synonymous_SNPs.list.txt"), col_names = F)
+```
+
+
+
+##Site frequency spectrum
+```{bash prepare dadi inputs}
+
+#Filter vcf file for only synonymous SNPs
+vcftools \
+  --vcf ${VCFDIR}${VCFNAME_NOMAF}.recode.vcf \
+  --positions ${SUMST}Synonymous_SNPs.list.txt \
+  --remove-filtered-all \
+  --max-missing 1.0 --min-alleles 2 --max-alleles 2 \
+  --recode \
+  --out ${SUMST}${VCFNAME_NOMAF}.pass_noNA.syn
+  
+#Create one count file per population
+for x in {1..6} ;
+do 
+cut -f 1,2 ${SUMST}${VCFNAME_NOMAF}.pass_noNA.high_anc_coef_snmf.tsv \
+  | grep -w "V${x}" | cut -f 1 \
+  > ${SUMST}${VCFNAME_NOMAF}.pass_noNA.high_anc_coef_snmf.pop${x}.ind
+
+vcftools \
+  --vcf ${SUMST}${VCFNAME_NOMAF}.pass_noNA.syn.recode.vcf \
+  --keep ${SUMST}${VCFNAME_NOMAF}.pass_noNA.high_anc_coef_snmf.pop${x}.ind \
+  --remove-filtered-all \
+  --counts \
+  --out ${SUMST}${VCFNAME_NOMAF}.pass_noNA.high_anc_coef_snmf.pop${x} 
+
+done
+
+
+#TODO: Filter vcf file for monomorphic SNP in outgroup and use to create dadi output?
+/Users/feurtey/Documents/Software/vcftools_jydu/src/cpp/vcftools \
+  --vcf ${SUMST}${VCFNAME_NOMAF}.pass_noNA.syn.recode.vcf \
+  --recode-INFO-all --recode \
+	--out ${SUMST}${VCFNAME_NOMAF}.pass_noNA.syn.for_dadi \
+	--max-indv 1
+	
+
+/Users/feurtey/Documents/Software/bcftools/bcftools query -f '%CHROM\t%POS\t%REF[\t%TGT]\n' \
+  ${SUMST}${VCFNAME_NOMAF}.pass_noNA.syn.for_dadi.recode.vcf > \
+  ${SUMST}${VCFNAME_NOMAF}.pass_noNA.syn.for_dadi.tab
+
+```
+
+```{r}
+SFS_counts_list = list()
+
+for (x in c(1:6)) {
+count_file = paste0(Sumstats_dir, vcf_name_nomaf, 
+                    ".pass_noNA.high_anc_coef_snmf.pop", 
+                    x,".frq.count")
+
+counts = read_tsv(count_file,
+                  skip = 1, col_names = F) %>% 
+         separate(X5, into = c("REF allele", "REF_count")) %>% 
+         separate(X6, into = c("ALT allele", "ALT_count")) %>%
+         mutate(MAC = pmin(as.numeric(REF_count), as.numeric(ALT_count))) %>%
+         mutate(Pop = x)
+SFS_counts_list[[x]] = counts
+}
+SFS_counts = bind_rows(SFS_counts_list)
+
+SFS_counts %>%
+  filter(MAC > 0) %>%
+  group_by(Pop, MAC) %>%
+  count(name = "count") %>%
+  ggplot(aes(as.numeric(x = as.numeric(MAC)), y = count)) + 
+    geom_bar(stat = "identity") +
+    labs(title = paste0("Nb of SNPs is: ", nrow(SFS_counts))) +
+    theme_bw() +
+    facet_wrap(Pop~., scales = "free_x")
+
+```
+
+```{r PopGenome per gene, message = F, warning = F, results = F}
+
+PopGenome_results_list = list()
+
+### Looping through each chromosome, generate and record all statistics
+
+for (chr in chr_vec) {
+  # tryCatch aborts the current loop if the "if" statement throws an error (to avoid processing an empty gff file). An empty gff could occur if the current chromosome lacks any annotated genes/features
+    tryCatch({
+
+
+# skip the loop if the gff file is empty! Empty gff files can happen if a chromosome has no annotated genes.
 info <- file.info(paste0(project_dir, "PopGenome_splitchr/gff/", chr,"/", chr,".gff"))[,"size"]
 if (info==0) stop(paste("No genes on chr", chr,"- skipping!"))
 
@@ -1321,9 +1164,7 @@ GENOME.class@n.biallelic.sites
 
 # Important: the output only refers to pop1, pop2, pop3 instead of the listed pops below. You must record the correct order of pop names
 GENOME.class <- set.populations(GENOME.class, list(all, V1, V2, V3, V4, V5, V6), diploid = FALSE)
-GENOME.class <- set.synnonsyn(GENOME.class, ref.chr=paste0(Pop_ref_dir, chr,".fa"))
-
-
+GENOME.class <- set.synnonsyn(GENOME.class, ref.chr=paste0(Pop_ref_dir, chr,".fa"),save.codons=TRUE)
 # check assignment of populations using GENOME.class@populations (optional)
 
 ### split GENOME.class into genes (further options are: exon, etc.), feature must be mentioned in GFF file!
@@ -1361,6 +1202,7 @@ PopGenome_results_list[[chr]] = data.full
 }   
 
 PopGenome_results_per_gene = bind_rows(PopGenome_results_list)
+rm(PopGenome_results_list)
 
 ```
 
@@ -1495,7 +1337,6 @@ top_row <- plot_grid(p3, p4, labels = c('C', 'D'), label_size = 12)
 
 plot_grid(p1, p2, p3, p4, labels = c('A', 'B', 'C', 'D'), label_size = 12, ncol = 2)
 ```
-
 
 
 

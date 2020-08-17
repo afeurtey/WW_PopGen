@@ -1,0 +1,417 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+### Per locus
+```{r Depth per locus on pangenome}
+
+files <- list.files(paste0(CNV_dir,"1_Depth_per_window/"), pattern = ".depth_per_window.txt$")
+
+depth_per_locus = data.frame()
+
+for (i in files) {
+  file_name=paste0(CNV_dir,"1_Depth_per_window/", i)
+  sample_name = dplyr::last(str_split(file_name, "/")[[1]]) %>%
+  str_replace(., pattern = ".depth_per_window.txt", replacement = "")
+  temp = read_tsv(file_name, col_names = c("Locus_name", "Depth")) %>%
+    mutate(ID_file = sample_name)
+  depth_per_locus = bind_rows(depth_per_locus, temp)
+}
+
+
+median_depth_cor_per_ind = depth_per_locus %>% 
+  filter(!grepl("\\[", Locus_name)) %>%
+  separate(col = Locus_name, into = c("ignore", "chr", "start", "end")) %>%
+  filter(as.numeric(chr) <= 13) %>%
+  group_by(ID_file) %>% 
+  dplyr::summarise(Median_core_depth = median(as.numeric(Depth), na.rm = T))
+
+depth_per_locus = left_join(depth_per_locus, median_depth_cor_per_ind) %>% 
+  left_join(., Zt_meta) %>%
+  mutate(Normalized_depth = Depth / Median_core_depth) 
+
+depth_per_contig = depth_per_locus %>%
+  separate(col = Locus_name, 
+           sep = "\\.", 
+           into= c("sample", "rest"),
+           remove = F, 
+           fill = "left") %>%
+  separate(col = rest, 
+           into = c("temp1", "chr", "start", "end"), 
+           sep = "_", 
+           remove = F) %>%
+  unite(sample, temp1, chr, 
+        col = "Contig", 
+        sep="_", 
+        na.rm = TRUE) %>%
+  group_by(ID_file, Contig, Continent_Region) %>% 
+  dplyr::summarise(Median_depth = median(as.numeric(Depth), na.rm = T),
+                   Nb_windows = n())  %>%
+  left_join(., median_depth_cor_per_ind) %>% 
+  mutate(Normalized_depth = Median_depth / Median_core_depth) 
+```
+
+
+```{r }
+for_pheatmap = spread(depth_per_contig[, c(1, 2, 7)], "Contig", "Normalized_depth") 
+
+for_pheatmap = Zt_meta %>% dplyr::select(ID_file, Continent_Region) %>%
+  inner_join(., for_pheatmap) %>%
+  filter(complete.cases(.))
+
+temp = as.data.frame(for_pheatmap) 
+rownames(temp) = temp[,1]
+temp = temp[,-1]
+my_palette <- colorRampPalette(c("white", "black"))(n = 299)
+
+annot_continent = as.data.frame(temp[, 1])
+row.names(annot_continent) <- row.names(temp)
+colnames(annot_continent) <- "Continent"
+
+
+core_chr = c("chr_1", "chr_2", "chr_3", "chr_4", "chr_5", "chr_6", "chr_7", 
+             "chr_8", "chr_9", "chr_10", "chr_11", "chr_12", "chr_13")
+acc_chr = c("chr_14", "chr_15", "chr_16", "chr_17", "chr_18", "chr_19", "chr_20", "chr_21")
+
+contig_colors <- data.frame(Contig_type = ifelse(colnames(temp)[-1] %in% core_chr, "Core reference chr",
+                                                ifelse(colnames(temp)[-1] %in% acc_chr, 
+                                                       "Accessory reference chr",
+                                                       "Pangenome fragment")))
+rownames(contig_colors) <- colnames(temp)[-1]
+
+my_colour = list(
+    Continent = myColors,
+    Contig_type = c(`Core reference chr` = "#16697a",
+                      `Accessory reference chr` = "#82C0CC",
+                      `Pangenome fragment` = "#ffa62b")
+)
+
+pheatmap(as.matrix(temp[,c(3:ncol(temp))]), 
+         color=my_palette, 
+         cluster_cols = TRUE, 
+         cluster_rows=TRUE, 
+         border_color = NA,
+         show_rownames = F, 
+         annotation_row = annot_continent,
+         annotation_col = contig_colors,
+         annotation_colors = my_colour)
+
+pheatmap(t(as.matrix(temp[,c(2:ncol(temp))])), 
+         color=my_palette, 
+         cluster_cols = TRUE, 
+         cluster_rows=TRUE, 
+         border_color = NA,
+         show_rownames = F, 
+         show_colnames = F, 
+         annotation_col = annot_continent,
+         annotation_row = contig_colors,
+         annotation_colors = my_colour)
+
+```
+
+
+
+```{r}
+depth_per_PacBio = depth_per_locus %>% 
+  filter(grepl("\\[", Locus_name)) %>%
+  separate(col = Locus_name, 
+           sep = "\\.", 
+           into= c("PacBio", "rest"),
+           remove = F, 
+           fill = "left") %>%
+  group_by(ID_file, PacBio, Continent_Region) %>% 
+  dplyr::summarise(Median_depth = median(as.numeric(Depth), na.rm = T),
+                   Nb_windows = n())  %>%
+  left_join(., median_depth_cor_per_ind) %>% 
+  mutate(Normalized_depth = Median_depth / Median_core_depth)
+
+for_pheatmap = spread(depth_per_PacBio[, c(1, 2, 7)], "PacBio", "Normalized_depth") 
+for_pheatmap = Zt_meta %>% dplyr::select(ID_file, Continent_Region) %>%
+  inner_join(., for_pheatmap) %>%
+  filter(complete.cases(.))
+
+temp = as.data.frame(for_pheatmap) 
+rownames(temp) = temp[,1]
+temp = temp[,-1]
+my_palette <- colorRampPalette(c("white", "black"))(n = 299)
+
+annot_continent = as.data.frame(temp[, 1])
+row.names(annot_continent) <- row.names(temp)
+colnames(annot_continent) <- "Continent"
+
+
+color_PacBio = data.frame(Continent = c("Europe", "Europe",  "Europe", "Europe", "South America", 
+                           "Oceania", "South America", "North America", "Europe", 
+                           "North America", "Middle East", "Middle East", "Middle East", "Africa",
+                           "North America", "Africa", "Europe", "Middle East"))
+  
+rownames(color_PacBio) <- c("1A5", "1E4",  "3D1", "3D7", "Arg00_1D1a1", 
+                           "Aus01_1H8", "CH95_3B2a", "CNR93_D3a1", "CRI10_0616", 
+                           "I93_11a_2", "IR01_26b", "IR01_48b", "ISY92_Ar4f", "KE94_MF1a",
+                           "OregS90_a15_4A_10", "TN09_26_2-0", "UR95_E2C_2", "YEQ92_4")
+
+my_colour = list(Continent = myColors)
+
+
+
+pheatmap(as.matrix(temp[,c(2:ncol(temp))]), 
+         color=my_palette, 
+         cluster_cols = TRUE, 
+         cluster_rows=TRUE, 
+         border_color = NA,
+         show_rownames = F, 
+         annotation_row = annot_continent,
+         annotation_col = color_PacBio,
+         annotation_colors = my_colour)
+
+```
+
+
+```{r}
+library(FactoMineR)
+depth_loci_PCA = depth_per_locus %>%
+  dplyr::select(ID_file, Locus_name, Normalized_depth) %>%
+  mutate(Normalized_depth = as.numeric(Normalized_depth)) %>%
+  pivot_wider(names_from = Locus_name, values_from = Normalized_depth) 
+
+not_all_na <- function(x) any(!is.na(x))
+temp = depth_loci_PCA %>% select_if(not_all_na)
+
+temp2 = as.data.frame(temp)[complete.cases(temp),2:ncol(temp)]
+temp2 = temp2[, sample(ncol(temp2), size=1000,replace=FALSE)]
+temp2 = sapply( temp2, as.numeric )
+
+res.pca = PCA(temp2, scale.unit=TRUE, ncp=10, graph=F)
+
+results = as.tibble(res.pca$ind$coord) %>%
+   mutate(ID_file = as.data.frame(temp)[complete.cases(temp),1]) %>%
+  left_join(.,readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_DC_AFperso.xlsx"), 
+                           sheet = 1, n_max = 1000))
+
+p = ggplot(results, aes(x = Dim.1, y = Dim.2, text = ID_file, color = Continent_Region)) + 
+  geom_point(aes(color = Continent_Region)) +
+  labs(x = paste0("PC 1 (", round(res.pca$eig[1,2]), "%)"),
+       y = paste0("PC 2 (", round(res.pca$eig[2,2]), "%)")) + 
+  Color_Continent + 
+  theme_bw()
+ggplotly(p)
+
+p = ggplot(results, aes(x = Dim.1, y = Dim.2, text = ID_file, color = Collection)) + 
+  geom_point() +
+  labs(x = paste0("PC 1 (", round(res.pca$eig[1,2]), "%)"),
+       y = paste0("PC 2 (", round(res.pca$eig[2,2]), "%)")) + 
+  theme_bw()
+ggplotly(p)
+
+
+```
+
+
+
+### Per gene
+
+```{python, eval = F}
+from Bio import SeqIO
+from collections import defaultdict
+Contigs = defaultdict(list)
+CNV_dir = "/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_PopGen/CNV/"
+for record in SeqIO.parse(CNV_dir + "all_19_pangenome.fa",  "fasta"):
+    if "_0[" in record.id :
+        contig = record.id.split("_0[")[0]
+        coord = record.id.strip("]").split("_0[")[1].split(":")
+        Contigs[contig].append([record.id] + coord)
+    elif record.id.startswith("chr") :
+        pass
+    else :
+        contig = record.id.split("_1[")[0]
+        coord = record.id.strip("]").split("_1[")[1].split(":")
+        Contigs[contig].append([record.id] + coord)
+
+out = open(CNV_dir + "all_19_pangenome.fasta_names.converted_coord.gff", "w")
+
+with open(CNV_dir + "all_19_pangenome.fasta_names.gff") as gff:
+    for i, ligne in enumerate(gff) :
+        written = False
+
+        sp = ligne.strip().split()
+
+        # The genes from the reference genome have their own treatment
+        if sp[0].startswith("chr") :
+             out.write("\t".join(sp) + "\n")
+
+        # Removing "non-content" lines
+        elif not ligne.strip() :
+            pass
+        elif ligne.startswith("#") :
+            pass
+
+        #Checking whether the whole mRNA is included in the pangenome contigs
+        elif sp[2] == "mRNA" :
+            good_coords = False
+            for coords in Contigs[sp[0]] :
+                if int(coords[1]) <= int(sp[3]) <= int(coords[2]) :
+                    if int(coords[1]) <= int(sp[4]) <= int(coords[2]) :
+                        good_coords = True
+                        to_write = [coords[0]] + sp[1:3] +  [str(int(sp[3]) - int(coords[1])), str(int(sp[4]) - int(coords[1]))] + sp[5:]
+                        out.write("\t".join(to_write) + "\n")
+                        break
+        # For every exon for which the whole parent mRNA is included
+        # I will convert the coordinates using the variable "coords" which is the last one from above
+        else :
+            if good_coords :
+                to_write = [coords[0]] + sp[1:3] +  [str(int(sp[3]) - int(coords[1])), str(int(sp[4]) - int(coords[1]))] + sp[5:]
+                out.write("\t".join(to_write) + "\n")
+
+out.close()
+
+```
+
+
+
+
+
+
+
+
+```{r Depth per gene on pangenome}
+
+files <- list.files(paste0(CNV_dir,"2_Depth_per_gene/"), pattern = ".depth_per_gene.txt$")
+
+depth_per_gene = data.frame()
+
+for (i in files) {
+  file_name=paste0(CNV_dir,"2_Depth_per_gene/", i)
+  sample_name = dplyr::last(str_split(file_name, "/")[[1]]) %>%
+  str_replace(., pattern = ".depth_per_gene.txt", replacement = "")
+  temp = read_tsv(file_name, col_names = c("Locus_name", "Depth")) %>%
+    mutate(ID_file = sample_name)
+  depth_per_gene = bind_rows(depth_per_gene, temp)
+}
+
+depth_per_gene = left_join(depth_per_gene,Zt_meta) %>%
+  separate(col = Locus_name, 
+           sep = "\\.", 
+           into= c("sample", "rest"),
+           remove = F, 
+           fill = "left", extra = "merge") %>%
+  separate(col = rest, 
+           into = c("chr", "id", "Gene_ID"), 
+           sep = ";",  
+           remove = T) %>% 
+  mutate(Gene_ID = str_remove(Gene_ID, "geneID=")) %>%
+  unite(sample, chr, 
+        col = "Contig", 
+        sep="_", 
+        na.rm = TRUE, 
+        remove = F) 
+
+#For each sample, we are estimating the median depth of genes along the core chromosomes
+median_depth_cor_per_ind = depth_per_gene %>% 
+  filter(grepl("Zt09", Locus_name)) %>% 
+  dplyr::select(Contig, Depth, ID_file) %>%
+  mutate(chr = str_remove(Contig, "chr_")) %>%
+  filter(as.numeric(chr) <= 13) %>%
+  group_by(ID_file) %>% 
+  dplyr::summarise(Median_core_depth = median(as.numeric(Depth), na.rm = T))
+
+
+depth_per_gene = left_join(depth_per_gene, median_depth_cor_per_ind) %>%
+  mutate(Normalized_depth = Depth / Median_core_depth) 
+
+
+
+
+```
+
+
+```{r}
+depth_per_PacBio = depth_per_gene %>% 
+  filter(grepl("\\[", Locus_name)) %>%
+  separate(col = Locus_name, 
+           sep = "\\.", 
+           into= c("PacBio", "rest"),
+           remove = F, 
+           fill = "left") %>%
+  group_by(ID_file, PacBio, Continent_Region) %>% 
+  dplyr::summarise(Median_depth = median(as.numeric(Depth), na.rm = T),
+                   Nb_windows = n())  %>%
+  left_join(., median_depth_cor_per_ind) %>% 
+  mutate(Normalized_depth = Median_depth / Median_core_depth)
+
+for_pheatmap = spread(depth_per_PacBio[, c(1, 2, 7)], "PacBio", "Normalized_depth") 
+for_pheatmap = Zt_meta %>% dplyr::select(ID_file, Continent_Region) %>%
+  inner_join(., for_pheatmap) %>%
+  filter(complete.cases(.))
+
+temp = as.data.frame(for_pheatmap) 
+rownames(temp) = temp[,1]
+temp = temp[,-1]
+my_palette <- colorRampPalette(c("white", "black"))(n = 299)
+
+annot_continent = as.data.frame(temp[, 1])
+row.names(annot_continent) <- row.names(temp)
+colnames(annot_continent) <- "Continent"
+
+
+color_PacBio = data.frame(Continent = c("Europe", "Europe",  "Europe", "Europe", "South America", 
+                           "Oceania", "South America", "North America", "Europe", 
+                           "North America", "Middle East", "Middle East", "Middle East", "Africa",
+                           "North America", "Africa", "Europe", "Middle East"))
+  
+rownames(color_PacBio) <- c("1A5", "1E4",  "3D1", "3D7", "Arg00_1D1a1", 
+                           "Aus01_1H8", "CH95_3B2a", "CNR93_D3a1", "CRI10_0616", 
+                           "I93_11a_2", "IR01_26b", "IR01_48b", "ISY92_Ar4f", "KE94_MF1a",
+                           "OregS90_a15_4A_10", "TN09_26_2-0", "UR95_E2C_2", "YEQ92_4")
+
+my_colour = list(Continent = myColors)
+
+
+
+pheatmap(as.matrix(temp[,c(2:ncol(temp))]), 
+         color=my_palette, 
+         cluster_cols = TRUE, 
+         cluster_rows=TRUE, 
+         border_color = NA,
+         show_rownames = F, 
+         annotation_row = annot_continent,
+         annotation_col = color_PacBio,
+         annotation_colors = my_colour)
+
+```
+
+
+```{r}
+library(FactoMineR)
+depth_genes_PCA = depth_per_gene %>%
+  dplyr::select(ID_file, Gene_ID, Normalized_depth) %>%
+  mutate(Normalized_depth = as.numeric(Normalized_depth)) %>%
+  pivot_wider(names_from = Gene_ID, values_from = Normalized_depth)
+
+temp = as.data.frame(depth_genes_PCA)[complete.cases(depth_genes_PCA),2:ncol(depth_genes_PCA)]
+temp2 = temp[, sample(ncol(temp), size=1000,replace=FALSE)]
+temp2 = sapply( temp2, as.numeric )
+
+res.pca = PCA(temp2, scale.unit=TRUE, ncp=10, graph=F)
+
+results = as.tibble(res.pca$ind$coord) %>%
+   mutate(ID_file = as.data.frame(depth_genes_PCA)[complete.cases(depth_genes_PCA),1]) %>%
+  left_join(.,readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_DC_AFperso.xlsx"), 
+                           sheet = 1, n_max = 1000))
+
+p = ggplot(results, aes(x = Dim.1, y = Dim.2, text = ID_file, color = Continent_Region)) + 
+  geom_point(aes(color = Continent_Region)) +
+  labs(x = paste0("PC 1 (", round(res.pca$eig[1,2]), "%)"),
+       y = paste0("PC 2 (", round(res.pca$eig[2,2]), "%)")) + 
+  Color_Continent + 
+  theme_bw()
+ggplotly(p)
+
+p = ggplot(results, aes(x = Dim.1, y = Dim.2, text = ID_file, color = Collection)) + 
+  geom_point() +
+  labs(x = paste0("PC 1 (", round(res.pca$eig[1,2]), "%)"),
+       y = paste0("PC 2 (", round(res.pca$eig[2,2]), "%)")) + 
+  theme_bw()
+ggplotly(p)
+
+
+```
