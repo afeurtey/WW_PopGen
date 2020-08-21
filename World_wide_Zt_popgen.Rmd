@@ -9,9 +9,9 @@ output:
     css: /Users/feurtey/Documents/epur_css.css
     number_sections: no
     code_folding: hide
-  html_document:
-    toc: yes
-    df_print: paged
+  #html_document:
+   # toc: yes
+   # df_print: paged
 logo: /Users/feurtey/Documents/Postdoc_Bruce/Communication/Logo_WWZt.png
 ---
 
@@ -1461,10 +1461,10 @@ reads_per_TE = read_delim(paste0(RIP_DIR, "Nb_reads_per_TE.txt"), delim = "\t",
   unite(Continent_Region, Country, ID_file, col = "for_display", remove = F)
 
 temp = reads_per_TE %>% group_by(ID_file) %>%
-                              summarise(Reads_mapped_per_TE = sum(`# mapped read-segments`))
+       dplyr::summarise(Reads_mapped_per_TE = sum(`# mapped read-segments`))
 
 reads_per_TE = left_join(reads_per_TE, temp) %>%
-  mutate(Normalized_nb_reads_mapped = `# mapped read-segments` / Reads_mapped_per_TE)
+  dplyr::mutate(Normalized_nb_reads_mapped = `# mapped read-segments` / Reads_mapped_per_TE)
 
 
 #reads_per_TE %>%
@@ -1543,17 +1543,18 @@ RIP=read_tsv(paste0(RIP_DIR, "Composite_index.txt"),
 world_avg <- 
   RIP %>%
   filter(TE == "RIP_est") %>%
-  summarize(avg = mean(as.numeric(Composite_median), na.rm = T)) %>%
+  dplyr::summarize(avg = mean(as.numeric(Composite_median), na.rm = T)) %>%
   pull(avg)
 
 temp = RIP %>%
   filter(TE == "RIP_est") %>%
   group_by(Continent_Region) %>%
-  mutate(region_avg = mean(as.numeric(Composite_median), na.rm = T))
+  dplyr::mutate(region_avg = mean(as.numeric(Composite_median), na.rm = T))
 
 ggplot(temp, aes(x = Continent_Region, 
              y = as.numeric(Composite_median), 
-             color = Continent_Region))   + coord_flip()+
+             color = Continent_Region))   + 
+  coord_flip() +
   geom_segment(aes(x = Continent_Region, xend = Continent_Region,
         y = world_avg, yend = region_avg), size = 0.8) +
   geom_jitter(size = 1.5, alpha = 0.2, width = 0.2) +
@@ -1591,7 +1592,7 @@ RIP  %>%
 temp = RIP  %>%
   filter(Normalized_nb_reads_mapped > 0.0001) %>%
   group_by(Superfamily, Continent_Region, Order)%>%
-  summarize(median_Superfamily=median(Composite_median, na.rm = T) )
+  dplyr::summarize(median_Superfamily=median(Composite_median, na.rm = T) )
 
 temp %>%
   filter(Order == "Class I (retrotransposons)") %>%
@@ -1685,6 +1686,14 @@ TE_RIP %>%
   geom_point(alpha = 0.8) +
   theme_cowplot() +
       scale_color_manual(values = blues)
+
+t = TE_RIP %>% 
+    filter(Country == "United States") %>%
+    ggplot(aes(Percent_TE_Reads, as.numeric(Composite_median), 
+               color = Collection, shape = as.character(Date_Year), text = for_display)) +
+    geom_point(alpha = 0.8) +
+    theme_bw()
+ggplotly(t)
 ```
 
 
@@ -1714,16 +1723,17 @@ write_tsv(depth, path = paste0(TE_RIP_dir, "Coverage_in_windows_summary.txt"))
 ```
 
 ```{r Depth per locus on pangenome}
-
-files <- list.files(paste0(VAR_dir,"1_Depth_per_window/"), pattern = "depth_per_window.txt$")
+suffix = ".depth_per_window.txt"
+files <- list.files(paste0(VAR_dir,"1_Depth_per_window/"), pattern = paste0(suffix, "$"))
 smaller_files = sample(files, size = 50, replace =F)
+smaller_files = files[grepl("ORE", files)]
 
 depth_per_locus = data.frame()
 
 for (i in smaller_files) {
   file_name=paste0(VAR_dir,"1_Depth_per_window/", i)
   sample_name = dplyr::last(str_split(file_name, "/")[[1]]) %>%
-  str_replace(., pattern = ".depth_per_window.average.txt", replacement = "")
+  str_replace(., pattern = suffix, replacement = "")
   temp = read_tsv(file_name, col_names = c("Locus_name", "Depth")) %>%
     mutate(ID_file = sample_name)
   depth_per_locus = bind_rows(depth_per_locus, temp)
@@ -1804,7 +1814,7 @@ GC_coverage %>%
     labs(x = "GC percent per window",
          y = "Depth per window", 
          title = "Illustration of the GC bias",
-         subtitle = "I use the slope of a limear model to infer the GC bias.")
+         subtitle = "I use the slope of a linear model to infer the GC bias.")
 
 #The following block is silenced.
 #It was meant to check whether I am indeed getting the same results with the model and the plot.
@@ -1859,7 +1869,11 @@ ggplotly(temp)
 
 ```
 
+
 I tried to correct the GC bias by using deeptools correctGCBias on one sample from the Oregon population. I then rerun the PCA for the TE content. Although the individual values for the depth did change, it did not change the place of the sample in the PCA. 
+
+I don't know if the GC bias is the reason for the clear difference between the Hartmann dataset or if the two are consequence of something else. Either way, it does not seem reasonable to compare this dataset to the rest. It seems that, inside of this dataset, the observed differences match with what can be inferred from the rest of the samples. 
+<br>
 
 
 ## Is dim2 present in its intact version in some populations?
