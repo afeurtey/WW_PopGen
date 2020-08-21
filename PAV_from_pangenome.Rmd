@@ -5,12 +5,12 @@ output: html_notebook
 ### Per locus
 ```{r Depth per locus on pangenome}
 
-files <- list.files(paste0(CNV_dir,"1_Depth_per_window/"), pattern = ".depth_per_window.txt$")
+files <- list.files(paste0(VAR_dir,"1_Depth_per_window/"), pattern = ".depth_per_window.txt$")
 
 depth_per_locus = data.frame()
 
 for (i in files) {
-  file_name=paste0(CNV_dir,"1_Depth_per_window/", i)
+  file_name=paste0(VAR_dir,"1_Depth_per_window/", i)
   sample_name = dplyr::last(str_split(file_name, "/")[[1]]) %>%
   str_replace(., pattern = ".depth_per_window.txt", replacement = "")
   temp = read_tsv(file_name, col_names = c("Locus_name", "Depth")) %>%
@@ -31,18 +31,13 @@ depth_per_locus = left_join(depth_per_locus, median_depth_cor_per_ind) %>%
   mutate(Normalized_depth = Depth / Median_core_depth) 
 
 depth_per_contig = depth_per_locus %>%
-  separate(col = Locus_name, 
-           sep = "\\.", 
-           into= c("sample", "rest"),
-           remove = F, 
-           fill = "left") %>%
   separate(col = rest, 
            into = c("temp1", "chr", "start", "end"), 
            sep = "_", 
            remove = F) %>%
   unite(sample, temp1, chr, 
         col = "Contig", 
-        sep="_", 
+        sep=".", 
         na.rm = TRUE) %>%
   group_by(ID_file, Contig, Continent_Region) %>% 
   dplyr::summarise(Median_depth = median(as.numeric(Depth), na.rm = T),
@@ -214,8 +209,8 @@ ggplotly(p)
 from Bio import SeqIO
 from collections import defaultdict
 Contigs = defaultdict(list)
-CNV_dir = "/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_PopGen/CNV/"
-for record in SeqIO.parse(CNV_dir + "all_19_pangenome.fa",  "fasta"):
+VAR_dir = "/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_PopGen/CNV/"
+for record in SeqIO.parse(VAR_dir + "all_19_pangenome.fa",  "fasta"):
     if "_0[" in record.id :
         contig = record.id.split("_0[")[0]
         coord = record.id.strip("]").split("_0[")[1].split(":")
@@ -227,9 +222,9 @@ for record in SeqIO.parse(CNV_dir + "all_19_pangenome.fa",  "fasta"):
         coord = record.id.strip("]").split("_1[")[1].split(":")
         Contigs[contig].append([record.id] + coord)
 
-out = open(CNV_dir + "all_19_pangenome.fasta_names.converted_coord.gff", "w")
+out = open(VAR_dir + "all_19_pangenome.fasta_names.converted_coord.gff", "w")
 
-with open(CNV_dir + "all_19_pangenome.fasta_names.gff") as gff:
+with open(VAR_dir + "all_19_pangenome.fasta_names.gff") as gff:
     for i, ligne in enumerate(gff) :
         written = False
 
@@ -275,12 +270,12 @@ out.close()
 
 ```{r Depth per gene on pangenome}
 
-files <- list.files(paste0(CNV_dir,"2_Depth_per_gene/"), pattern = ".depth_per_gene.txt$")
+files <- list.files(paste0(VAR_dir,"2_Depth_per_gene/"), pattern = ".depth_per_gene.txt$")
 
 depth_per_gene = data.frame()
 
 for (i in files) {
-  file_name=paste0(CNV_dir,"2_Depth_per_gene/", i)
+  file_name=paste0(VAR_dir,"2_Depth_per_gene/", i)
   sample_name = dplyr::last(str_split(file_name, "/")[[1]]) %>%
   str_replace(., pattern = ".depth_per_gene.txt", replacement = "")
   temp = read_tsv(file_name, col_names = c("Locus_name", "Depth")) %>%

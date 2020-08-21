@@ -2,15 +2,17 @@
 title: "World-wide popgen Zt"
 author: "Alice Feurtey"
 date: "5/5/2020"
-logo: "/Users/feurtey/Documents/Postdoc_Bruce/Communication/Logo_WWZt.png"
 output:
-  html_notebook:
-    toc: true
-    toc_float: true
-    css: "/Users/feurtey/Documents/epur_css.css"
-    number_sections: False
+  html_document:
+    toc: yes
+    toc_float: yes
+    css: /Users/feurtey/Documents/epur_css.css
+    number_sections: no
     code_folding: hide
-    #theme: paper
+  html_document:
+    toc: yes
+    df_print: paged
+logo: /Users/feurtey/Documents/Postdoc_Bruce/Communication/Logo_WWZt.png
 ---
 
 
@@ -1392,7 +1394,7 @@ done
 
 
 #Get read number per sample
-echo "ID_file Te_aligned_reads Total_reads" > /userhome/alice/WW_project/WW_TE_RIP/Nb_reads.txt
+echo "ID_file Te_aligned_reads Total_reads" > /data2/alice/WW_project/WW_TE_RIP/Nb_reads.txt
 for fq in /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/*fq.gz ;  
 do  
   name=$(echo $fq | sed 's|/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/||' | sed 's/.fq.gz//' ); 
@@ -1448,7 +1450,6 @@ TE_prop
 ```
 
 ```{r reads per TE}
-
 reads_per_TE = read_delim(paste0(RIP_DIR, "Nb_reads_per_TE.txt"), delim = "\t", 
                     col_names = c("ID_file", "TE", "Length", 
                                   "# mapped read-segments",  "# unmapped read-segments")) %>%
@@ -1477,9 +1478,9 @@ Let's try to make a PCA based on the proportion of reads mapping on each TE. Is 
 ```{r PCA prop reads TE}
 TE_PCA_mat = reads_per_TE %>%
   dplyr::select(ID_file, Continent_Region, for_display, TE, Normalized_nb_reads_mapped) %>%
-  spread(key = TE, value = as.numeric(Normalized_nb_reads_mapped))
+  spread(key = TE, value = as.numeric(Normalized_nb_reads_mapped)) 
 
-temp =as.matrix(sapply(TE_PCA_mat[,c(4:ncol(TE_PCA_mat))], as.numeric))
+temp =as.matrix(sapply(TE_PCA_mat[,c(5:ncol(TE_PCA_mat))], as.numeric))
 temp = temp[,apply(temp, 2, var, na.rm=TRUE) != 0]
 
 TE.pca = prcomp(temp, center = TRUE,scale. = TRUE)
@@ -1711,46 +1712,104 @@ write_tsv(depth, path = paste0(TE_RIP_dir, "Coverage_in_windows_summary.txt"))
 
 ```
 
+```{r Depth per locus on pangenome}
+
+files <- list.files(paste0(VAR_dir,"1_Depth_per_window/"), pattern = "depth_per_window.average.txt$")
+smaller_files = sample(files, size = 50, replace =F)
+
+depth_per_locus = data.frame()
+
+for (i in smaller_files) {
+  file_name=paste0(VAR_dir,"1_Depth_per_window/", i)
+  sample_name = dplyr::last(str_split(file_name, "/")[[1]]) %>%
+  str_replace(., pattern = ".depth_per_window.average.txt", replacement = "")
+  temp = read_tsv(file_name, col_names = c("Locus_name", "Depth")) %>%
+    mutate(ID_file = sample_name)
+  depth_per_locus = bind_rows(depth_per_locus, temp)
+}
+
+
+median_depth_cor_per_ind = depth_per_locus %>% 
+  filter(!grepl("\\[", Locus_name)) %>%
+  separate(col = Locus_name, into = c("ignore", "chr", "start", "end")) %>%
+  filter(as.numeric(chr) <= 13) %>%
+  group_by(ID_file) %>% 
+  dplyr::summarise(Median_core_depth = median(as.numeric(Depth), na.rm = T))
+
+
+depth_per_locus = left_join(depth_per_locus, median_depth_cor_per_ind) %>% 
+  left_join(., Zt_meta) %>%
+  mutate(Normalized_depth = Depth / Median_core_depth) %>%
+  filter(Median_core_depth > 10)
+
+median_depth_cor_per_ind %>%
+  ggplot(aes(Median_core_depth)) +
+  geom_density(fill = mycolors[7], col = mycolors[1]) +
+  theme_bw()
+```
+
 ```{r estimate GCbias alpha}
 
-depth = read_tsv(paste0(TE_RIP_dir, "Coverage_in_windows_summary.txt"))
-Nucl_content = read_tsv(paste0(TE_RIP_dir, "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.nucl_content"))
+#depth = read_tsv(paste0(TE_RIP_dir, "Coverage_in_windows_summary.txt"))
+#depth per locus coming from the PAV from pangenome
 
-GC_coverage = inner_join(depth, Nucl_content, 
-           by = c("Chr" = "#1_usercol", "Start" = "2_usercol", "Stop" = "3_usercol"))
-  
-ggplot(GC_coverage, aes(`5_pct_gc`, log(mean_depth))) +
+#t = read_tsv(paste0(TE_RIP_dir, "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.nucl_content")) %>%
+#  unite("#1_usercol", "2_usercol", "3_usercol", col = "Locus_name", remove = F) %>% 
+#  ggplot(aes(`5_pct_gc`)) + geom_density()
+
+Nucl_content = read_tsv(paste0(data_dir, "all_19_pangenome.windows.nuc_GC.tab")) %>%
+  unite("#1_usercol", "2_usercol", "3_usercol", col = "Locus_name", remove = F)
+
+scale_this <- function(x){
+  (x - mean(x, na.rm=TRUE)) / sd(x, na.rm=TRUE)
+}
+
+
+GC_coverage = inner_join(depth_per_locus, Nucl_content, 
+           by = "Locus_name") %>% 
+  filter(!grepl("\\[", Locus_name)) %>%
+  separate(col = Locus_name, into = c("ignore", "chr", "start", "end")) %>%
+  filter(as.numeric(chr) <= 4) %>% #Check GC bias only on core chromosomes to limit accessory bias in coverage
+  mutate(scaled_depth = scale_this(Depth)) 
+
+GC_coverage %>%
+ggplot(aes(`5_pct_gc`, scaled_depth)) +
   geom_hex(bins = 70) +
   scale_fill_continuous(type = "viridis") +
-  theme_bw() + facet_wrap(~Sample) +
+  theme_bw() + facet_wrap(~ID_file, scale = "free") +
   geom_smooth(method = "lm", se = FALSE)
 
-getAlpha<-function(i){
-  temp = GC_coverage %>% filter(Sample == i) %>%
-    mutate(log_depth = log(mean_depth + 1))
+getAlpha<-function(i){ 
+  print(i)
+  temp = GC_coverage %>%
+    filter(ID_file == i) %>%
+    mutate(log_depth = log(Depth + 1))
   linearMod <- lm(`5_pct_gc` ~ log_depth, data=temp)  # build linear regression model on full data
   alpha = linearMod$coefficients["log_depth"] 
   return (alpha)}
 v_getAlpha <- Vectorize(getAlpha) 
 
 GC_bias = GC_coverage %>%
-  group_by(Sample) %>%
-  summarise(mean_depth = mean(mean_depth)) %>%
-  mutate(GC_bias_slope = v_getAlpha(Sample)) %>%
-  inner_join(., TE_RIP, by = c("Sample" = "ID_file"))
+  dplyr::group_by(ID_file)  %>%
+  dplyr::summarise(mean_depth = mean(Depth)) %>%
+  dplyr::mutate(GC_bias_slope = v_getAlpha(ID_file)) 
 
-p = GC_bias %>%
+ggplot(GC_bias, aes(GC_bias_slope)) + geom_density()
+
+ggplot(GC_bias, aes(GC_bias_slope, mean_depth)) + geom_point() 
+p = inner_join(GC_bias, TE_RIP, by = "ID_file") %>%
   ggplot(aes( Percent_TE_Reads, GC_bias_slope, text = for_display, color = Collection)) +
-  geom_point() + theme_light()
+  geom_point() + theme_light() +ylim(c(-0.05, 0.05))
 ggplotly(p)
 
-p = GC_bias %>%
+p = inner_join(GC_bias, TE_RIP, by = "ID_file") %>%
   ggplot(aes(Composite_median, GC_bias_slope, text = for_display, color = Collection)) +
   geom_point() + theme_light()
 ggplotly(p)
 
 ```
 
+I tried to correct the GC bias by using deeptools correctGCBias on one sample from the Oregon population. I then rerun the PCA for the TE content. Although the individual values for the depth did change, it did not change the place of the sample in the PCA. 
 
 
 ## Is dim2 present in its intact version in some populations?
@@ -2121,7 +2180,9 @@ __Methods__: Several software to explore:
  * Lfmm: http://membres-timc.imag.fr/Olivier.Francois/lfmm/index.htm This method claim to identify genetic polymorphisms exhibiting high correlation with environmental gradients (or phenotypic traits) while controlling for confounding effects such as population structure.
  
 ```{bash, eval =F}
-datamash transpose < $VCFNAME.pass_noNA.GT.FORMAT2 > $VCFNAME.pass_noNA.GT.FORMAT2.transposed
+datamash transpose \
+    < ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT2 \
+    > ${GEADIR}$VCFNAME.pass_noNA.GT.FORMAT2.transposed
 ```
 
 ```{r standard Bioclim var}
@@ -2137,9 +2198,10 @@ climate_per_coord_standard = climate_per_coordinates %>%
 ```{r run lfmm}
 library(lfmm)
 #Get genotypes
-genotypes = read_tsv(paste0(vcf_name, ".pass_noNA.GT.FORMAT2.transposed"), col_names = F) %>% 
+genotypes = read_tsv(paste0(GEA_dir, vcf_name, ".pass_noNA.GT.FORMAT2.transposed"), 
+                     col_names = F) %>% 
   dplyr::select(-X1) #removes ind_names
-ind_list = read_tsv(paste0(vcf_name, ".pass_noNA.ind"), col_names = "ID_file")
+ind_list = read_tsv(paste0(PopStr_dir, vcf_name, ".pass_noNA.ind"), col_names = "ID_file")
 genotypes_temp = bind_cols(genotypes, ind_list)
 
 #Get environmental data
@@ -2181,7 +2243,7 @@ par(mfrow=c(1, 1))
 Here are the resulting Manhattan plots. Seeing the two qqplots above, none of this should be taken too seriously!
 ```{r lfmm results plots}
 
-positions = read_tsv(paste0(vcf_name, ".pass_noNA.GT.FORMAT.pos"), col_names = T) 
+positions = read_tsv(paste0(PopStr_dir, vcf_name, ".pass_noNA.GT.FORMAT.pos"), col_names = T) 
 
 ## Manhattan plot
 as_tibble(as.data.frame(pvalues)) %>% 
@@ -2210,7 +2272,7 @@ for CHR in {1..13}
 do
 
 
-  vcftools --vcf $VCFNAME.recode.vcf \
+  vcftools --vcf ${VCFDIR}$VCFNAME.recode.vcf \
     --keep $ZTLIST.txt \
     --remove-filtered-all --extract-FORMAT-info GT \
     --max-missing 1.0 --min-alleles 2 --max-alleles 2 \
@@ -2218,7 +2280,7 @@ do
     --chr ${CHR} \
     --out ${GEADIR}Chr_${CHR}_only
 
-  vcftools --vcf $VCFNAME.recode.vcf \
+  vcftools --vcf ${VCFDIR}$VCFNAME.recode.vcf \
     --keep $ZTLIST.txt \
     --remove-filtered-all --extract-FORMAT-info GT \
     --max-missing 1.0 --min-alleles 2 --max-alleles 2 \
@@ -2393,10 +2455,8 @@ genotypes_resistance = read_tsv(paste0(fung_dir, "genotypes_tidy_format.tab"),
   left_join(Zt_meta)
 
 
-genotypes_resistance %>% 
-  filter(Country == "Switzerland") %>% 
-  filter(Date_Year == "2016") %>%
-  count(AA_change, Gene, Allele_type) %>%
+genotypes_resistance %>%
+  dplyr::count(AA_change, Gene, Allele_type) %>%
   ggplot(aes(x=n, y=AA_change, fill = Allele_type)) +
   geom_barh(stat="identity") +
   facet_grid(Gene ~ ., scales = "free_y", space = "free_y") 
@@ -2405,58 +2465,97 @@ genotypes_resistance %>%
 
 ```
 
-I suspect that there will be effect of both geography and time on the frequency of these alleles and so I try to represent this here.
-```{r}
-genotypes_resistance %>%
-  filter(Gene == "CYP51") %>%
-  count(AA_change, Date_Year, Allele_type) %>%
-    ggplot(aes(y=n, x=Date_Year, fill = Allele_type)) +
-  geom_bar(stat = "identity", position = "fill") +
-  facet_grid(AA_change ~ ., scales = "free_y", space = "free_y")
+I suspect that there will be an effect of both geography and time on the frequency of these alleles and so I try to represent this here.
 
-#
-genotypes_resistance %>%
+
+```{r fungicides bubble plots}
+#CYP51
+temp = genotypes_resistance %>%
   filter(Gene == "CYP51") %>%
-  count(AA_change, Continent_Region,Date_Year, Allele_type) %>%
+  dplyr::count(AA_change, Continent_Region,Date_Year, Allele_type) %>%
   pivot_wider(names_from = Allele_type, values_from = n, values_fill = list(n = 0)) %>%
   mutate(prop_mutant = Mutant/(Mutant + Origin)) %>%
-    ggplot(aes(x=Date_Year, y=Continent_Region, size = prop_mutant)) +
-  geom_point(col = myColors[3], alpha =0.7) + theme_bw() +
-  facet_wrap(.~AA_change)
+  filter(!is.na(Date_Year)) %>%
+  filter(!is.na(Continent_Region)) %>%
+  group_by(AA_change) %>%
+  dplyr::mutate(Somme = sum(Mutant)) %>%
+  filter(Somme > 0) 
 
-genotypes_resistance %>%
-  filter(Gene == "CYP51") %>%
-  count(AA_change, Continent_Region,Date_Year, Allele_type) %>%
-  pivot_wider(names_from = Allele_type, values_from = n, values_fill = list(n = 0)) %>%
-  mutate(Number_all = Mutant + Origin) %>%
-  mutate(prop_mutant = Mutant/Number_all) %>%
-  filter(Number_all > 5) %>%
-    ggplot(aes(x=Date_Year, y=prop_mutant, col = Continent_Region)) +
-  geom_point() + theme_bw() +
-  facet_wrap(.~AA_change) + Color_Continent
+temp %>%
+  ggplot(aes(x=Date_Year, y=Continent_Region, size = prop_mutant, fill = prop_mutant)) +
+  geom_point(shape=21, col = myColors[3], alpha =0.7) + theme_bw() +
+  facet_wrap(.~AA_change) + scale_fill_gradient(low="white", high = "#16697a") +
+  labs(title = str_wrap(paste("Mutant proportion per known mutation",
+                              "in the gene CYP51"), width = 35),
+       subtitle = str_wrap(paste("This gene can mutate and cause resistance to azole fungicides."), width = 65),
+       fill = "Proportion of mutants",
+       size = "Proportion of mutants",
+       x = "Years", y = "")
 
-```
-```{r}
+#Beta_tubulin
 genotypes_resistance %>%
   filter(Gene == "beta_tubulin") %>%
-  count(AA_change, Continent_Region,Date_Year, Allele_type) %>%
+  dplyr::count(AA_change, Continent_Region,Date_Year, Allele_type) %>%
   pivot_wider(names_from = Allele_type, values_from = n, values_fill = list(n = 0)) %>%
   mutate(Number_all = Mutant + Origin) %>%
   mutate(prop_mutant = Mutant/Number_all) %>%
-  filter(Number_all > 5) %>%
-    ggplot(aes(x=Date_Year, y=prop_mutant, col = Continent_Region)) +
-  geom_point() + theme_bw() +
-  facet_wrap(.~AA_change) + Color_Continent
+  group_by(AA_change) %>%
+  dplyr::mutate(Somme = sum(Mutant)) %>%
+  filter(Somme > 0) %>%
+  ggplot(aes(x=Date_Year, y=Continent_Region, size = prop_mutant, fill = prop_mutant)) +
+  geom_point(shape=21, col = myColors[3], alpha =0.7) + theme_bw() +
+  facet_wrap(.~AA_change) + scale_fill_gradient(low="white", high = "#16697a")+
+  labs(title = str_wrap(paste("Mutant proportion per known mutation",
+                              "in the beta tubuline gene"), width = 35),
+       subtitle = str_wrap(paste("This gene can mutate and cause resistance", 
+                                 " to benzimidazole fungicides."), width = 65),
+       fill = "Proportion of mutants",
+       size = "Proportion of mutants",
+       x = "Years", y = "")
 
+# Mitochondrial_cytb
 genotypes_resistance %>%
   filter(Gene == "mitochondrial_cytb") %>%
-  count(AA_change, Continent_Region,Date_Year, Allele_type) %>%
+  dplyr::count(AA_change, Continent_Region,Date_Year, Allele_type) %>%
   pivot_wider(names_from = Allele_type, values_from = n, values_fill = list(n = 0)) %>%
   mutate(Number_all = Mutant + Origin) %>%
   mutate(prop_mutant = Mutant/Number_all) %>%
-  filter(Number_all > 5) %>%
-    ggplot(aes(x=Date_Year, y=prop_mutant, col = Continent_Region)) +
-  geom_point() + theme_bw() +
-  facet_wrap(.~AA_change) + Color_Continent
+  group_by(AA_change) %>%
+  dplyr::mutate(Somme = sum(Mutant)) %>%
+  filter(Somme > 0) %>%
+  ggplot(aes(x=Date_Year, y=Continent_Region, size = prop_mutant, fill = prop_mutant)) +
+  geom_point(shape=21, col = myColors[3], alpha =0.7) + theme_bw() +
+  facet_wrap(.~AA_change) + scale_fill_gradient(low="white", high = "#16697a") +
+  labs(title = str_wrap(paste("Mutant proportion per known mutation",
+                              "in the mitochondrial gene cytb"), width = 35),
+       subtitle = str_wrap(paste("This gene can mutate and cause resistance ",
+                                 "to QoI, or Quinone outside inhibitors."), width = 65),
+       fill = "Proportion of mutants",
+       size = "Proportion of mutants",
+       x = "Years", y = "")
+
+
+# SDH genes
+genotypes_resistance %>%
+  filter(grepl("SDH", Gene)) %>%
+  unite(Label, Gene, AA_change, remove = T) %>%
+  dplyr::count(Label, Continent_Region, Date_Year, Allele_type) %>%
+  pivot_wider(names_from = Allele_type, values_from = n, values_fill = list(n = 0)) %>%
+  mutate(Number_all = Mutant + Origin) %>%
+  mutate(prop_mutant = Mutant/Number_all) %>%
+  group_by(Label) %>%
+  dplyr::mutate(Somme = sum(Mutant)) %>%
+  filter(Somme > 0) %>%
+  ggplot(aes(x=Date_Year, y=Continent_Region, size = prop_mutant, fill = prop_mutant)) +
+  geom_point(shape=21, col = myColors[3], alpha =0.7) + theme_bw() +
+  facet_wrap(.~Label) + scale_fill_gradient(low="white", high = "#16697a")+
+  labs(title = str_wrap(paste("Mutant proportion per known mutation",
+                              "in one of the SDH genes"), width = 35),
+       subtitle = str_wrap(paste("This gene can mutate and cause resistance to SDHI fungicides."), width = 65),
+       fill = "Proportion of mutants",
+       size = "Proportion of mutants",
+       x = "Years", y = "")
 ```
+
+
 
