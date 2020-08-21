@@ -1381,7 +1381,7 @@ grep "GC" /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/3_RIP_estimation/*RI
   sed 's/.txt:GC//' | sed 's/\./\t/' \
   >> /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/GC_percent.txt
 
-REF_NAME=/userhome/alice/WW_project/WW_TE_RIP/Badet_BMC_Biology_2020_TE_consensus_sequences
+REF_NAME=/data2/alice/WW_project/0_Data/Badet_BMC_Biology_2020_TE_consensus_sequences
 ls_TE=$(grep ">" ${REF_NAME}.fasta | sed 's/>//')
 for TE in $ls_TE; 
 do
@@ -1394,13 +1394,14 @@ done
 
 
 #Get read number per sample
-echo "ID_file Te_aligned_reads Total_reads" > /data2/alice/WW_project/WW_TE_RIP/Nb_reads.txt
+echo "ID_file Te_aligned_reads Total_reads" > /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/Nb_reads.txt
 for fq in /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/*fq.gz ;  
 do  
   name=$(echo $fq | sed 's|/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/||' | sed 's/.fq.gz//' ); 
   echo $name
   total_reads=$(~/Software/samtools-1.10/samtools flagstat /data2/alice/WW_project/1_Variant_calling/0_Mappings/${name}.bam | grep "mapped" | grep "with" -v | cut -f1 -d " ");    
-  aln_reads=$(zcat /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/${name}.fq.gz | paste - - - - | wc -l | cut -f 1);  
+  aln_reads=$(~/Software/samtools-1.10/samtools flagstat /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/${name}.bam | grep "mapped" | grep "with" -v | cut -f1 -d " ");
+  #aln_reads=$(zcat /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/${name}.fq.gz | paste - - - - | wc -l | cut -f 1);  
   echo $name $aln_reads $total_reads >> /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/Nb_reads.txt; 
 done
 
@@ -1714,7 +1715,7 @@ write_tsv(depth, path = paste0(TE_RIP_dir, "Coverage_in_windows_summary.txt"))
 
 ```{r Depth per locus on pangenome}
 
-files <- list.files(paste0(VAR_dir,"1_Depth_per_window/"), pattern = "depth_per_window.average.txt$")
+files <- list.files(paste0(VAR_dir,"1_Depth_per_window/"), pattern = "depth_per_window.txt$")
 smaller_files = sample(files, size = 50, replace =F)
 
 depth_per_locus = data.frame()
@@ -1742,10 +1743,7 @@ depth_per_locus = left_join(depth_per_locus, median_depth_cor_per_ind) %>%
   mutate(Normalized_depth = Depth / Median_core_depth) %>%
   filter(Median_core_depth > 10)
 
-median_depth_cor_per_ind %>%
-  ggplot(aes(Median_core_depth)) +
-  geom_density(fill = mycolors[7], col = mycolors[1]) +
-  theme_bw()
+
 ```
 
 ```{r estimate GCbias alpha}
@@ -1772,40 +1770,92 @@ GC_coverage = inner_join(depth_per_locus, Nucl_content,
   filter(as.numeric(chr) <= 4) %>% #Check GC bias only on core chromosomes to limit accessory bias in coverage
   mutate(scaled_depth = scale_this(Depth)) 
 
-GC_coverage %>%
-ggplot(aes(`5_pct_gc`, scaled_depth)) +
-  geom_hex(bins = 70) +
-  scale_fill_continuous(type = "viridis") +
-  theme_bw() + facet_wrap(~ID_file, scale = "free") +
-  geom_smooth(method = "lm", se = FALSE)
 
 getAlpha<-function(i){ 
-  print(i)
+  #print(i)
   temp = GC_coverage %>%
     filter(ID_file == i) %>%
     mutate(log_depth = log(Depth + 1))
-  linearMod <- lm(`5_pct_gc` ~ log_depth, data=temp)  # build linear regression model on full data
-  alpha = linearMod$coefficients["log_depth"] 
+  
+  linearMod <- lm(log_depth ~ `5_pct_gc`, data=temp)  # build linear regression model on full data
+  alpha = linearMod$coefficients["`5_pct_gc`"] 
   return (alpha)}
 v_getAlpha <- Vectorize(getAlpha) 
 
 GC_bias = GC_coverage %>%
-  dplyr::group_by(ID_file)  %>%
-  dplyr::summarise(mean_depth = mean(Depth)) %>%
+  dplyr::group_by(ID_file) %>%
+  dplyr::summarise(Median_core_depth = mean(Median_core_depth, na.rm = T),
+                   Median_depth = mean(Depth, na.rm = T))  %>%
   dplyr::mutate(GC_bias_slope = v_getAlpha(ID_file)) 
 
-ggplot(GC_bias, aes(GC_bias_slope)) + geom_density()
+```
 
-ggplot(GC_bias, aes(GC_bias_slope, mean_depth)) + geom_point() 
-p = inner_join(GC_bias, TE_RIP, by = "ID_file") %>%
-  ggplot(aes( Percent_TE_Reads, GC_bias_slope, text = for_display, color = Collection)) +
-  geom_point() + theme_light() +ylim(c(-0.05, 0.05))
-ggplotly(p)
+```{r plot GCbias alpha}
+# Selection a smaller number of samples to illustrate the GC bias
+temp = sample(GC_coverage %>% pull(ID_file) %>% unique(), size = 9, replace =F)
+GC_coverage %>%
+  filter(ID_file %in% temp) %>%
+  ggplot(aes(`5_pct_gc`, scaled_depth)) +
+    geom_hex(bins = 70) +
+    scale_fill_continuous(type = "viridis") +
+    theme_bw() + facet_wrap(~ID_file, scale = "free") +
+    geom_smooth(method = "lm", se = FALSE, 
+                color = "#29AF7F", size= 0.7) +
+    labs(x = "GC percent per window",
+         y = "Depth per window", 
+         title = "Illustration of the GC bias",
+         subtitle = "I use the slope of a limear model to infer the GC bias.")
 
-p = inner_join(GC_bias, TE_RIP, by = "ID_file") %>%
-  ggplot(aes(Composite_median, GC_bias_slope, text = for_display, color = Collection)) +
-  geom_point() + theme_light()
-ggplotly(p)
+#The following block is silenced.
+#It was meant to check whether I am indeed getting the same results with the model and the plot.
+silence = 'i=temp[1]
+temp = GC_coverage %>%
+     filter(ID_file == i) %>%
+     mutate(log_depth = scaled_depth)
+linearMod <- lm(log_depth ~ `5_pct_gc`, data=temp)  # build linear regression model on full data
+p = GC_coverage %>%
+  filter(ID_file == i) %>%
+ggplot(aes(`5_pct_gc`, scaled_depth)) +
+  geom_hex(bins = 70) +
+  scale_fill_continuous(type = "viridis") +
+  theme_bw() + facet_wrap(~ID_file, scale = "free") +
+  geom_smooth(method = "lm", se = FALSE, color = "#29AF7F")
+p + geom_abline(intercept = linearMod$coefficients["(Intercept)"], slope = linearMod$coefficients["`5_pct_gc`"]) +
+  ylim(c(-6, 15))'
+
+
+# Checking on a possible link between depth and GC bias
+p1 = median_depth_cor_per_ind %>%
+  ggplot(aes(Median_core_depth)) +
+  geom_density(fill = mycolors[7], col = mycolors[1]) +
+  theme_bw() +
+  labs(x = "Median depth on core chromosmome")
+p2 = ggplot(GC_bias, aes(GC_bias_slope)) + geom_density()+
+  geom_density(fill = myColors[1], col = myColors[1], alpha = 0.8) +
+  theme_bw()+
+  labs(x = "GC bias")
+
+top = cowplot::plot_grid(p1, p2, labels = c("A", "B"))
+
+p3 = inner_join(GC_bias, TE_RIP, by = "ID_file") %>%
+  ggplot(aes( Median_core_depth, GC_bias_slope, text = for_display, color = Collection)) +
+  geom_point() + theme_light() +
+  labs(x = "Median depth on core chromosmome",
+       y = "GC bias")
+
+cowplot::plot_grid(top, p3, ncol = 1, nrow = 2, labels = c("", "C"))
+
+
+# And now let's investigate if there is a correlation between GC bias and the values of interest from before
+temp = inner_join(GC_bias, TE_RIP, by = "ID_file") %>%
+  pivot_longer(cols = c(Composite_median, Percent_TE_Reads), names_to = "Confounded estimate", values_to = "Estimated value") %>%
+  ggplot(aes(`Estimated value`, GC_bias_slope, text = for_display, color = Collection)) +
+  geom_point() + theme_light() +
+  facet_wrap(vars(`Confounded estimate`), scales = "free") +
+  labs(x = "", 
+       y = "GC bias (slope of the per window estimate)",
+       title = "Effect of GC bias on TE and RIP estimation")
+ggplotly(temp)
 
 ```
 
