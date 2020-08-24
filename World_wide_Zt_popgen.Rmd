@@ -40,15 +40,25 @@ library(GGally)
 library(corrplot)
 library(pheatmap)
 library(ggstance)
+library('pophelper')
+library(ggbiplot)
+library(igraph)
+library(ggraph)
 
 #Pop structure and pop genomic
 library(SNPRelate) #PCA
 library(LEA) #Clustering
 library(pophelper)
-library(PopGenome) #Statistics
+library(PopGenome) #Summary statistics
+library(gridExtra)
 
 #GEA
 library(lfmm)
+
+#Statistics
+library(car)
+library(corrr)
+
 
 #Variables
 world <- map_data("world")
@@ -100,6 +110,10 @@ knitr::opts_chunk$set(results = T)
 
 
 #py_install(packages = 'biopython')
+
+#Prettier correlation colors
+mycolorsCorrel<- colorRampPalette(c("#0f8b8d", "white", "#a8201a"))(20)
+
 
 greens=c("#1B512D", "#669046", "#8CB053", "#B1CF5F", "#514F59")
 blues=c("#08386E", "#1C89C9", "#28A7C0", "#B0DFE8", "grey")
@@ -763,8 +777,7 @@ ggplotly(p)
 ```
 
 ```{r sNMF pretty plots}
-library('pophelper')
-library(gridExtra)
+
 K_list = c(1:15)
 afiles = character(length(K_list))
 for (i in K_list){
@@ -1421,6 +1434,7 @@ done
 First, I mapped the reads on the TE consensus created by Ursula based on Thomas's pangenome. I visualize the results here in terms of percentage of reads mapping on these consensus.
 ```{r TE content estimation plots}
 
+#Reading in the data
 TE_qty = read_delim(paste0(RIP_DIR, "Nb_reads.txt"), delim = " ") %>%
   filter(Total_reads > Te_aligned_reads) %>%
   mutate(Percent_TE_Reads = Te_aligned_reads * 100 / Total_reads) %>% 
@@ -1433,7 +1447,9 @@ world_avg <-
   summarize(avg = mean(as.numeric(Percent_TE_Reads), na.rm = T)) %>%
   pull(avg)
 
+#Building the basic violin plot per continent
 TE_prop =  TE_qty %>% 
+  filter(!is.na(Continent_Region)) %>%
   ggplot(aes(x = Continent_Region, y = Percent_TE_Reads, fill = Continent_Region)) +
   geom_hline(aes(yintercept = world_avg), 
              color = "gray30", size = 0.6, linetype = "dashed") +
@@ -1446,10 +1462,43 @@ TE_prop =  TE_qty %>%
         title = "Amount of reads mapping on TE consensus per continent",
         subtitle = str_wrap(paste(""), width = 70))
   
-TE_prop
+#TE_prop
 
+
+#One-way ANOVA with blocks
+##Define linear model
+model = lm(Percent_TE_Reads ~ Continent_Region + Collection ,
+          data=TE_qty)
+summary(model)   ### Will show overall p-value and r-squared
+
+##Conduct analysis of variance
+Anova(model,type = "II")  
+summary(model) 
+
+hist(residuals(model), col="darkgray")
+
+#Post-hoc analysis:  mean separation tests
+library(multcomp)
+library(lsmeans)
+
+marginal = lsmeans(model, ~ Continent_Region)
+
+pairs(marginal, adjust="tukey")
+
+CLD = cld(marginal,
+          alpha   = 0.05,
+          Letters = letters,  ### Use lower-case letters for .group
+          adjust  = "tukey")  ### Tukey-adjusted p-values
+
+CLD
+
+CLD$.group=gsub(" ", "", CLD$.group)
+
+### Plot
+TE_prop +
+  geom_text(data = CLD, aes(x = Continent_Region, label = .group, y = 34), color   = "black")
 ```
-
+The statistics used here are a one-way [ANOVA with block](https://rcompanion.org/handbook/I_06.html). Blocks are used in an analysis of variance or similar models in order to account for suspected variation from factors other than the treatments or main independent variables being investigated. Here I considered the collection as the confounging factor. It definitely has an effect and was thus accounted for in the statistics related to TE content and to RIP level.
 ```{r reads per TE}
 reads_per_TE = read_delim(paste0(RIP_DIR, "Nb_reads_per_TE.txt"), delim = "\t", 
                     col_names = c("ID_file", "TE", "Length", 
@@ -1465,6 +1514,7 @@ temp = reads_per_TE %>% group_by(ID_file) %>%
 
 reads_per_TE = left_join(reads_per_TE, temp) %>%
   dplyr::mutate(Normalized_nb_reads_mapped = `# mapped read-segments` / Reads_mapped_per_TE)
+
 
 
 #reads_per_TE %>%
@@ -1540,7 +1590,7 @@ RIP=read_tsv(paste0(RIP_DIR, "Composite_index.txt"),
 
 #Per continent
 
-world_avg <- 
+world_RIP_avg <- 
   RIP %>%
   filter(TE == "RIP_est") %>%
   dplyr::summarize(avg = mean(as.numeric(Composite_median), na.rm = T)) %>%
@@ -1548,17 +1598,18 @@ world_avg <-
 
 temp = RIP %>%
   filter(TE == "RIP_est") %>%
+  filter(!is.na(Continent_Region)) %>%
   group_by(Continent_Region) %>%
-  dplyr::mutate(region_avg = mean(as.numeric(Composite_median), na.rm = T))
+  dplyr::mutate(region_avg = mean(as.numeric(Composite_median), na.rm = T)) 
 
-ggplot(temp, aes(x = Continent_Region, 
-             y = as.numeric(Composite_median), 
-             color = Continent_Region))   + 
+RIP_plot = ggplot(temp, aes(x = Continent_Region, 
+                            y = as.numeric(Composite_median), 
+                            color = Continent_Region))   + 
   coord_flip() +
   geom_segment(aes(x = Continent_Region, xend = Continent_Region,
-        y = world_avg, yend = region_avg), size = 0.8) +
+        y = world_RIP_avg, yend = region_avg), size = 0.8) +
   geom_jitter(size = 1.5, alpha = 0.2, width = 0.2) +
-  geom_hline(aes(yintercept = world_avg), color = "gray70", size = 0.6) +
+  geom_hline(aes(yintercept = world_RIP_avg), color = "gray70", size = 0.6) +
   stat_summary(fun = mean, geom = "point", size = 5) + 
   Color_Continent +
   theme_cowplot() + 
@@ -1567,8 +1618,43 @@ ggplot(temp, aes(x = Continent_Region,
   labs (x = "", y = "RIP composite index", 
         title = "RIP levels per continents",
         subtitle = str_wrap(paste("The RIP levels in reads mapping on TE consensus",
-                                  "are high in the Middle-East and in Africa",
-                                  "and low in Oceania in particular."), width = 70))
+                                  "are high in the Middle-East",
+                                  "and low in North America in particular."), width = 70))
+
+
+#Statistical test
+#One-way ANOVA with blocks
+##Define linear model
+model = lm(as.numeric(Composite_median) ~ Continent_Region + Collection ,
+          data=temp)
+summary(model)   ### Will show overall p-value and r-squared
+
+##Conduct analysis of variance
+Anova(model,type = "II")  
+summary(model) 
+
+hist(residuals(model), col="darkgray")
+
+#Post-hoc analysis:  mean separation tests
+marginal = lsmeans(model, ~ Continent_Region)
+
+pairs(marginal, adjust="tukey")
+
+CLD_RIP = cld(marginal,
+          alpha   = 0.05,
+          Letters = letters,  ### Use lower-case letters for .group
+          adjust  = "tukey")  ### Tukey-adjusted p-values
+
+CLD_RIP
+
+CLD_RIP$.group=gsub(" ", "", CLD_RIP$.group)
+
+text_y = (max(as.numeric(temp$Composite_median), na.rm = T) + 0.1*max(as.numeric(temp$Composite_median), na.rm = T))
+
+RIP_plot +
+  geom_text(data = CLD_RIP, aes(x = Continent_Region, 
+                            y = text_y, 
+                            label = .group), color = "black")
 ```
 
 
@@ -1664,36 +1750,116 @@ Finally, I look at the relation between the amount of reads mapping on TE consen
 TE_RIP = inner_join(TE_qty, RIP %>%
   filter(TE == "RIP_est") ) 
 
+TE_RIP$Date_Year[is.na(TE_RIP$Date_Year)] <- "Unknown"
+
+temp = TE_RIP %>%
+  group_by(Continent_Region) %>%
+  dplyr::summarize(TE_qty = mean(Percent_TE_Reads, na.rm = T),
+                  Composite_median = mean(as.numeric(Composite_median), na.rm = T)) %>%
+  dplyr::mutate(for_display = Continent_Region)
+
 #TE and RIP together
-temp = ggplot(TE_RIP, aes(as.numeric(Percent_TE_Reads), as.numeric(Composite_median), color = Continent_Region, text = for_display))+
+t = ggplot(TE_RIP, aes(as.numeric(Percent_TE_Reads), 
+                          as.numeric(Composite_median), 
+                          color = Continent_Region, 
+                          text = for_display))+
   theme_cowplot()  +
-  geom_point(alpha = 0.8) + Color_Continent
-ggplotly(temp)
+  geom_point(alpha = 0.6) + Color_Continent +
+  labs(color = "Geographical group",
+       x = "Percentage of TE reads", y = "RIP composite median",
+       title = "Amount of transposable elements vs RIP level") + 
+  geom_point(data = temp, aes(as.numeric(TE_qty), 
+                                as.numeric(Composite_median), 
+                                color = Continent_Region), size = 5)
+ggplotly(t)
+
+
+t 
 
 bias1 = TE_RIP %>% ggplot(aes(Percent_TE_Reads, as.numeric(Composite_median), color =Collection, text = for_display)) +
   theme_cowplot() +
   geom_point(alpha = 0.8) 
 
-bias2 = TE_RIP %>% ggplot(aes(Percent_TE_Reads, as.numeric(Composite_median), color =Library_strategy, text = for_display)) +
-  theme_cowplot() +
-  geom_point(alpha = 0.8) 
+#bias2 = TE_RIP %>% ggplot(aes(Percent_TE_Reads, as.numeric(Composite_median), color =Library_strategy, text = for_display)) +
+#  theme_cowplot() +
+#  geom_point(alpha = 0.8) 
 
 ggplotly(bias1)
 
+cowplot::plot_grid(RIP_plot +
+                     labs (title = "", subtitle = "") +
+                     geom_text(data = CLD_RIP, aes(x = Continent_Region, 
+                                               y = text_y,
+                                               label = .group), 
+                               color = "black"),
+                   TE_prop +
+                     labs (title = "", subtitle = "") +
+                     geom_text(data = CLD, aes(x = Continent_Region, 
+                                               label = .group, 
+                                               y = 34), 
+                               color   = "black") +
+                     theme(legend.position = "none") +
+                     coord_flip())
+
+```
+
+```{r}
+subset = TE_RIP %>%
+  filter(Collection != "Hartmann") 
+
+temp = subset %>%
+  group_by(Continent_Region) %>%
+  dplyr::summarize(TE_qty = mean(Percent_TE_Reads, na.rm = T),
+                  Composite_median = mean(as.numeric(Composite_median), na.rm = T)) %>%
+  dplyr::mutate(for_display = Continent_Region)
+
+t = ggplot(subset, aes(as.numeric(Percent_TE_Reads),
+             as.numeric(Composite_median),
+             color = Continent_Region,
+             text = for_display)) +
+  theme_cowplot()  +
+  geom_point(alpha = 0.6) + Color_Continent +
+  labs(color = "Geographical group",
+       x = "Percentage of TE reads", y = "RIP composite median",
+       title = "Amount of transposable elements vs RIP level") + 
+  geom_point(data = temp, aes(as.numeric(TE_qty), 
+                                as.numeric(Composite_median), 
+                                color = Continent_Region), size = 5)
+ggplotly(t)
+```
+
+
+Besides geographical origin and collection, I also wanted to check time for subsets of the genomes. The Oceanian samples have often shown their own pattern, so I looked at them separately. Additionally, I am curious about the North American samples since Ursula saw a temporal pattern. 
+```{r RIP and TE together per region}
+#Checking the Oceanian samples
 TE_RIP %>% 
   filter(Continent_Region == "Oceania") %>%
   ggplot(aes(Percent_TE_Reads, as.numeric(Composite_median), color = as.character(Date_Year), shape = Country, text = for_display)) +
   geom_point(alpha = 0.8) +
   theme_cowplot() +
-      scale_color_manual(values = blues)
+      scale_color_manual(values = blues) +
+  labs(color = "Group",
+       x = "Percentage of TE reads", y = "RIP composite median",
+       title = "TE vs RIP level in Oceania",
+       subtitle = str_wrap(paste0("Oceanian samples have shown a clear ",
+                                  "temporal and geographical substructure ", 
+                                  "based on SNPs. How about RIP/TE content?"), 
+                                  width = 70))
 
 t = TE_RIP %>% 
     filter(Country == "United States") %>%
     ggplot(aes(Percent_TE_Reads, as.numeric(Composite_median), 
-               color = Collection, shape = as.character(Date_Year), text = for_display)) +
+               color = Collection, shape = as.character(Date_Year))) +
     geom_point(alpha = 0.8) +
-    theme_bw()
-ggplotly(t)
+    theme_bw() +
+  labs(color = "Geographical group",
+       x = "Percentage of TE reads", y = "RIP composite median",
+       title = "TE vs RIP level in North America",
+       subtitle = str_wrap(paste0("Ursula's data shows a geographical and a ",
+                                  "temporal pattern in the TE content. ", 
+                                  "Can this be recovered here?"), 
+                                  width = 70))
+t
 ```
 
 
@@ -1837,7 +2003,7 @@ p + geom_abline(intercept = linearMod$coefficients["(Intercept)"], slope = linea
 # Checking on a possible link between depth and GC bias
 p1 = median_depth_cor_per_ind %>%
   ggplot(aes(Median_core_depth)) +
-  geom_density(fill = mycolors[7], col = mycolors[1]) +
+  geom_density(fill = mycolorsCorrel[7], col = mycolorsCorrel[1]) +
   theme_bw() +
   labs(x = "Median depth on core chromosmome")
 p2 = ggplot(GC_bias, aes(GC_bias_slope)) + geom_density()+
@@ -1866,6 +2032,14 @@ temp = inner_join(GC_bias, TE_RIP, by = "ID_file") %>%
        y = "GC bias (slope of the per window estimate)",
        title = "Effect of GC bias on TE and RIP estimation")
 ggplotly(temp)
+
+t = TE_RIP %>% 
+     filter(Country == "United States") %>%
+     ggplot(aes(Percent_TE_Reads, as.numeric(Composite_median), color = Collection, 
+                shape = as.character(Date_Year), text = for_display)) +
+     geom_point(alpha = 0.8) +
+     theme_bw()
+ggplotly(t)
 
 ```
 
@@ -2013,7 +2187,7 @@ dim2_blast_results %>%
 sum_dim2_blast = dim2_blast_results %>%
   filter(length > threshold_length) %>%
   group_by(sample) %>%
-  summarise(max_id = max(pident), nb_match = n()) %>%
+  dplyr::summarise(max_id = max(pident), nb_match = n()) %>%
   inner_join(., RIP, by = c("sample" = "ID_file"))
 
 
@@ -2026,7 +2200,8 @@ p1 = sum_dim2_blast %>%
     labs(x = str_wrap(paste("RIP composite index",
                             " (median per isolate)"), 
                       width = 20),
-         y = "Identity of the best match")
+         y = str_wrap("Identity of the best match", 
+                      width = 20))
 
 p2 = sum_dim2_blast %>%
   filter(TE == "RIP_est") %>%
@@ -2036,28 +2211,44 @@ p2 = sum_dim2_blast %>%
     labs(x = str_wrap(paste("RIP composite index",
                             " (median per isolate)"), 
                       width = 20),
-         y = "Number of long blast matches")
+         y = str_wrap("Number of long blast matches", 
+                      width = 20))
 
 p3 = sum_dim2_blast %>%
   filter(TE == "RIP_est") %>%
   ggplot(aes(x = max_id, y = nb_match, color = Continent_Region)) +
   geom_point() + Color_Continent + theme_bw()+
-    labs(x = "Identity of the best match",
-         y = "Number of long blast matches")
+    labs(x = str_wrap("Identity of the best match", 
+                      width = 20),
+         y = str_wrap("Number of long blast matches", 
+                      width = 20),
+         color = "Geographical group") +
+  theme(axis.title=element_text(size=10))
 
 bottom_row <- cowplot::plot_grid(p1, p2, labels = c('B', 'C'), label_size = 12)
 
 cowplot::plot_grid(p3, bottom_row, labels = c('A', ''), label_size = 12, ncol = 1)
 
 
+temp = sum_dim2_blast %>%
+  filter(TE == "RIP_est")  
+
+cor.test(temp$max_id, temp$Composite_median, method="spearman")
+cor.test(temp$nb_match, temp$Composite_median, method="spearman")
+cor.test(temp$max_id, temp$nb_match, method="spearman")
+
 ```
+```{r}
+p1 +coord_flip()
+```
+
 
 And then as boxplots per continental region. 
 ```{r dim2 blast results box}
 p1 = sum_dim2_blast %>%
   filter(TE == "RIP_est") %>%
   group_by(Continent_Region) %>%
-  mutate(avg_per_cont = mean(max_id, na.rm = T)) %>%
+  dplyr::mutate(avg_per_cont = mean(max_id, na.rm = T)) %>%
   ggplot(aes(Continent_Region, max_id, 
              fill = Continent_Region)) +
     geom_segment(aes(x=Continent_Region, xend=Continent_Region, 
@@ -2081,7 +2272,7 @@ p1 = sum_dim2_blast %>%
 
 p2 = ggplot(sum_dim2_blast, aes(Continent_Region, nb_match, 
              fill = Continent_Region)) + 
-  geom_violin() + Fill_Continent +
+  geom_boxplot(width = 0.21) + Fill_Continent +
   theme_light() + 
   theme(panel.grid.major.y = element_blank(),
     panel.border = element_blank(),
@@ -2179,18 +2370,15 @@ Naturally, many of the variables investigated above are highly correlated. It is
 
 ```{r correl climate var}
 
-#Prettier colors
-mycolors<- colorRampPalette(c("#0f8b8d", "white", "#a8201a"))(20)
-
 #Correlogram
 
 Ccor = cor(climate_per_coordinates)
 corrplot(Ccor, type="lower", order="hclust", 
-         col = mycolors,
+         col = mycolorsCorrel,
          tl.col="black", tl.srt=45, tl.cex = 0.7)
 
 #Simple heatmap
-heatmap(x = Ccor, col = mycolors, symm = TRUE)
+heatmap(x = Ccor, col = mycolorsCorrel, symm = TRUE)
 ```
 
 
@@ -2200,7 +2388,7 @@ __How to choose the best variables?__
 * Create composite variables with a PCA? Only meaningful if we can interpret the principal component.
 
 ```{r PCA bioclim var}
-library(ggbiplot)
+
 country_climate = Zt_meta_for_shiny %>% dplyr::select(Latitude, Longitude, Continent_Region) %>% unique()
 bioclim.pca <- prcomp(climate_per_coordinates[,c(2:ncol(climate_per_coordinates))], scale. = TRUE)
 ggbiplot(bioclim.pca, obs.scale = 1, var.scale = 1, 
@@ -2212,9 +2400,7 @@ ggbiplot(bioclim.pca, obs.scale = 1, var.scale = 1,
 
 
 ```{r}
-library(corrr)
-library(igraph)
-library(ggraph)
+
 
 tidy_cors <- climate_per_coordinates %>% 
   dplyr::select(everything(), -contains("uarter"), -Y, -X) %>%
@@ -2260,7 +2446,6 @@ climate_per_coord_standard = climate_per_coordinates %>%
 ```
  
 ```{r run lfmm}
-library(lfmm)
 #Get genotypes
 genotypes = read_tsv(paste0(GEA_dir, vcf_name, ".pass_noNA.GT.FORMAT2.transposed"), 
                      col_names = F) %>% 
