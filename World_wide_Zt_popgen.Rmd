@@ -58,6 +58,8 @@ library(lfmm)
 #Statistics
 library(car)
 library(corrr)
+library(lsmeans)
+library(multcomp)
 
 
 #Variables
@@ -336,8 +338,8 @@ for (i in c(1:21)) {
 depth = bind_rows(depth_results)
 depth$MEAN_DEPTH[is.na(depth$MEAN_DEPTH)] = 0
 summary_depth = depth[depth$CHROM < 14,] %>% 
-  group_by(INDV) %>%
-  summarise(whole_genome_depth = median(MEAN_DEPTH, na.rm = TRUE), coverage = sum(N_SITES))
+  dplyr::group_by(INDV) %>%
+  dplyr::summarise(whole_genome_depth = median(MEAN_DEPTH, na.rm = TRUE), coverage = sum(N_SITES))
 
 
 depth =full_join(depth, summary_depth[,c(1,2)])
@@ -382,7 +384,7 @@ plot_grid(plot_continent, heatmap_depth, rel_widths = c(2, 5))
 Lthres = 0.50
 Hthres = 1.50
 depth = depth %>%
-  mutate(Depth_is = ifelse(NORM_MEAN_DEPTH > Hthres, "High",ifelse(NORM_MEAN_DEPTH < Lthres, "Low", "Normal")))
+  dplyr::mutate(Depth_is = ifelse(NORM_MEAN_DEPTH > Hthres, "High",ifelse(NORM_MEAN_DEPTH < Lthres, "Low", "Normal")))
 
 bar_Ndepth_per_CHR =ggplot(depth, aes(x = CHROM, fill = Depth_is)) + 
   geom_bar(stat = "count") + 
@@ -394,8 +396,8 @@ bar_Ndepth_per_CHR =ggplot(depth, aes(x = CHROM, fill = Depth_is)) +
 ##For high normalized depth values
 temp = depth %>%
   filter(Depth_is == "High") %>%
-  group_by(CHROM) %>%
-  count() 
+  dplyr::group_by(CHROM) %>%
+  dplyr::count() 
 lolhigh =  ggplot(temp, aes(x = as.character(CHROM), y = n)) +
     geom_segment( aes(x=as.character(CHROM), xend=as.character(CHROM), y=0, yend=max(temp$n)), 
                   color="grey80", size = 1) +
@@ -420,8 +422,8 @@ lolhigh =  ggplot(temp, aes(x = as.character(CHROM), y = n)) +
 ##For low normalized depth values
 temp = depth %>%
   filter(Depth_is == "Low") %>%
-  group_by(CHROM) %>%
-  count()
+  dplyr::group_by(CHROM) %>%
+  dplyr::count()
 
 lollow = ggplot(temp, aes(x = as.character(CHROM), y = n)) +
     geom_segment( aes(x=as.character(CHROM), xend=as.character(CHROM), y=0, yend=max(temp$n)), 
@@ -444,7 +446,7 @@ lollow = ggplot(temp, aes(x = as.character(CHROM), y = n)) +
     labs( x= "Chromosome", y = "Number of isolates without chromosome") +
     coord_flip()
 
-bottom_row <- plot_grid(lolhigh, lollow, labels = c('B', 'C'), label_size = 12)
+bottom_row <- cowplot::plot_grid(lolhigh, lollow, labels = c('B', 'C'), label_size = 12)
 
 plot_grid(bar_Ndepth_per_CHR, bottom_row, labels = c('A', ''), label_size = 12, ncol = 1)
 ```
@@ -452,17 +454,17 @@ plot_grid(bar_Ndepth_per_CHR, bottom_row, labels = c('A', ''), label_size = 12, 
 Here is a table including the isolates with supernumerary _core_ chromosomes.
 ```{r Supernumerary chromosomes table}
 depth  %>%
-  filter(Depth_is == "High") %>%
-  filter(CHROM < 13)
+  dplyr::filter(Depth_is == "High") %>%
+  dplyr::filter(CHROM < 13)
 ```
 
 And an overlook of the accessory chromosomes PAV per continent (only considering continents with more than 10 isolates). 
 ```{r}
 depth %>%
-  filter(CHROM > 13) %>%
-  group_by(Continent_Region, CHROM) %>%
-  mutate(Count_sample_per_continent = n()) %>%
-  filter(Count_sample_per_continent >= 10) %>%
+  dplyr::filter(CHROM > 13) %>%
+  dplyr::group_by(Continent_Region, CHROM) %>%
+  dplyr::mutate(Count_sample_per_continent = n()) %>%
+  dplyr::filter(Count_sample_per_continent >= 10) %>%
   ggplot(aes(x = Continent_Region, fill = Depth_is)) +
   geom_bar(position = "fill" ) + facet_wrap(CHROM~.) + 
   theme_light() +
@@ -527,8 +529,8 @@ snpgdsClose(genofile)
 pca2 = as.tibble(pca$eigenvect) %>% dplyr::select(V1:V4) 
 colnames(pca2) = c("PC1", "PC2", "PC3", "PC4")
 pca2 = pca2 %>%
-  mutate(sample_id = pca$sample.id ) %>%
-  right_join(., Zt_meta, by = c("sample_id" = "ID_file")) %>%
+  dplyr::mutate(sample_id = pca$sample.id ) %>%
+  dplyr::right_join(., Zt_meta, by = c("sample_id" = "ID_file")) %>%
   unite(sample_id, Country, col = "for_display", remove = F)
 
 as.tibble(pca$eigenval[!is.na(pca$eigenval)]) %>%
@@ -810,9 +812,9 @@ chosen_threshold = 0.8
 
 snmf_results_per_K %>% 
   filter(K == chosen_K) %>%
-  group_by(Continent_Region, for_display, Cluster) %>%
-  summarize(Ave_admix_coef = round(mean(Admix_coef), 2)) %>%
-  filter(Ave_admix_coef >= 0.02) %>%
+  dplyr::group_by(Continent_Region, for_display, Cluster) %>%
+  dplyr::summarize(Ave_admix_coef = round(mean(Admix_coef), 2)) %>%
+  dplyr::filter(Ave_admix_coef >= 0.02) %>%
   ggplot(aes(x = for_display, y = Cluster, 
              size =  Ave_admix_coef, color = Continent_Region)) + 
   geom_point(alpha = 0.5) + Color_Continent+ theme_bw() +
@@ -826,14 +828,14 @@ high_anc_coef_snmf = snmf_results_per_K %>%
 
 ##Table
 kable(high_anc_coef_snmf %>%
-  group_by(for_display, Cluster) %>%
-  count() %>%
+  dplyr::group_by(for_display, Cluster) %>%
+  dplyr::count() %>%
   pivot_wider(names_from = Cluster, values_from = n, values_fill = list(n = 0)))
 
 ##Pretty plot
 p_cluster = high_anc_coef_snmf %>%
-  group_by(Continent_Region, for_display, Cluster) %>%
-  count() %>%
+  dplyr::group_by(Continent_Region, for_display, Cluster) %>%
+  dplyr::count() %>%
   ggplot(aes(x = for_display, y = Cluster, 
              size = n, color = Continent_Region)) + 
   geom_point(alpha = 0.5) + Color_Continent+ theme_bw() +
@@ -1091,12 +1093,12 @@ PopGenome_results_whole = bind_rows(PopGenome_results_list)
 
 PopGenome_results_whole %>%
   filter(synonymous == 1) %>%
-  select(`#CHROM`, POS) %>%
+  dplyr::select(`#CHROM`, POS) %>%
   write_tsv(paste0(Sumstats_dir, "Synonymous_SNPs.list.txt"), col_names = F)
 
 syn_PopGenome_results_per_chr = bind_rows(syn_PopGenome_results_list) %>% 
   na_if(., "NaN") %>%
-  mutate_at(vars(starts_with("pop")), funs(as.numeric)) %>%
+  dplyr::mutate_at(vars(starts_with("pop")), funs(as.numeric)) %>%
   pivot_longer(-c(statistic, chromosome), names_to = "Population", values_to = "Estimate")
 
 ```
@@ -1202,9 +1204,9 @@ rm(PopGenome_results_list)
 
 # Tajima's D
 temp = PopGenome_results_per_gene %>%
-  filter(statistic == "TajimaD") %>% 
+  dplyr::filter(statistic == "TajimaD") %>% 
   na_if(., "NaN") %>%
-  mutate_at(vars(starts_with("pop")), funs(as.numeric)) %>%
+  dplyr::mutate_at(vars(starts_with("pop")), funs(as.numeric)) %>%
   pivot_longer(-c(statistic, chromosome, position), names_to = "Population", values_to = "Estimate") %>%
   separate(position, into = c("start", "stop")) 
 
@@ -1227,9 +1229,9 @@ p3 = ggplot(temp, aes(x = Population, y = as.numeric(Estimate), fill = Median_va
 
 # Nucleotide diversity
 temp = PopGenome_results_per_gene %>%
-  filter(statistic == "Nuc_Div_per_site") %>% 
+  dplyr::filter(statistic == "Nuc_Div_per_site") %>% 
   na_if(., "NaN") %>%
-  mutate_at(vars(starts_with("pop")), funs(as.numeric)) %>%
+  dplyr::mutate_at(vars(starts_with("pop")), funs(as.numeric)) %>%
   pivot_longer(-c(statistic, chromosome, position), names_to = "Population", values_to = "Estimate") %>%
   separate(position, into = c("start", "stop"))  
   
@@ -1318,16 +1320,16 @@ counts = read_tsv(count_file,
                   skip = 1, col_names = F) %>% 
          separate(X5, into = c("REF allele", "REF_count")) %>% 
          separate(X6, into = c("ALT allele", "ALT_count")) %>%
-         mutate(MAC = pmin(as.numeric(REF_count), as.numeric(ALT_count))) %>%
-         mutate(Pop = x)
+         dplyr::mutate(MAC = pmin(as.numeric(REF_count), as.numeric(ALT_count))) %>%
+         dplyr::mutate(Pop = x)
 SFS_counts_list[[x]] = counts
 }
 SFS_counts = bind_rows(SFS_counts_list)
 
 SFS_counts %>%
   filter(MAC > 0) %>%
-  group_by(Pop, MAC) %>%
-  count(name = "count") %>%
+  dplyr::group_by(Pop, MAC) %>%
+  dplyr::count(name = "count") %>%
   ggplot(aes(as.numeric(x = as.numeric(MAC)), y = count)) + 
     geom_bar(stat = "identity") +
     labs(title = "Site frequency spectrum from the different populations") +
@@ -1436,15 +1438,15 @@ First, I mapped the reads on the TE consensus created by Ursula based on Thomas'
 
 #Reading in the data
 TE_qty = read_delim(paste0(RIP_DIR, "Nb_reads.txt"), delim = " ") %>%
-  filter(Total_reads > Te_aligned_reads) %>%
-  mutate(Percent_TE_Reads = Te_aligned_reads * 100 / Total_reads) %>% 
+  dplyr::filter(Total_reads > Te_aligned_reads) %>%
+  dplyr::mutate(Percent_TE_Reads = Te_aligned_reads * 100 / Total_reads) %>% 
   left_join(readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_DC_AFperso.xlsx"), 
                            sheet = 1, n_max = 1000)) %>%
   unite(Continent_Region, Country, ID_file, col = "for_display", remove = F) 
 
 world_avg <- 
   TE_qty  %>%
-  summarize(avg = mean(as.numeric(Percent_TE_Reads), na.rm = T)) %>%
+  dplyr::summarize(avg = mean(as.numeric(Percent_TE_Reads), na.rm = T)) %>%
   pull(avg)
 
 #Building the basic violin plot per continent
@@ -1499,12 +1501,14 @@ TE_prop +
   geom_text(data = CLD, aes(x = Continent_Region, label = .group, y = 34), color   = "black")
 ```
 The statistics used here are a one-way [ANOVA with block](https://rcompanion.org/handbook/I_06.html). Blocks are used in an analysis of variance or similar models in order to account for suspected variation from factors other than the treatments or main independent variables being investigated. Here I considered the collection as the confounging factor. It definitely has an effect and was thus accounted for in the statistics related to TE content and to RIP level.
+
+I would like to go finer in the TE content analysis and look at the reads aligning on each consensus sequence. 
 ```{r reads per TE}
 reads_per_TE = read_delim(paste0(RIP_DIR, "Nb_reads_per_TE.txt"), delim = "\t", 
                     col_names = c("ID_file", "TE", "Length", 
                                   "# mapped read-segments",  "# unmapped read-segments")) %>%
   separate(TE, into = c("Superfamily", "TE_id"), sep = "_", remove = F) %>% 
-  mutate(Order = ifelse(!grepl('^D',TE), "Class II (DNA transposons)", "Class I (retrotransposons)")) %>% 
+  dplyr::mutate(Order = ifelse(!grepl('^D',TE), "Class II (DNA transposons)", "Class I (retrotransposons)")) %>% 
   left_join(readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_DC_AFperso.xlsx"), 
                            sheet = 1, n_max = 1000)) %>%
   unite(Continent_Region, Country, ID_file, col = "for_display", remove = F)
@@ -1547,9 +1551,14 @@ p1 = cbind(TE_PCA_mat, as.data.frame(TE.pca$x)) %>%
 ggplotly(p1)
 
 p2 = cbind(TE_PCA_mat, as.data.frame(TE.pca$x)) %>%
-  ggplot(aes(x = PC3, y = PC4, col = Continent_Region, text = for_display)) +
+  ggplot(aes(x = PC2, y = PC3, col = Continent_Region, text = for_display)) +
   geom_point(alpha = 0.6) + theme_bw() + Color_Continent
 ggplotly(p2)
+
+p3 = cbind(TE_PCA_mat, as.data.frame(TE.pca$x)) %>%
+  ggplot(aes(x = PC3, y = PC4, col = Continent_Region, text = for_display)) +
+  geom_point(alpha = 0.6) + theme_bw() + Color_Continent
+ggplotly(p3)
 ```
 
 Let's now plot the same results but all 4 axis against all and not interactive.
@@ -1570,12 +1579,12 @@ for(i in 1:p$nrow) {
 
 p
 ```
-<br>
+
 It does look like there is clustering of samples according to geography. This is interesting as it shows that the types of TEs are different in different populations.
+<br>
 
 
-
-I now look at the repeat-induced point mutations in reads that map on the TE consensus. We expect to see differences in the different geographical groups so I start by visualizing this. 
+I now look at the repeat-induced point mutations in reads that map on the different TE consensus. We expect to see differences in the different geographical groups so I start by visualizing this. 
 ```{r RIP input and plot per geography}
 
 RIP=read_tsv(paste0(RIP_DIR, "Composite_index.txt"), 
@@ -1891,8 +1900,10 @@ write_tsv(depth, path = paste0(TE_RIP_dir, "Coverage_in_windows_summary.txt"))
 ```{r Depth per locus on pangenome}
 suffix = ".depth_per_window.txt"
 files <- list.files(paste0(VAR_dir,"1_Depth_per_window/"), pattern = paste0(suffix, "$"))
-smaller_files = sample(files, size = 50, replace =F)
+smaller_files = sample(files, size = 0, replace =F)
 smaller_files = files[grepl("ORE", files)]
+smaller_files[length(smaller_files) + 1] = paste0("ST90ORE_a12_3B_6.chr_1.corrected", suffix)
+
 
 depth_per_locus = data.frame()
 
@@ -1915,7 +1926,8 @@ median_depth_cor_per_ind = depth_per_locus %>%
 
 
 depth_per_locus = left_join(depth_per_locus, median_depth_cor_per_ind) %>% 
-  left_join(., Zt_meta) %>%
+  left_join(., readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_DC_AFperso.xlsx"), 
+                           sheet = 1, n_max = 1000)) %>%
   mutate(Normalized_depth = Depth / Median_core_depth) %>%
   filter(Median_core_depth > 10)
 
@@ -1965,6 +1977,58 @@ GC_bias = GC_coverage %>%
   dplyr::mutate(GC_bias_slope = v_getAlpha(ID_file)) 
 
 ```
+
+```{r, fig.height = 5}
+
+temp = GC_coverage %>% 
+  filter(chr == 1) %>%
+  mutate(GC_percent = round(`5_pct_gc` * 100, 0)) %>%
+  mutate(Date_Year = ifelse(is.na(Date_Year), "corrected", Date_Year)) %>%
+ group_by(ID_file, GC_percent, Date_Year) %>%
+ dplyr::summarize(Average_depth = mean(Depth, na.rm = T),
+                  Window_count = n()) 
+
+p1 = temp %>%
+ ggplot(aes(x = GC_percent, y = Average_depth, color = ID_file, linetype = Date_Year)) + 
+  geom_line() + theme_bw() + geom_hline(yintercept = 3) +
+  theme(legend.position = "top") + 
+  xlim(c(20, 70)) + 
+  labs(x = "GC percent of the window",
+       y = str_wrap("Average depth per window of a given GC percent", width = 20)) 
+
+p2 = temp %>%
+  dplyr::filter(ID_file == unique(temp$ID_file[[1]])) %>%
+  ggplot(aes(GC_percent, Window_count)) + geom_bar(stat = "identity") + 
+  theme_bw() + 
+  labs(x = "GC percent of the window",
+       y = str_wrap("Number of windows of a given GC percent", width = 20)) 
+
+
+p3 = read_tsv(paste0(RIP_DIR, "GC_percent.txt"), col_names = c("ID_file", "TE", "GC_median", "GC_mean")) %>%
+  inner_join(readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_DC_AFperso.xlsx"), 
+                           sheet = 1, n_max = 1000)) %>%
+  filter(Continent_Region == "North America") %>%
+  ggplot(aes(GC_median, fill = Collection, color = Collection)) + 
+  geom_density(alpha = 0.4) + 
+  theme_bw() + 
+  labs(x = "Median GC content of the reads aligning on TEs") + 
+  xlim(c(20, 70)) +
+  theme(legend.position = "bottom")
+
+plot_grid(p1, p2, p3, nrow = 3, ncol = 1, rel_heights = c(1, 0.5, 0.7))
+
+```
+I’ve created a new representation of the GC bias and the first test for the correction. 
+
+For the top plot, I have sorted the windows of chromosome 1 in GC percent bins (1% bins). For each bin and for each sample, I then measure the average depth for all windows of the corresponding GC percent and this is what is plotted here. 
+In the middle, you can see an histogram of the number of windows for each bin and, at the bottom, is the median GC content of reads aligning on TEs which I use as a proxy to estimate the GC content of TEs in general. 
+
+As we have seen before, there is a severe GC bias in the older genomes: in the windows with a GC content similar to TE reads (42 - 47), the coverage is often below 3 (black horizontal line). I know that you had tested the effect of depth on your method, Ursula, but this is quite an extreme difference between around 20 to 3... Perhaps this could be tested with a manually GC-biased sample.
+
+I have tried the correction on one sample. You can see it in the top panel as a dashed purple line. It really does correct! Obviously the most extreme values don't get corrected because 0 reads is 0 reads... But it's not as bad as I expected honestly!
+
+I did also try the in silico sequencing with GC bias but I could find only one software which claimed to include GCbias in simulated reads and it really did not go as extreme as we needed, unfortunately. 
+
 
 ```{r plot GCbias alpha}
 # Selection a smaller number of samples to illustrate the GC bias
@@ -2033,8 +2097,7 @@ temp = inner_join(GC_bias, TE_RIP, by = "ID_file") %>%
        title = "Effect of GC bias on TE and RIP estimation")
 ggplotly(temp)
 
-t = TE_RIP %>% 
-     filter(Country == "United States") %>%
+t = TE_RIP %>%
      ggplot(aes(Percent_TE_Reads, as.numeric(Composite_median), color = Collection, 
                 shape = as.character(Date_Year), text = for_display)) +
      geom_point(alpha = 0.8) +
@@ -2048,6 +2111,52 @@ I tried to correct the GC bias by using deeptools correctGCBias on one sample fr
 
 I don't know if the GC bias is the reason for the clear difference between the Hartmann dataset or if the two are consequence of something else. Either way, it does not seem reasonable to compare this dataset to the rest. It seems that, inside of this dataset, the observed differences match with what can be inferred from the rest of the samples. 
 <br>
+
+
+
+## RIP along the chromosomes
+
+```{r, fig.height = 5}
+RIP_in_high_copies_TE = read_tsv(paste0(TE_RIP_dir, "All_genomes.all_TEs.GC.RIP.tab"), 
+             col_names = c("Sample", "Seq_ID", "GC", "Product_index", "Substrate_index", "Composite_index"))
+
+temp = RIP_in_high_copies_TE %>%
+  separate(Seq_ID, into = c("Sample", "Chrom", "Start", "End"), 
+           sep = "\\.|-|:", remove = F) %>%
+  dplyr::mutate(Start = as.integer(Start), End = as.integer(End)) %>%
+  dplyr::mutate(Coord = (Start + End)/2) 
+
+temp %>%
+  filter(Chrom == "chr_4") %>% 
+  filter(Composite_index <= 2 & Composite_index >= - 2 )%>% 
+  ggplot(aes(Coord, Composite_index, col = Composite_index)) +
+    geom_point() +
+    facet_wrap (vars(Sample), ncol = 1) +
+  theme_bw() + 
+  scale_color_viridis_c() 
+  
+temp %>%
+  dplyr::mutate(Nb = str_pad(round((Coord / 100000), 0), 6, pad = "0")) %>%
+  filter(Composite_index >= -2 & Composite_index<= 2) %>%
+  #filter(Chrom == "chr_1") %>%
+  unite(Window, Chrom, Nb) %>%
+  group_by(Sample, Window) %>%
+  dplyr::summarize(Composite = mean(Composite_index, na.rm = T)) %>%
+  ggplot(aes(Window, Sample, fill = Composite)) +
+    geom_tile() +
+  theme_bw() + 
+  scale_fill_viridis_c() 
+
+temp %>%
+  filter(Composite_index >= -3 & Composite_index<= 3) %>%
+  mutate(Chr = as.integer(str_replace(Chrom, "chr_", ""))) %>%
+  group_by(Sample, Chr) %>%
+  dplyr::summarize(Composite = mean(Composite_index, na.rm = T)) %>%
+  ggplot(aes(Chr, Sample, fill = Composite)) +
+    geom_tile() +
+  theme_bw() + 
+  scale_fill_viridis_c() 
+```
 
 
 ## Is dim2 present in its intact version in some populations?
@@ -2241,6 +2350,40 @@ cor.test(temp$max_id, temp$nb_match, method="spearman")
 ```{r}
 p1 +coord_flip()
 ```
+```{r}
+temp = sum_dim2_blast %>%
+  filter(TE == "RIP_est") 
+#Statistical test
+#One-way ANOVA with blocks
+##Define linear model
+model = lm(as.numeric(max_id) ~ Continent_Region + Collection ,
+          data=temp)
+summary(model)   ### Will show overall p-value and r-squared
+
+##Conduct analysis of variance
+Anova(model,type = "II")  
+summary(model) 
+
+hist(residuals(model), col="darkgray")
+
+#Post-hoc analysis:  mean separation tests
+marginal = lsmeans(model, ~ Continent_Region)
+
+pairs(marginal, adjust="tukey")
+
+CLD_dim = cld(marginal,
+          alpha   = 0.05,
+          Letters = letters,  ### Use lower-case letters for .group
+          adjust  = "tukey")  ### Tukey-adjusted p-values
+
+CLD_dim
+
+CLD_dim$.group=gsub(" ", "", CLD_dim$.group)
+
+text_y = (max(as.numeric(temp$Composite_median), na.rm = T) + 0.1*max(as.numeric(temp$Composite_median), na.rm = T))
+
+
+```
 
 
 And then as boxplots per continental region. 
@@ -2268,7 +2411,11 @@ p1 = sum_dim2_blast %>%
     axis.text.x = element_text(size = 10, angle = 40, hjust = 1)) +
    coord_flip() +
   labs(x = NULL, 
-       y = "Maximum identity with deRipped dim2") 
+       y = "Maximum identity with deRipped dim2") +
+  geom_text(data = CLD_dim, aes(x = Continent_Region, 
+                            y = 102, 
+                            label = .group), color = "black")
+
 
 p2 = ggplot(sum_dim2_blast, aes(Continent_Region, nb_match, 
              fill = Continent_Region)) + 
@@ -2281,6 +2428,8 @@ p2 = ggplot(sum_dim2_blast, aes(Continent_Region, nb_match,
   labs(x = NULL, 
        y = "Number of dim2 copies") + coord_flip()
 cowplot::plot_grid(p1, p2, rel_widths = c(1, 1))
+
+
 
 ```
 
