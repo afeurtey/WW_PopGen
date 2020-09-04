@@ -59,4 +59,6 @@ TE_REF=${DATA_DIR}Badet_BMC_Biology_2020_TE_consensus_sequences
 PAN_REF=${DATA_DIR}all_19_pangenome
 IPO323_REF=${DATA_DIR}Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa
 dim2_seq=${DATA_DIR}Zt10_dim2_from_MgDNMT_deRIP.fa
+dim2_flank1=${DATA_DIR}dim2_flank1_Zt10_unitig_006_0418.fasta
+dim2_flank2=${DATA_DIR}dim2_flank2_Zt10_unitig_006_0416.fasta
 IPO323_VCF=${var_cal_dir}Ztritici_global_March2020.filtered.vcf.gz 
