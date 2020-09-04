@@ -2126,14 +2126,14 @@ temp = RIP_in_high_copies_TE %>%
   dplyr::mutate(Start = as.integer(Start), End = as.integer(End)) %>%
   dplyr::mutate(Coord = (Start + End)/2) 
 
-temp %>%
-  filter(Chrom == "chr_4") %>% 
-  filter(Composite_index <= 2 & Composite_index >= - 2 )%>% 
-  ggplot(aes(Coord, Composite_index, col = Composite_index)) +
-    geom_point() +
-    facet_wrap (vars(Sample), ncol = 1) +
-  theme_bw() + 
-  scale_color_viridis_c() 
+#temp %>%
+#  filter(Chrom == "chr_4") %>% 
+#  filter(Composite_index <= 2 & Composite_index >= - 2 )%>% 
+#  ggplot(aes(Coord, Composite_index, col = Composite_index)) +
+#    geom_point() +
+#    facet_wrap (vars(Sample), ncol = 1) +
+#  theme_bw() + 
+#  scale_color_viridis_c() 
   
 temp %>%
   dplyr::mutate(Nb = str_pad(round((Coord / 100000), 0), 6, pad = "0")) %>%
@@ -2272,92 +2272,249 @@ Let's look at the results as dot plots and compare the results from the dim2 bla
 system(paste0("cat ", DIM2_DIR, "Results_blast_dim2*txt > ", DIM2_DIR, "Overall_results_blast_dim2.txt"))
 
 length_dim2 = 3846
-threshold_length = 0.8 * length_dim2
+length_flank1 = 3689
+length_flank2 = 1222
+threshold_length_dim2 = 0.8 * length_dim2
+threshold_length_flank1 = 0.8 * length_flank1
+threshold_length_flank2 = 0.8 * length_flank2
 
 dim2_blast_results = read_delim(paste0(DIM2_DIR, "Overall_results_blast_dim2.txt"), delim = " ",
-                                col_names = c("sample", "qseqid", "sseqid", "pident", "length", 
+                                col_names = c("sample", "gene", "qseqid", "sseqid", "pident", "length", 
                                               "mismatch", "gapopen", "qstart", "qend", 
                                               "sstart", "send", "evalue", "bitscore"))
 
+flank1 = dim2_blast_results %>% 
+  dplyr::select(sample, gene, sseqid, length) %>% 
+  filter(gene == "dim2_flank1") %>% 
+  filter(length > threshold_length_flank1) %>%
+  pivot_wider(names_from = gene, values_from = sseqid) %>%
+  dplyr::select(-length) 
+
+flank2 = dim2_blast_results %>% 
+  dplyr::select(sample, gene, sseqid, length) %>% 
+  filter(gene == "dim2_flank2") %>% 
+  filter(length > threshold_length_flank2) %>%
+  pivot_wider(names_from = gene, values_from = sseqid) %>%
+  dplyr::select(-length) 
+
+dim2_blast_results = dim2_blast_results %>%
+  filter(gene == "dim2") %>%
+  full_join(., flank1) %>%
+  full_join(., flank2) %>%
+  mutate(dim2_flank1 = replace_na(dim2_flank1, "Not_found"),
+         dim2_flank2 = replace_na(dim2_flank2, "Not_found")) %>%
+  mutate(is_same_contig = ifelse(sseqid == dim2_flank1 & sseqid == dim2_flank2,
+                                 "Both", 
+                                 ifelse(sseqid != dim2_flank1 & sseqid != dim2_flank2,
+                                 "None", 
+                                 ifelse(sseqid == dim2_flank1, "Flank1",
+                                 ifelse(sseqid == dim2_flank2, "Flank2", "What")))))%>% 
+  mutate(Nb_flanking_found_2cat = ifelse(is_same_contig == "None", "0", ">1"))  
+
+
+
+  #dplyr::select(sample, sseqid, length, dim2_flank1, dim2_flank2, is_same_contig) %>%
+
+
+
 dim2_blast_results %>% 
   ggplot(aes(length)) + 
-    geom_density(fill=myColors[3], color=myColors[3], alpha=0.8) + 
+    geom_density(alpha = 0.7) + 
     theme_bw() + 
-    geom_vline(aes(xintercept = threshold_length), color = "gray70", size = 0.6) +
+    geom_vline(aes(xintercept = threshold_length_dim2), color = "gray70", size = 0.6) +
     labs(x = "Length (bp)",
          y = "Density",
          title = "Length of all blast matches against Zt10dim2",
          subtitle = str_wrap(paste("There is a large range in the size of the matches.",
-                                   " In order to ignore very short matches, I set up a threshold",
+                                   " In order to ignore very short matches, I could set up a threshold",
                                    " visualized here as the grey line."), 
          width = 70))
+```
+However, the length also greatly varies for copies for which we were able to detect one or two of the flanking genes on the same contig.
+```{r}
 
+
+p1 = dim2_blast_results %>%
+  ggplot(aes(length, fill = is_same_contig, color = is_same_contig)) + 
+    geom_density(alpha = 0.7) + 
+    theme_bw() + 
+    labs(x = "Length (bp)",
+         y = "Density",
+         title = str_wrap("Length of all blast matches against Zt10dim2", width = 30))
+
+
+p3 = dim2_blast_results %>%
+  ggplot(aes(Nb_flanking_found_2cat, fill = is_same_contig)) + 
+    geom_bar(alpha = 0.7) + 
+    theme_bw() + 
+  labs ( x = "Number of flanking genes on the same contig",
+         y = "Number of copies",
+         title = str_wrap("Numbers of copies found in the same contig as the flanking genes ", width = 30)) + 
+  theme(legend.position = "none") 
+
+legend_b <- get_legend(
+  p1 + 
+    guides(color = guide_legend(nrow = 1)) +
+    theme(legend.position = "bottom")
+)
+
+prow <- plot_grid(
+  p1 + theme(legend.position="none"),
+  p3 + theme(legend.position="none"),
+  align = 'vh',
+  labels = c("A", "B"),
+  hjust = -1,
+  nrow = 1)
+
+plot_grid(prow, legend_b, ncol = 1, rel_heights = c(1, .1))
+
+```
+
+Now, I will select only the copies which have a least one flanking gene found on the same contig. I consider these the "native" copy of the gene. And I will then make some plots using only these original copies to investigate the geographical distribution of both length and identity with the dim2 copy of Zt10.
+```{r}
+
+temp = dim2_blast_results %>%
+  group_by(sample) %>%
+  dplyr::summarize(n_matches = n(),
+                   n_long_matches = sum(length > 1000))
 
 sum_dim2_blast = dim2_blast_results %>%
-  filter(length > threshold_length) %>%
+  dplyr::filter(Nb_flanking_found_2cat == ">1") %>%
   group_by(sample) %>%
-  dplyr::summarise(max_id = max(pident), nb_match = n()) %>%
-  inner_join(., RIP, by = c("sample" = "ID_file"))
+  dplyr::summarize(length_sum = sum(length),
+                   pident_wm = weighted.mean(pident, length), 
+                   n_matches_on_native_contigs = n()) %>%
+  filter(length_sum < length_dim2 + 200) %>%
+  inner_join(., temp) %>%
+  inner_join(., RIP %>% filter(TE == "RIP_est"), by = c("sample" = "ID_file"))
 
 
+
+#Plots of identity vs length of the original copy
+scatter <- sum_dim2_blast %>% 
+  ggplot(aes(length_sum, pident_wm, 
+             color = Continent_Region, 
+             shape = as.character(n_matches_on_native_contigs))) +
+  geom_point() +
+  theme_bw() + Color_Continent +
+  theme(legend.position = "none") + 
+  labs( x = "Length of the recovered native copy", 
+        y = "Identity with Zt10dim2")
+
+hist_top = sum_dim2_blast %>% 
+  filter(Continent_Region != "Asia") %>%
+  ggplot(aes(Continent_Region, length_sum, 
+             fill = Continent_Region, color = Continent_Region)) +
+  geom_boxplot(alpha = 0.6, width = 0.4) +
+  theme_bw() + 
+  Fill_Continent + Color_Continent+
+  theme(legend.position = "none",
+        axis.text.x = element_text(size = 7),
+        axis.text.y = element_text(size = 7)) + 
+  coord_flip() + 
+  labs( x = "", y = "")
+
+hist_right = sum_dim2_blast %>% 
+  filter(Continent_Region != "Asia") %>%
+  ggplot(aes(Continent_Region, pident_wm, fill = Continent_Region)) +
+  geom_violin(alpha = 0.6) +
+  theme_bw() + Fill_Continent +
+  theme(legend.position = "none",
+        axis.text.x = element_text(size = 7, angle = 20, hjust = 1)) + 
+  labs( x = "", y = "")
+
+
+#Options for top right plot
+legend_b <- get_legend(
+  hist_top + 
+    guides(color = guide_legend(nrow = 1)) +
+    theme(legend.position = "right")
+)
+
+empty <- ggplot()+geom_point(aes(1,1), colour="white")+
+         theme(axis.ticks=element_blank(), 
+               panel.background=element_blank(), 
+               axis.text.x=element_blank(), axis.text.y=element_blank(),           
+               axis.title.x=element_blank(), axis.title.y=element_blank())
+
+
+
+
+#Gather all
+cowplot::plot_grid(hist_top, legend_b, scatter, hist_right, 
+                   ncol=2, nrow=2, 
+                   rel_widths=c(1.2, 1), rel_heights=c(1, 1),  
+                   align = 'vh')
+
+```
+
+```{r}
+sum_dim2_blast %>% 
+  filter(Continent_Region != "Asia") %>%
+  dplyr::mutate(Nb_frag = as.character(n_matches_on_native_contigs))  %>%
+  dplyr::count(Nb_frag, Collection, Continent_Region) %>%
+  ggplot(aes(Collection, Continent_Region, color = Collection)) +
+  geom_point(aes(size = n), stat = "identity", alpha = 0.6) +
+  theme_bw() + 
+  theme(legend.position = "none",
+        axis.text.x = element_text(size = 7, angle = 20, hjust = 1)) + 
+  labs( x = "", y = "") + 
+  Fill_Continent +
+  facet_wrap(vars(Nb_frag))
+```
+Here a large proportion of the Middle-Eastern samples from the old Hartmann dataset have two matches on the "right" contigs: this is due to a deletion found in one of the allele of dim2 (shown in Mareike's new version of her dim2 manuscript).
+
+Let's investigate quickly how many long copies there are in each genome. I'm also interested in the native match as related to RIP and geography. 
+```{r}
 
 p1 = sum_dim2_blast %>%
-  filter(TE == "RIP_est") %>%
-  ggplot(aes(as.numeric(Composite_median), max_id, color = Continent_Region))+
+  ggplot(aes(as.numeric(Composite_median), pident_wm, color = Continent_Region))+
   geom_point() + Color_Continent + 
   theme_bw() + theme(legend.position = "none") +
     labs(x = str_wrap(paste("RIP composite index",
                             " (median per isolate)"), 
                       width = 20),
-         y = str_wrap("Identity of the best match", 
+         y = str_wrap("Identity of the native match", 
                       width = 20))
 
 p2 = sum_dim2_blast %>%
-  filter(TE == "RIP_est") %>%
-  ggplot(aes(as.numeric(Composite_median), nb_match, color = Continent_Region))+
+  ggplot(aes(as.numeric(Composite_median), n_long_matches, color = Continent_Region))+
   geom_point() + Color_Continent + 
   theme_bw() + theme(legend.position = "none") +
     labs(x = str_wrap(paste("RIP composite index",
                             " (median per isolate)"), 
                       width = 20),
-         y = str_wrap("Number of long blast matches", 
+         y = str_wrap("Number of long blast matches (above 1kb)", 
                       width = 20))
 
 p3 = sum_dim2_blast %>%
-  filter(TE == "RIP_est") %>%
-  ggplot(aes(x = max_id, y = nb_match, color = Continent_Region)) +
+  ggplot(aes(x = pident_wm, y = n_long_matches, color = Continent_Region)) +
   geom_point() + Color_Continent + theme_bw()+
-    labs(x = str_wrap("Identity of the best match", 
+    labs(x = str_wrap("Identity of the native match", 
                       width = 20),
-         y = str_wrap("Number of long blast matches", 
+         y = str_wrap("Number of long blast matchess (above 1kb)", 
                       width = 20),
          color = "Geographical group") +
   theme(axis.title=element_text(size=10))
 
 bottom_row <- cowplot::plot_grid(p1, p2, labels = c('B', 'C'), label_size = 12)
 
+
+cor.test(sum_dim2_blast$pident_wm, sum_dim2_blast$Composite_median, method="spearman")
+cor.test(sum_dim2_blast$n_long_matches, sum_dim2_blast$Composite_median, method="spearman")
+cor.test(sum_dim2_blast$pident_wm, sum_dim2_blast$n_long_matches, method="spearman")
+
 cowplot::plot_grid(p3, bottom_row, labels = c('A', ''), label_size = 12, ncol = 1)
 
-
-temp = sum_dim2_blast %>%
-  filter(TE == "RIP_est")  
-
-cor.test(temp$max_id, temp$Composite_median, method="spearman")
-cor.test(temp$nb_match, temp$Composite_median, method="spearman")
-cor.test(temp$max_id, temp$nb_match, method="spearman")
-
 ```
+
 ```{r}
-p1 +coord_flip()
-```
-```{r}
-temp = sum_dim2_blast %>%
-  filter(TE == "RIP_est") 
+
 #Statistical test
 #One-way ANOVA with blocks
 ##Define linear model
-model = lm(as.numeric(max_id) ~ Continent_Region + Collection ,
-          data=temp)
+model = lm(as.numeric(pident_wm) ~ Continent_Region + Collection ,
+          data=sum_dim2_blast)
 summary(model)   ### Will show overall p-value and r-squared
 
 ##Conduct analysis of variance
@@ -2389,19 +2546,12 @@ text_y = (max(as.numeric(temp$Composite_median), na.rm = T) + 0.1*max(as.numeric
 And then as boxplots per continental region. 
 ```{r dim2 blast results box}
 p1 = sum_dim2_blast %>%
-  filter(TE == "RIP_est") %>%
   group_by(Continent_Region) %>%
-  dplyr::mutate(avg_per_cont = mean(max_id, na.rm = T)) %>%
-  ggplot(aes(Continent_Region, max_id, 
+  dplyr::mutate(avg_per_cont = mean(pident_wm, na.rm = T)) %>%
+  ggplot(aes(Continent_Region, pident_wm, 
              fill = Continent_Region)) +
-    geom_segment(aes(x=Continent_Region, xend=Continent_Region, 
-                      y=min(sum_dim2_blast$max_id), yend=100), 
-                  color="grey90", size = 1.5) +
-    geom_segment(aes(x=Continent_Region, xend=Continent_Region, 
-                     y=min(sum_dim2_blast$max_id), yend=avg_per_cont, 
-                     color = Continent_Region), 
-                 size = 1.5) +
-    geom_jitter(aes(color = Continent_Region), size = 1.5, alpha = 0.6, width = 0.2, height = 0.1) +
+  geom_violin(aes(fill = Continent_Region), alpha = 0.5) +
+    geom_jitter(aes(col = Continent_Region), size = 0.8, alpha = 0.8, width = 0.2, height = 0.1) + 
   Fill_Continent + Color_Continent  +
     theme_light() +
     theme(
@@ -2411,15 +2561,15 @@ p1 = sum_dim2_blast %>%
     axis.text.x = element_text(size = 10, angle = 40, hjust = 1)) +
    coord_flip() +
   labs(x = NULL, 
-       y = "Maximum identity with deRipped dim2") +
+       y = "Identity of the native copy to Zt10dim2") +
   geom_text(data = CLD_dim, aes(x = Continent_Region, 
                             y = 102, 
                             label = .group), color = "black")
 
 
-p2 = ggplot(sum_dim2_blast, aes(Continent_Region, nb_match, 
+p2 = ggplot(sum_dim2_blast, aes(Continent_Region, n_long_matches, 
              fill = Continent_Region)) + 
-  geom_boxplot(width = 0.21) + Fill_Continent +
+  geom_violin() + Fill_Continent +
   theme_light() + 
   theme(panel.grid.major.y = element_blank(),
     panel.border = element_blank(),
@@ -2428,6 +2578,95 @@ p2 = ggplot(sum_dim2_blast, aes(Continent_Region, nb_match,
   labs(x = NULL, 
        y = "Number of dim2 copies") + coord_flip()
 cowplot::plot_grid(p1, p2, rel_widths = c(1, 1))
+
+
+
+```
+
+## dim2 tree
+```{r}
+
+#TODO. 
+#Use beginning and end of dim2 gene (100bp) to get gene boundaries on assemblies
+
+#Keep only copies with:
+#   - both flanking genes
+#   - one flanking gene but a length of 2500 at least
+
+dim2_blast_results %>% 
+  dplyr::filter(Nb_flanking_found_2cat == ">1") %>%
+  left_join(., RIP, by = c("sample" = "ID_file")) %>% 
+  filter(length > 2500) %>% 
+  dplyr::count(is_same_contig, Continent_Region) %>%  
+  dplyr::group_by(Continent_Region) %>% 
+  dplyr::mutate(Somme_per_collection = sum(n)) %>% 
+  mutate(prop = n*100/Somme_per_collection) %>% 
+  ggplot(aes(x = is_same_contig, y = Continent_Region, fill = prop)) + 
+    geom_tile() + 
+    theme_bw() + 
+    scale_fill_viridis_c() + 
+  labs (title = str_wrap(paste0("Proportion of long dim2 matches ", 
+                                "with at least one flanking gene"), 
+                         width = 70))
+    
+
+#Previous versions:
+temp = dim2_blast_results %>% 
+  dplyr::filter(Nb_flanking_found_2cat == ">1") %>% 
+  pivot_longer(c(sstart, send), names_to = "temp", values_to = "coord") %>% 
+  group_by(sample, sseqid) %>% 
+  dplyr::summarize(min = min(coord), max = max(coord)) %>% 
+  dplyr::mutate(length = max-min)
+temp2 = temp %>% 
+  filter(length >= 1000 & length <= 5000) 
+
+temp2 %>%
+  write_tsv("/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/Essai_dim2_coordinates.tab",
+            col_names = F)
+
+temp2$nb = c(19:(nrow(temp2) + 18))
+
+tree = as_tibble(treeio::read.tree("/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/Essai_dim2_tree.nwk")) %>%
+  mutate(label_copy = label) %>%
+  separate(label_copy, into = c("nb", "contig"), extra = "merge", remove =F) %>%
+  dplyr::mutate(nb = as.integer(nb)) %>%
+  mutate(label_OG = label) %>%
+  full_join(., temp2) %>%
+  dplyr::mutate(label_temp = ifelse(is.na(sample), ifelse(is.na(contig), label, contig), sample)) %>%
+  unite(col = "label_new", nb, label_temp, sep = "_") %>%
+  left_join(., RIP %>% filter(TE == "RIP_est"), by = c("sample" = "ID_file"))
+
+tree2 = as_tibble(treeio::read.tree("/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/Essai_dim2_tree.nwk")) 
+
+temp = tree %>% dplyr::select(label, node, label_new, Continent_Region, Composite_median, Collection) %>%
+  mutate(Composite_median = ifelse(is.na(Composite_median), 0, Composite_median)) %>%
+  filter(!is.na(label)) %>%
+  mutate(RIP = ifelse(Composite_median >= 1.5, "High", ifelse(Composite_median <= 1, "Low", "Medium")))
+
+
+library(ggtree)
+library(tidytree)
+
+p <- ggtree(as.treedata(tree2), layout = "circular") %<+% (temp %>% select (-label))
+    
+p2 <- p + geom_tippoint(aes(color = Continent_Region)) +
+  theme(legend.position = "right") +
+  Color_Continent
+  
+p3 <- p + geom_tippoint(aes(color = RIP), alpha = 0.5) +
+  theme(legend.position = "right") + 
+  scale_color_manual(values = c("darkred", "yellow", "orange"))
+
+p4 <- p + geom_tippoint(aes(color = Collection), alpha = 0.5) +
+  theme(legend.position = "right") 
+
+cowplot::plot_grid(p2, p3)
+
+
+df = temp %>% select(RIP)
+rownames(df) <- temp$label
+gheatmap(p2, df, width=.2) + 
+  scale_fill_manual(values = c("darkred", "yellow", "orange"), name = "RIP")
 
 
 
@@ -2956,4 +3195,10 @@ genotypes_resistance %>%
 ```
 
 
+
+<br><br>
+
+
+# Virulence to new varieties
+***
 
