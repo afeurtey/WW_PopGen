@@ -19,7 +19,17 @@ head ${DATA_DIR}all_19_pangenome.windows.bed
    awk 'BEGIN{OFS = "\t"} {print $1 "_" $2 "_" $3, $4, $5} ' | \
    $BEDTOOLS_PATH groupby -g 1 -c 3 -o median > \
       ${pan_DP_win}${sample}.depth_per_window.txt ;
-  echo "Windows are done"
+  echo "Window medians are done"
+
+  $BEDTOOLS_PATH coverage \
+     -a ${DATA_DIR}all_19_pangenome.windows.bed \
+     -b ${pan_mapped}${sample}.bam \
+     -d | \
+   awk 'BEGIN{OFS = "\t"} {print $1 "_" $2 "_" $3, $4, $5} ' | \
+   $BEDTOOLS_PATH groupby -g 1 -c 3 -o mean > \
+     ${pan_DP_win}${sample}.depth_per_window.average.txt ;
+  echo "Window averages are done!"
+
 
 #Per gene
   $BEDTOOLS_PATH coverage \

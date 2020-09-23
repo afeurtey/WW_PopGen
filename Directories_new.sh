@@ -23,6 +23,7 @@ DATA_DIR=${project_dir}0_Data/
 RAW_READS=${DATA_DIR}0_Raw_reads/
 FILTERED_READS=${DATA_DIR}1_Filtered_reads/
 DENOVO_ASSEMB=${DATA_DIR}2_Denovo_assemblies/
+PB_ASSEMB=${DATA_DIR}3_PacBio_assemblies/
 
 #Population genomics
 var_cal_dir=${project_dir}1_Variant_calling/
@@ -61,4 +62,6 @@ IPO323_REF=${DATA_DIR}Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa
 dim2_seq=${DATA_DIR}Zt10_dim2_from_MgDNMT_deRIP.fa
 dim2_flank1=${DATA_DIR}dim2_flank1_Zt10_unitig_006_0418.fasta
 dim2_flank2=${DATA_DIR}dim2_flank2_Zt10_unitig_006_0416.fasta
+dim2_start=${DATA_DIR}Zt10_dim2_start_from_MgDNMT_deRIP.fa
+dim2_end=${DATA_DIR}Zt10_dim2_end_from_MgDNMT_deRIP.fa
 IPO323_VCF=${var_cal_dir}Ztritici_global_March2020.filtered.vcf.gz 
