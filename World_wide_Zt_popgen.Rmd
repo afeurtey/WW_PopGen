@@ -1901,9 +1901,15 @@ write_tsv(depth, path = paste0(TE_RIP_dir, "Coverage_in_windows_summary.txt"))
 suffix = ".depth_per_window.txt"
 files <- list.files(paste0(VAR_dir,"1_Depth_per_window/"), pattern = paste0(suffix, "$"))
 smaller_files = sample(files, size = 0, replace =F)
-smaller_files = files[grepl("ORE", files)]
+smaller_files = sample(files[grepl("ORE", files)], size = 10, replace =F)
 smaller_files[length(smaller_files) + 1] = paste0("ST90ORE_a12_3B_6.chr_1.corrected", suffix)
-
+smaller_files[length(smaller_files) + 1] = paste0("Ukraine_1995_ST95UR_F1c_2", suffix)
+smaller_files[length(smaller_files) + 1] = paste0("Chile_1995_STCH95_1G3a_06", suffix)
+smaller_files[length(smaller_files) + 1] = paste0("Indiana_1993_I24a_1", suffix)
+smaller_files[length(smaller_files) + 1] = paste0("Indiana_1993_I25a_1", suffix)
+smaller_files[length(smaller_files) + 1] = paste0("Indiana_1993_I33a_1", suffix)
+smaller_files[length(smaller_files) + 1] = paste0("Israel_1992_ISYB1b", suffix)
+smaller_files[length(smaller_files) + 1] = paste0("Israel_1992_ISZH2a", suffix)
 
 depth_per_locus = data.frame()
 
@@ -2267,6 +2273,11 @@ done
 ```
 
 Let's look at the results as dot plots and compare the results from the dim2 blast to the RIP composite index. So far the Middle-Eastern samples seem quite similar to one another, whereas other regions contain way more variability such as Europe.
+
+In order to identify the native dim2 copy in genomes, I look for several things:
+
+ * the blast match has to be on the same contig as at least one of the two known flanking genes
+ * the blast match has to be between the two flanking genes if both are on the same contig or less than 10 kb from the known flanking gene on the same contig
 ```{r dim2 blast results dots}
 
 system(paste0("cat ", DIM2_DIR, "Results_blast_dim2*txt > ", DIM2_DIR, "Overall_results_blast_dim2.txt"))
@@ -2278,38 +2289,70 @@ threshold_length_dim2 = 0.8 * length_dim2
 threshold_length_flank1 = 0.8 * length_flank1
 threshold_length_flank2 = 0.8 * length_flank2
 
-dim2_blast_results = read_delim(paste0(DIM2_DIR, "Overall_results_blast_dim2.txt"), delim = " ",
+dim2_blast_results_complete = read_delim(paste0(DIM2_DIR, "Overall_results_blast_dim2.txt"), delim = " ",
                                 col_names = c("sample", "gene", "qseqid", "sseqid", "pident", "length", 
                                               "mismatch", "gapopen", "qstart", "qend", 
                                               "sstart", "send", "evalue", "bitscore"))
 
-flank1 = dim2_blast_results %>% 
-  dplyr::select(sample, gene, sseqid, length) %>% 
+flank1 = dim2_blast_results_complete %>%
   filter(gene == "dim2_flank1") %>% 
+  dplyr::select(sample, gene, sseqid, length, sstart, send) %>% 
+  dplyr::mutate(midcoord_flank1 = (sstart + send)/2) %>% 
   filter(length > threshold_length_flank1) %>%
   pivot_wider(names_from = gene, values_from = sseqid) %>%
-  dplyr::select(-length) 
+  dplyr::select(-length, -sstart, -send) %>%
+  group_by(sample) %>%
+  dplyr::mutate(nb_gene = n())
 
-flank2 = dim2_blast_results %>% 
-  dplyr::select(sample, gene, sseqid, length) %>% 
+flank2 = dim2_blast_results_complete %>% 
   filter(gene == "dim2_flank2") %>% 
+  dplyr::select(sample, gene, sseqid, length, sstart, send) %>% 
+  dplyr::mutate(midcoord_flank2 = (sstart + send)/2) %>%
   filter(length > threshold_length_flank2) %>%
   pivot_wider(names_from = gene, values_from = sseqid) %>%
-  dplyr::select(-length) 
+  dplyr::select(-length, -sstart, -send) %>%
+  group_by(sample) %>%
+  dplyr::mutate(nb_gene = n())
 
+#First let's extract some information such as finding the middle coordinates for the 
+# 3 genes of interest
+dim2_blast_results = dim2_blast_results_complete %>%
+  dplyr::filter(gene == "dim2") %>%
+  full_join(., flank1, by = "sample") %>%
+  full_join(., flank2, by = "sample") %>%
+  dplyr::mutate(dim2_flank1 = replace_na(dim2_flank1, "Not_found"),
+                dim2_flank2 = replace_na(dim2_flank2, "Not_found"),
+                midcoord_flank1 = replace_na(midcoord_flank1, "0"),
+                midcoord_flank2 = replace_na(midcoord_flank2, "0")) %>%
+  dplyr::mutate(midcoord_flank1 = as.numeric(midcoord_flank1),
+                midcoord_flank2 = as.numeric(midcoord_flank2))  %>% 
+  dplyr::mutate(ave_coord = (sstart + send)/2)  %>% 
+  dplyr::mutate(min_fl = ifelse(midcoord_flank1 > midcoord_flank2, 
+                                midcoord_flank2, midcoord_flank1))  %>%
+  dplyr::mutate(max_fl = ifelse(midcoord_flank1 > midcoord_flank2, 
+                                midcoord_flank1, midcoord_flank2)) 
+
+#Now, let's compare the blast results of dim2 with the flanking genes
+# (contig name and distance)
 dim2_blast_results = dim2_blast_results %>%
-  filter(gene == "dim2") %>%
-  full_join(., flank1) %>%
-  full_join(., flank2) %>%
-  mutate(dim2_flank1 = replace_na(dim2_flank1, "Not_found"),
-         dim2_flank2 = replace_na(dim2_flank2, "Not_found")) %>%
-  mutate(is_same_contig = ifelse(sseqid == dim2_flank1 & sseqid == dim2_flank2,
+  dplyr::mutate(is_same_contig = ifelse(sseqid == dim2_flank1 & sseqid == dim2_flank2,
                                  "Both", 
                                  ifelse(sseqid != dim2_flank1 & sseqid != dim2_flank2,
                                  "None", 
                                  ifelse(sseqid == dim2_flank1, "Flank1",
-                                 ifelse(sseqid == dim2_flank2, "Flank2", "What")))))%>% 
-  mutate(Nb_flanking_found_2cat = ifelse(is_same_contig == "None", "0", ">1"))  
+                                 ifelse(sseqid == dim2_flank2, "Flank2", "What"))))) %>%
+  dplyr::mutate(distance = ifelse(is_same_contig == "None", "No_distance",
+                           ifelse(is_same_contig == "Both",
+                                  ifelse(ave_coord >= min_fl &
+                                         ave_coord <= max_fl , 
+                                  "Distance_OK", "Not_between"), 
+                                  ifelse(is_same_contig == "Flank1", 
+                                         ifelse((abs(midcoord_flank1 - ave_coord) <= 10000), 
+                                  "Distance_OK", "Too_far"), 
+                                  ifelse((abs(midcoord_flank2 - ave_coord) <= 10000), 
+                                  "Distance_OK", "Too_far"))))) %>%
+  mutate(Nb_flanking_found_2cat = ifelse(is_same_contig == "None", "0", 
+                                         ifelse(distance == "Distance_OK", ">1", "0")))
 
 
 
@@ -2586,8 +2629,62 @@ cowplot::plot_grid(p1, p2, rel_widths = c(1, 1))
 ## dim2 tree
 ```{r}
 
-#TODO. 
-#Use beginning and end of dim2 gene (100bp) to get gene boundaries on assemblies
+# TODO
+# Use beginning and end of dim2 gene (100bp) to get gene boundaries on assemblies. 
+# Update: I tried. But it really does not work better... 
+#Here is the code of the comparison in case I need to use it later still
+
+#Selecting start and end coordinates which are found on a contig 
+# with at least one of the flanking genes.
+dim2_start = dim2_blast_results_complete %>%
+  filter(gene == "dim2_start") %>%
+  full_join(., flank1) %>%
+  full_join(., flank2) %>%
+  mutate(dim2_flank1 = replace_na(dim2_flank1, "Not_found"),
+         dim2_flank2 = replace_na(dim2_flank2, "Not_found")) %>%
+  mutate(is_same_contig = ifelse(sseqid == dim2_flank1 & sseqid == dim2_flank2,
+                                 "Both", 
+                                 ifelse(sseqid != dim2_flank1 & sseqid != dim2_flank2,
+                                 "None", 
+                                 ifelse(sseqid == dim2_flank1, "Flank1",
+                                 ifelse(sseqid == dim2_flank2, "Flank2", "What")))))%>% 
+  mutate(Nb_flanking_found_2cat = ifelse(is_same_contig == "None", "0", ">1"))%>%
+  filter(Nb_flanking_found_2cat == ">1")
+  
+dim2_end = dim2_blast_results_complete %>%
+  filter(gene == "dim2_end") %>%
+  full_join(., flank1) %>%
+  full_join(., flank2) %>%
+  mutate(dim2_flank1 = replace_na(dim2_flank1, "Not_found"),
+         dim2_flank2 = replace_na(dim2_flank2, "Not_found")) %>%
+  mutate(is_same_contig = ifelse(sseqid == dim2_flank1 & sseqid == dim2_flank2,
+                                 "Both", 
+                                 ifelse(sseqid != dim2_flank1 & sseqid != dim2_flank2,
+                                 "None", 
+                                 ifelse(sseqid == dim2_flank1, "Flank1",
+                                 ifelse(sseqid == dim2_flank2, "Flank2", "What")))))%>% 
+  mutate(Nb_flanking_found_2cat = ifelse(is_same_contig == "None", "0", ">1"))%>%
+  filter(Nb_flanking_found_2cat == ">1")
+
+
+# Table from start/end
+#full_join(dim2_start, dim2_end, by = "sample") %>%
+#  filter(complete.cases(.)) %>%
+#  select(sample, dim2_flank1.x, dim2_flank2.x,
+#         gene.x, sseqid.x, sstart.x, send.x, is_same_contig.x, Nb_flanking_found_2cat.x,
+#         gene.y, sseqid.y, sstart.y, send.y, is_same_contig.y, Nb_flanking_found_2cat.y) %>%
+#  left_join(., RIP %>% filter(TE == "RIP_est"), by = c("sample" = "ID_file")) %>%
+#  group_by(is_same_contig.x, Continent_Region) %>%
+#  dplyr::summarise(n()) %>%
+#  pivot_wider(names_from = Continent_Region, values_from = `n()`)
+
+# Table from the "simple" blast as comparison
+#dim2_blast_results %>% 
+#  dplyr::filter(Nb_flanking_found_2cat == ">1") %>%
+#  left_join(., RIP %>% filter(TE == "RIP_est"), by = c("sample" = "ID_file")) %>% 
+#  filter(length > 2500) %>% 
+#  dplyr::count(is_same_contig, Continent_Region) %>%
+#  pivot_wider(names_from = Continent_Region, values_from = n)
 
 #Keep only copies with:
 #   - both flanking genes
@@ -2595,7 +2692,7 @@ cowplot::plot_grid(p1, p2, rel_widths = c(1, 1))
 
 dim2_blast_results %>% 
   dplyr::filter(Nb_flanking_found_2cat == ">1") %>%
-  left_join(., RIP, by = c("sample" = "ID_file")) %>% 
+  left_join(., RIP %>% filter(TE == "RIP_est"), by = c("sample" = "ID_file")) %>% 
   filter(length > 2500) %>% 
   dplyr::count(is_same_contig, Continent_Region) %>%  
   dplyr::group_by(Continent_Region) %>% 
@@ -2608,7 +2705,34 @@ dim2_blast_results %>%
   labs (title = str_wrap(paste0("Proportion of long dim2 matches ", 
                                 "with at least one flanking gene"), 
                          width = 70))
-    
+
+#Write the bed file to extract the sequences
+dim2_blast_results %>% 
+  dplyr::filter(Nb_flanking_found_2cat == ">1") %>%
+  left_join(., RIP %>% filter(TE == "RIP_est"), by = c("sample" = "ID_file")) %>% 
+  dplyr::filter(length > 2500) %>%
+  dplyr::mutate(start = ifelse(sstart > send, send, sstart),
+                end = ifelse(sstart > send, sstart, send)) %>%
+  dplyr::select(sample, sseqid, start, end) %>%
+  write_delim(paste0(TE_RIP_dir, "Coordinates_dim2_all_samples.bed"),
+            col_names = F)
+
+
+#This command has to be run on the cluster
+#while read sample chr start end ; do 
+# echo -e "${chr}\t${start}\t${end}" > temp.bed ; 
+# ~/Software/bedtools getfasta \
+#    -fi /data2/alice/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/0_Spades/${sample}.fasta \
+#    -bed temp.bed | sed "s/>/>${sample}:/" >> \
+#    /data2/alice/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/1_Blast_dim2_deRIPped/Native_dim2_all_samples.fasta ; 
+#done < /data2/alice/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/1_Blast_dim2_deRIPped/Coordinates_dim2_all_samples.bed
+
+#Run through the website because laziness
+# mafft --thread 8 --threadtb 5 --threadit 0 --reorder --adjustdirection --auto input > output
+```
+
+```{r dim2 previous}
+
 
 #Previous versions:
 temp = dim2_blast_results %>% 
@@ -2638,7 +2762,8 @@ tree = as_tibble(treeio::read.tree("/Users/feurtey/Documents/Postdoc_Bruce/Proje
 
 tree2 = as_tibble(treeio::read.tree("/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/Essai_dim2_tree.nwk")) 
 
-temp = tree %>% dplyr::select(label, node, label_new, Continent_Region, Composite_median, Collection) %>%
+temp = tree %>% 
+  dplyr::select(label, node, label_new, Continent_Region, Composite_median, Collection) %>%
   mutate(Composite_median = ifelse(is.na(Composite_median), 0, Composite_median)) %>%
   filter(!is.na(label)) %>%
   mutate(RIP = ifelse(Composite_median >= 1.5, "High", ifelse(Composite_median <= 1, "Low", "Medium")))
@@ -2671,7 +2796,41 @@ gheatmap(p2, df, width=.2) +
 
 
 ```
+## Gene duplication in 20 samples of pangenome
 
+If there is a relaxation of RIP, we could expect that TEs would not be the only things impacted but that gene duplications would also be possible more in RIP-relaxed genomes than in RIP-active.
+```{r}
+Badet_pan_table = read_tsv(paste0(TE_RIP_dir, "Badet_GLOBAL_PANGENOME_TABLE.txt")) 
+
+Badet_pan_table %>% 
+  select(isolate, orthogroup, N_genes, N_isolates, cat) %>%
+  group_by(isolate) %>%
+  dplyr::mutate(nb_genes = n()) %>%
+  group_by(isolate, N_genes) %>%
+  dplyr::summarize(count = n(), nb_genes = mean(nb_genes)) %>%
+  dplyr::mutate(Percent = 100 * count / nb_genes) %>%
+  dplyr::filter(N_genes >= 2) %>%
+  dplyr::filter(N_genes <= 10) %>%
+  ggplot(aes(isolate, Percent, fill = N_genes)) + 
+  geom_bar(stat = "identity") +
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = 40, hjust = 1)) +
+  scale_fill_gradient(low = "#EAEAEA", high = "#294D4A", na.value = NA)
+  
+Badet_pan_table %>% 
+  select(isolate, orthogroup, N_genes, N_isolates, cat) %>%
+  group_by(isolate) %>%
+  dplyr::mutate(nb_genes = n()) %>%
+  dplyr::filter(N_genes >= 2) %>%
+  dplyr::mutate(N_genes_cat = ifelse(N_genes >= 10, "9 +", as.character(N_genes))) %>%
+  group_by(isolate, N_genes_cat) %>%
+  dplyr::summarize(count = n(), nb_genes = mean(nb_genes)) %>%
+  dplyr::mutate(Percent = 100 * count / nb_genes) %>%
+  ggplot(aes(isolate, Percent, fill = N_genes_cat)) + 
+  geom_bar(stat = "identity") +
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = 40, hjust = 1)) 
+```  
 
 <br><br>
 
