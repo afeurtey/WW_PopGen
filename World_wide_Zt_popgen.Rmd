@@ -52,6 +52,10 @@ library(pophelper)
 library(PopGenome) #Summary statistics
 library(gridExtra)
 
+library(ggtree)
+library(tidytree)
+
+
 #GEA
 library(lfmm)
 
@@ -81,6 +85,7 @@ TE_RIP_dir=paste0(project_dir, "4_TE_RIP/")
    DIM2_DIR=paste0(TE_RIP_dir, "1_Blast_from_denovo_assemblies/")
 GEA_dir=paste0(project_dir, "5_GEA/")
 fung_dir=paste0(project_dir, "6_Fungicide_resistance/")
+virulence_dir =paste0(project_dir, "7_Virulence/")
 
 #Files
 #vcf_name=paste0(project_dir, "Ztritici_global_March2020.filtered-clean.SNP.max-m-0.8.maf-0.05.thin-1000bp")
@@ -90,7 +95,8 @@ vcf_name_nomaf="Ztritici_global_March2020.filtered-clean.SNP.max-m-0.8.thin-1000
 Zt_list = paste0(metadata_dir, "Ztritici_list")
 gff_file = paste0(data_dir, "Zymoseptoria_tritici.MG2.Grandaubert2015.gff3")
 ref_fasta_file = paste0(data_dir, "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa")
-  
+
+gene_annotation = read_tsv(paste0(data_dir, "Badet_GLOBAL_PANGENOME_TABLE.txt"))
 
 Sys.setenv(PROJECTDIR=project_dir)
 Sys.setenv(VARDIR=VAR_dir)
@@ -2731,34 +2737,36 @@ dim2_blast_results %>%
 # mafft --thread 8 --threadtb 5 --threadit 0 --reorder --adjustdirection --auto input > output
 ```
 
-```{r dim2 previous}
+```{r dim2 tree plots}
+
+#Prep data to add to tree
+temp2 = dim2_blast_results %>% 
+  dplyr::filter(Nb_flanking_found_2cat == ">1") %>%
+  left_join(., RIP %>% filter(TE == "RIP_est"), by = c("sample" = "ID_file")) %>% 
+  dplyr::filter(length > 2500) %>%
+  dplyr::mutate(start = ifelse(sstart > send, send, sstart),
+                end = ifelse(sstart > send, sstart, send)) %>%
+  unite(coord, start, end, sep = "-") %>%
+  dplyr::mutate(no_dot = stringr::str_replace(sseqid, "\\.", "_"))%>%
+  unite(contig2, sample, no_dot, coord, sep = "_", remove = F) 
 
 
-#Previous versions:
-temp = dim2_blast_results %>% 
-  dplyr::filter(Nb_flanking_found_2cat == ">1") %>% 
-  pivot_longer(c(sstart, send), names_to = "temp", values_to = "coord") %>% 
-  group_by(sample, sseqid) %>% 
-  dplyr::summarize(min = min(coord), max = max(coord)) %>% 
-  dplyr::mutate(length = max-min)
-temp2 = temp %>% 
-  filter(length >= 1000 & length <= 5000) 
-
-temp2 %>%
-  write_tsv("/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/Essai_dim2_coordinates.tab",
-            col_names = F)
-
-temp2$nb = c(19:(nrow(temp2) + 18))
+#Read tree in
+#details from the mafft website about the tree
+#Size = 237 sequences × 1214 sites
+#Method = Neighbor-Joining
+#Model = Jukes-Cantor
+#Bootstrap resampling = 100
 
 tree = as_tibble(treeio::read.tree("/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/Essai_dim2_tree.nwk")) %>%
   mutate(label_copy = label) %>%
   separate(label_copy, into = c("nb", "contig"), extra = "merge", remove =F) %>%
   dplyr::mutate(nb = as.integer(nb)) %>%
-  mutate(label_OG = label) %>%
-  full_join(., temp2) %>%
+  dplyr::mutate(label_OG = label) %>%
+  dplyr::mutate(contig2 = stringr::str_replace(contig, "R_", "")) %>%
+  full_join(., temp2, by = c("contig2")) %>%
   dplyr::mutate(label_temp = ifelse(is.na(sample), ifelse(is.na(contig), label, contig), sample)) %>%
-  unite(col = "label_new", nb, label_temp, sep = "_") %>%
-  left_join(., RIP %>% filter(TE == "RIP_est"), by = c("sample" = "ID_file"))
+  unite(col = "label_new", nb, label_temp, sep = "_") 
 
 tree2 = as_tibble(treeio::read.tree("/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/Essai_dim2_tree.nwk")) 
 
@@ -2768,11 +2776,15 @@ temp = tree %>%
   filter(!is.na(label)) %>%
   mutate(RIP = ifelse(Composite_median >= 1.5, "High", ifelse(Composite_median <= 1, "Low", "Medium")))
 
+#Find the outgroup!
+root_node = tree2 %>% 
+  filter(grepl("Zpa63", label)) %>%
+  select(node) %>%
+  pull()
 
-library(ggtree)
-library(tidytree)
 
-p <- ggtree(as.treedata(tree2), layout = "circular") %<+% (temp %>% select (-label))
+rooted.tree <- ape::root(as.treedata(tree2), root_node) 
+p <- ggtree(rooted.tree, layout = "rectangular") %<+% (temp %>% select (-label))
     
 p2 <- p + geom_tippoint(aes(color = Continent_Region)) +
   theme(legend.position = "right") +
@@ -2803,7 +2815,7 @@ If there is a relaxation of RIP, we could expect that TEs would not be the only 
 Badet_pan_table = read_tsv(paste0(TE_RIP_dir, "Badet_GLOBAL_PANGENOME_TABLE.txt")) 
 
 Badet_pan_table %>% 
-  select(isolate, orthogroup, N_genes, N_isolates, cat) %>%
+  dplyr::select(isolate, orthogroup, N_genes, N_isolates, cat) %>%
   group_by(isolate) %>%
   dplyr::mutate(nb_genes = n()) %>%
   group_by(isolate, N_genes) %>%
@@ -2818,11 +2830,11 @@ Badet_pan_table %>%
   scale_fill_gradient(low = "#EAEAEA", high = "#294D4A", na.value = NA)
   
 Badet_pan_table %>% 
-  select(isolate, orthogroup, N_genes, N_isolates, cat) %>%
+  dplyr::select(isolate, orthogroup, N_genes, N_isolates, cat) %>%
   group_by(isolate) %>%
   dplyr::mutate(nb_genes = n()) %>%
   dplyr::filter(N_genes >= 2) %>%
-  dplyr::mutate(N_genes_cat = ifelse(N_genes >= 10, "9 +", as.character(N_genes))) %>%
+  dplyr::mutate(N_genes_cat = ifelse(N_genes >= 9, "9 +", as.character(N_genes))) %>%
   group_by(isolate, N_genes_cat) %>%
   dplyr::summarize(count = n(), nb_genes = mean(nb_genes)) %>%
   dplyr::mutate(Percent = 100 * count / nb_genes) %>%
@@ -2830,6 +2842,21 @@ Badet_pan_table %>%
   geom_bar(stat = "identity") +
   theme_bw() + 
   theme(axis.text.x = element_text(angle = 40, hjust = 1)) 
+
+Badet_pan_table %>% 
+  dplyr::select(isolate, orthogroup, N_genes, N_isolates, cat) %>%
+  group_by(isolate) %>%
+  dplyr::mutate(nb_genes = n()) %>%
+  dplyr::filter(N_genes >= 2) %>%
+  dplyr::mutate(N_genes_cat = ifelse(N_genes >= 9, "9 +", as.character(N_genes))) %>%
+  group_by(isolate, N_genes_cat) %>%
+  dplyr::summarize(count = n(), nb_genes = mean(nb_genes)) %>%
+  dplyr::mutate(Percent = 100 * count / nb_genes) %>%
+  dplyr::filter(N_genes_cat == 2) %>%
+  ggplot(aes(isolate, Percent, fill = N_genes_cat)) + 
+  geom_bar(stat = "identity") +
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = 40, hjust = 1))
 ```  
 
 <br><br>
@@ -3361,3 +3388,43 @@ genotypes_resistance %>%
 # Virulence to new varieties
 ***
 
+
+I use the alleles identified in the GWAS of Thierry Marcel and track them in the world-wide populations. 
+```{r French GWAS Virulence}
+virulence_table = read_tsv(paste0(virulence_dir, "French_GWAS_virulence_alleles.tab")) %>%
+  separate(VIRULENCE_ALLELES, into = c("VIRULENCE_ALLELE1", "VIRULENCE_ALLELE2"), sep = ",")
+  
+french_GWAS_variants = read_tsv(paste0(virulence_dir, "Positions_GWAS.short.vcf"), 
+                                na = ".")  %>%
+  pivot_longer(-c(`#CHROM`, POS, REF, ALT), names_to = "ID_file", values_to = "Allele_nb") %>%
+  separate(ALT, into = c("ALT1", "ALT2"), sep = ",") %>%
+  mutate(Allele_ID = ifelse(Allele_nb == 0, REF, ifelse(Allele_nb == 1, ALT1, ALT2))) %>%
+  left_join(., virulence_table) %>%
+  mutate(virulence = ifelse(Allele_ID == NON_VIRULENT_ALLELES, "Non_virulent",
+                            ifelse(Allele_ID == VIRULENCE_ALLELE1 | Allele_ID == VIRULENCE_ALLELE2,
+                                   "Virulent", NA)))
+
+french_GWAS_variants = inner_join(french_GWAS_variants, Zt_meta)
+
+
+french_GWAS_variants %>%
+  tidyr::unite(position, `#CHROM`, POS) %>%
+  dplyr::count(position, Continent_Region,Date_Year, virulence) %>%
+  pivot_wider(names_from = virulence, values_from = n, values_fill = list(n = 0)) %>%
+  mutate(Number_all = Virulent + Non_virulent) %>%
+  mutate(prop_virulent = Virulent/Number_all) %>%
+  ggplot(aes(x=Date_Year, y=Continent_Region, size = prop_virulent, fill = prop_virulent)) +
+  geom_point(shape=21, alpha =0.7) + theme_bw() +
+  scale_fill_gradient(low="white", high = "#16697a")+
+  labs(title = str_wrap(paste("Virulence alleles",
+                              ""), width = 35),
+       subtitle = str_wrap(paste("These alleles were identified in a GWAS study", 
+                                 " to increase either virulence or aggressiveness",
+                                 " on some wheat varieties."), width = 65),
+       fill = "Proportion of virulent",
+       size = "Proportion of virulent",
+       x = "Years", y = "") + 
+  facet_wrap(vars(position))
+
+```
+Welll... Whatever...

@@ -1,7 +1,151 @@
 ---
 title: "R Notebook"
-output: html_notebook
+output:
+  pdf_document: default
+  html_notebook: default
 ---
+
+
+```{r setup, warning=FALSE, message = FALSE}
+
+library(knitr)
+library(reticulate)
+
+#Spatial analyses packages
+library(raster)
+library(sp)
+library(rgdal)
+library(maps)
+
+#Data wrangling and data viz
+library(tidyverse)
+library(RColorBrewer)
+library(plotly)
+library(cowplot)
+library(GGally)
+library(corrplot)
+library(pheatmap)
+library(ggstance)
+library('pophelper')
+library(ggbiplot)
+library(igraph)
+library(ggraph)
+
+#Pop structure and pop genomic
+library(SNPRelate) #PCA
+library(LEA) #Clustering
+library(pophelper)
+library(PopGenome) #Summary statistics
+library(gridExtra)
+
+library(ggtree)
+library(tidytree)
+
+
+#GEA
+library(lfmm)
+
+#Statistics
+library(car)
+library(corrr)
+library(lsmeans)
+library(multcomp)
+
+
+#Variables
+world <- map_data("world")
+project_dir="/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/"
+
+#Data directories
+data_dir=paste0(project_dir, "0_Data/")
+metadata_dir=paste0(project_dir, "Metadata/")
+
+#Analysis directories
+#--------------------
+VAR_dir = paste0(project_dir, "1_Variant_calling/")
+  vcf_dir = paste0(VAR_dir, "4_Joint_calling/")
+PopStr_dir = paste0(project_dir, "2_Population_structure/")
+Sumstats_dir = paste0(project_dir, "3_Sumstats_demography/")
+TE_RIP_dir=paste0(project_dir, "4_TE_RIP/")
+   RIP_DIR=paste0(TE_RIP_dir, "0_RIP_estimation/")
+   DIM2_DIR=paste0(TE_RIP_dir, "1_Blast_from_denovo_assemblies/")
+GEA_dir=paste0(project_dir, "5_GEA/")
+fung_dir=paste0(project_dir, "6_Fungicide_resistance/")
+
+#Files
+#vcf_name=paste0(project_dir, "Ztritici_global_March2020.filtered-clean.SNP.max-m-0.8.maf-0.05.thin-1000bp")
+vcf_name="Ztritici_global_March2020.filtered-clean.SNP.max-m-0.8.maf-0.05.thin-1000bp"
+#vcf_name_nomaf=paste0(project_dir, "Ztritici_global_March2020.filtered-clean.SNP.max-m-0.8.thin-1000bp")
+vcf_name_nomaf="Ztritici_global_March2020.filtered-clean.SNP.max-m-0.8.thin-1000bp"
+Zt_list = paste0(metadata_dir, "Ztritici_list")
+gff_file = paste0(data_dir, "Zymoseptoria_tritici.MG2.Grandaubert2015.gff3")
+ref_fasta_file = paste0(data_dir, "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa")
+
+gene_annotation = read_tsv(paste0(data_dir, "Badet_GLOBAL_PANGENOME_TABLE.txt"))
+
+Sys.setenv(PROJECTDIR=project_dir)
+Sys.setenv(VARDIR=VAR_dir)
+Sys.setenv(VCFDIR=vcf_dir) 
+Sys.setenv(POPSTR=PopStr_dir)
+Sys.setenv(SUMST=Sumstats_dir)
+Sys.setenv(GEADIR=GEA_dir)
+
+Sys.setenv(ZTLIST=Zt_list)
+Sys.setenv(GFFFILE = gff_file)
+Sys.setenv(REFFILE = ref_fasta_file)
+Sys.setenv(VCFNAME=vcf_name)
+Sys.setenv(VCFNAME_NOMAF=vcf_name_nomaf)
+
+#knitr::opts_chunk$set(echo = F)
+knitr::opts_chunk$set(message = F)
+knitr::opts_chunk$set(warning = F)
+knitr::opts_chunk$set(results = T)
+
+
+#py_install(packages = 'biopython')
+
+#Prettier correlation colors
+mycolorsCorrel<- colorRampPalette(c("#0f8b8d", "white", "#a8201a"))(20)
+
+
+greens=c("#1B512D", "#669046", "#8CB053", "#B1CF5F", "#514F59")
+blues=c("#08386E", "#1C89C9", "#28A7C0", "#B0DFE8", "grey")
+```
+
+```{r metadata summary, message = F, warning=F}
+depth = read_delim(paste0(vcf_dir, vcf_name, ".idepth"), delim = "\t") 
+
+
+Zt_meta=readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_onlyWW.xlsx"), 
+                           sheet = 1, n_max = 1000) %>%
+  filter(Species == "Ztritici") %>%
+  unite(Coordinates, Latitude, Longitude, sep = ";", remove = F)
+
+Zt_meta_future=readxl::read_excel(paste0(metadata_dir, "New_sequencing.xlsx"), 
+                           sheet = 1, n_max = 1000) 
+
+Zt_meta = Zt_meta %>%
+  filter(is.na(Duplicate_Clone_LowQual_Flags) | Duplicate_Clone_LowQual_Flags != "DUPLICATE_remove") %>%
+  filter(!is.na(Country))
+
+Zt_meta %>%
+  filter(is.na(Duplicate_Clone_LowQual_Flags) | Duplicate_Clone_LowQual_Flags != "DUPLICATE_remove") %>%
+  inner_join(., depth %>% filter(MEAN_DEPTH >= 5), by = c("ID_file" = "INDV")) %>%
+  dplyr::select(ID_file) %>% write_delim(paste0(Zt_list, ".txt"))
+
+
+Zt_meta$Collection[is.na(Zt_meta$Collection)] <- "Other"
+
+
+#Define stable colors
+#myColors <- brewer.pal(7, "Dark2")
+myColors <- c("#04078B", "#a10208", "#FFBA08", "#CC0044", "#5C9D06", "#129EBA","#305D1B")
+names(myColors) = levels(factor(Zt_meta$Continent_Region))
+Color_Continent = ggplot2::scale_colour_manual(name = "Continent_Region", values = myColors)
+Fill_Continent = ggplot2::scale_fill_manual(name = "Continent_Region", values = myColors)
+
+
+```
 ### Per locus
 ```{r Depth per locus on pangenome}
 
@@ -203,7 +347,7 @@ ggplotly(p)
 
 
 
-### Per gene
+## Gene PAV and CNV
 
 ```{python, eval = F}
 from Bio import SeqIO
@@ -293,12 +437,29 @@ depth_per_gene = left_join(depth_per_gene,Zt_meta) %>%
            into = c("chr", "id", "Gene_ID"), 
            sep = ";",  
            remove = T) %>% 
-  mutate(Gene_ID = str_remove(Gene_ID, "geneID=")) %>%
+  dplyr::mutate(Gene_ID = str_remove(Gene_ID, "geneID=")) %>%
   unite(sample, chr, 
         col = "Contig", 
         sep="_", 
         na.rm = TRUE, 
-        remove = F) 
+        remove = F) %>%
+  dplyr::mutate(temp = str_replace(id, "ID=", "")) %>%
+  dplyr::mutate(gene = str_replace(temp, ".t1", "")) %>%
+  #This is is for the older swiss genomes
+  separate(col = gene, 
+           into = c("temp", "gene"), 
+           sep = "\\.", remove = F, 
+           fill = "left")  %>%
+  separate(col = sample, 
+           into = c("isolate"), 
+           sep = "_", remove = F) %>%
+  #And this for the reference annotation from Jonathan
+  dplyr::mutate(isolate = replace_na(isolate, "IPO323")) %>%
+  left_join(., gene_annotation %>% 
+                   dplyr::select(isolate, gene, cat, chr, effector) %>%
+                   unique(), 
+            by = c("isolate", "gene"))
+
 
 #For each sample, we are estimating the median depth of genes along the core chromosomes
 median_depth_cor_per_ind = depth_per_gene %>% 
@@ -311,7 +472,9 @@ median_depth_cor_per_ind = depth_per_gene %>%
 
 
 depth_per_gene = left_join(depth_per_gene, median_depth_cor_per_ind) %>%
-  mutate(Normalized_depth = Depth / Median_core_depth) 
+  mutate(Normalized_depth = Depth / Median_core_depth)  %>%
+  mutate(Normalized_depth = as.numeric(Normalized_depth)) %>%
+  mutate(Rounded_norm = round(Normalized_depth)) 
 
 
 
@@ -319,7 +482,7 @@ depth_per_gene = left_join(depth_per_gene, median_depth_cor_per_ind) %>%
 ```
 
 
-```{r}
+```{r summary PAV per PacBio}
 depth_per_PacBio = depth_per_gene %>% 
   filter(grepl("\\[", Locus_name)) %>%
   separate(col = Locus_name, 
@@ -375,7 +538,7 @@ pheatmap(as.matrix(temp[,c(2:ncol(temp))]),
 ```
 
 
-```{r}
+```{r PCA norm_depth}
 library(FactoMineR)
 depth_genes_PCA = depth_per_gene %>%
   dplyr::select(ID_file, Gene_ID, Normalized_depth) %>%
@@ -408,5 +571,235 @@ p = ggplot(results, aes(x = Dim.1, y = Dim.2, text = ID_file, color = Collection
   theme_bw()
 ggplotly(p)
 
+
+```
+
+Different datasets have very different depth of coverage. It is possible that this explains de clustering observed above. What if I simplified the matrix to include only rounded numbers which would be an approximation of CNV?
+```{r PCA CNV}
+library(FactoMineR)
+depth_genes_PCA = depth_per_gene %>%
+  filter(Median_core_depth >= 10 & Median_core_depth <= 50) %>%
+  dplyr::select(ID_file, Gene_ID, Normalized_depth) %>%
+  select(-Normalized_depth) %>%
+  pivot_wider(names_from = Gene_ID, values_from = Rounded_norm)
+
+temp = as.data.frame(depth_genes_PCA)[complete.cases(depth_genes_PCA),2:ncol(depth_genes_PCA)]
+temp2 = temp[, sample(ncol(temp), size=1000,replace=FALSE)]
+temp2 = sapply( temp2, as.numeric )
+
+res.pca = PCA(temp2, scale.unit=TRUE, ncp=10, graph=F)
+
+results = as.tibble(res.pca$ind$coord) %>%
+   mutate(ID_file = as.data.frame(depth_genes_PCA)[complete.cases(depth_genes_PCA),1]) %>%
+  left_join(.,readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_DC_AFperso.xlsx"), 
+                           sheet = 1, n_max = 1000))
+
+p = ggplot(results, aes(x = Dim.1, y = Dim.2, text = ID_file, color = Continent_Region)) + 
+  geom_point(aes(color = Continent_Region)) +
+  labs(x = paste0("PC 1 (", round(res.pca$eig[1,2]), "%)"),
+       y = paste0("PC 2 (", round(res.pca$eig[2,2]), "%)")) + 
+  Color_Continent + 
+  theme_bw()
+ggplotly(p)
+p = ggplot(results, aes(x = Dim.2, y = Dim.3, text = ID_file, color = Continent_Region)) + 
+  geom_point(aes(color = Continent_Region)) +
+  labs(x = paste0("PC 2 (", round(res.pca$eig[1,2]), "%)"),
+       y = paste0("PC 3 (", round(res.pca$eig[2,2]), "%)")) + 
+  Color_Continent + 
+  theme_bw()
+ggplotly(p)
+
+p = ggplot(results, aes(x = Dim.1, y = Dim.2, text = ID_file, color = Collection)) + 
+  geom_point() +
+  labs(x = paste0("PC 1 (", round(res.pca$eig[1,2]), "%)"),
+       y = paste0("PC 2 (", round(res.pca$eig[2,2]), "%)")) + 
+  theme_bw()
+ggplotly(p)
+
+
+```
+
+### Genes CNV
+
+```{r}
+depth_per_gene %>%
+  filter(Median_core_depth >= 10 & Median_core_depth <= 50) %>%
+  filter(Rounded_norm > 1) %>%
+  filter(!is.na(Continent_Region)) %>%
+  group_by(ID_file, Continent_Region) %>%
+  summarize(Nb_duplicated_genes = n()) %>%
+  #filter(Nb_duplicated_genes < 400) %>%
+  ggplot(aes(x = Continent_Region, 
+             y = Nb_duplicated_genes, 
+             fill = Continent_Region)) +
+    geom_violin() + 
+    geom_boxplot(color = "white", width=0.08, outlier.shape = NA) +
+    Fill_Continent + 
+    theme_bw() +
+  theme(legend.position = "none",
+        axis.text.x = element_text(size = 10, angle = 20, hjust = 1)) + 
+  labs( x = "", y = "Number  of genes",
+        title = str_wrap(paste0("How many genes have a copy number ",
+                                "higher than one?"),  width = 60),
+        subtitle = "The estimation of the copy number is based on depth of coverage.")
+
+
+depth_per_gene %>%
+  filter(Median_core_depth >= 10 & Median_core_depth <= 50) %>%
+  filter(Rounded_norm > 1) %>%
+  filter(Rounded_norm <= 2) %>%
+  filter(!is.na(Continent_Region)) %>%
+  group_by(ID_file, Continent_Region) %>%
+  summarize(Nb_duplicated_genes = n()) %>%
+  #filter(Nb_duplicated_genes < 400) %>%
+  ggplot(aes(x = Continent_Region, 
+             y = Nb_duplicated_genes, 
+             fill = Continent_Region)) +
+    geom_violin() + 
+    geom_boxplot(color = "white", width=0.08, outlier.shape = NA) +
+    Fill_Continent + 
+    theme_bw() +
+  theme(legend.position = "none",
+        axis.text.x = element_text(size = 10, angle = 20, hjust = 1)) + 
+  labs( x = "", y = "Number of genes",
+        title = str_wrap(paste0("How many genes have a copy number ",
+                                "of two?"),  width = 60),
+        subtitle = "The estimation of the copy number is based on depth of coverage.")
+
+
+```
+
+
+
+### Effectors
+I also want to look at effectors more specifically and find out whether there seem to be a link between effectors CNV/PAV and geography.
+
+```{r effectors heatmap}
+depth_per_effector = depth_per_gene %>%
+  filter(effector == "effector") %>%
+  dplyr::select(ID_file, Gene_ID, Normalized_depth) %>%
+  dplyr::mutate(Rounded_norm = round(Normalized_depth))
+
+for_pheatmap = spread(depth_per_effector %>%
+  dplyr::select(ID_file, Gene_ID, Rounded_norm) , 
+  "Gene_ID", "Rounded_norm") 
+
+for_pheatmap = Zt_meta %>% 
+  dplyr::select(ID_file, Continent_Region) %>%
+  inner_join(., for_pheatmap) %>%
+  filter(complete.cases(.))
+
+temp = as.data.frame(for_pheatmap) 
+rownames(temp) = temp[,1]
+temp = temp[,-1]
+my_palette <- colorRampPalette(c("white", "black"))(n = 299)
+
+annot_continent = as.data.frame(temp[, 1])
+row.names(annot_continent) <- row.names(temp)
+colnames(annot_continent) <- "Continent"
+
+
+color_PacBio = data.frame(Continent = c("Europe", "Europe",  "Europe", "Europe", "South America", 
+                           "Oceania", "South America", "North America", "Europe", 
+                           "North America", "Middle East", "Middle East", "Middle East", "Africa",
+                           "North America", "Africa", "Europe", "Middle East"))
+  
+rownames(color_PacBio) <- c("1A5", "1E4",  "3D1", "3D7", "Arg00_1D1a1", 
+                           "Aus01_1H8", "CH95_3B2a", "CNR93_D3a1", "CRI10_0616", 
+                           "I93_11a_2", "IR01_26b", "IR01_48b", "ISY92_Ar4f", "KE94_MF1a",
+                           "OregS90_a15_4A_10", "TN09_26_2-0", "UR95_E2C_2", "YEQ92_4")
+
+my_colour = list(Continent = myColors)
+
+
+
+pheatmap(as.matrix(temp[,c(2:ncol(temp))]), 
+         color=my_palette, 
+         cluster_cols = TRUE, 
+         cluster_rows=TRUE, 
+         border_color = NA,
+         show_rownames = F, 
+         show_colnames = F, 
+         annotation_row = annot_continent,
+         annotation_colors = my_colour)
+
+```
+
+Well, the relationship is not that strong but there does seem to be some kind of clustering... Here I will only represent the ones which variable enough (ie present in more than 5 or absent in more than 5).
+
+```{r effectors heatmap variable}
+depth_per_effector = depth_per_gene %>%
+  filter(effector == "effector") %>%
+  dplyr::select(ID_file, Gene_ID, Normalized_depth) %>%
+  mutate(Rounded_norm = round(Normalized_depth)) 
+
+temp = depth_per_effector %>%
+  group_by(Gene_ID) %>% 
+  filter(Rounded_norm >=1 ) %>%
+  dplyr::count() %>%
+  filter( n >= 5 ) 
+max_effectors = max(temp$n)
+temp = temp %>%
+  filter(n <= (max_effectors - 5))
+
+for_pheatmap = spread(depth_per_effector %>% 
+                        inner_join(., temp) %>% 
+                        dplyr::select(ID_file, Gene_ID, Rounded_norm) , 
+  "Gene_ID", "Rounded_norm") 
+for_pheatmap = Zt_meta %>% dplyr::select(ID_file, Continent_Region) %>%
+  inner_join(., for_pheatmap) %>%
+  filter(complete.cases(.))
+
+temp = as.data.frame(for_pheatmap) 
+rownames(temp) = temp[,1]
+temp = temp[,-1]
+my_palette <- colorRampPalette(c("white", "black"))(n = 299)
+
+annot_continent = as.data.frame(temp[, 1])
+row.names(annot_continent) <- row.names(temp)
+colnames(annot_continent) <- "Continent"
+
+annot_continent_effector = as.data.frame(colnames(for_pheatmap[3:ncol(for_pheatmap)])) 
+colnames(annot_continent_effector) = "effector_name"
+annot_continent_effector = annot_continent_effector%>%
+  mutate(temp = ifelse(str_detect(effector_name, "Zt09"), "Zt09", 
+                       as.character(effector_name))) %>%
+  tidyr::separate(temp, into = c("sample"), sep = "\\.") 
+  
+
+color_PacBio = data.frame(Continent = c("Europe", "Europe",  "Europe", "Europe", "South America", 
+                           "Oceania", "South America", "North America", "Europe", 
+                           "North America", "Middle East", "Middle East", "Middle East", "Africa",
+                           "North America", "Africa", "Europe", "Middle East", "Europe"))
+  
+rownames(color_PacBio) <- c("1A5", "1E4",  "3D1", "3D7", "Arg00", 
+                           "Aus01", "CH95", "CNR93", "CRI10", 
+                           "I93", "IR01_26b", "IR01_48b", "ISY92", "KE94",
+                           "OregS90", "TN09", "UR95", "YEQ92", "Zt09")
+
+color_PacBio$sample = c("1A5", "1E4",  "3D1", "3D7", "Arg00", 
+                           "Aus01", "CH95", "CNR93", "CRI10", 
+                           "I93", "IR01_26b", "IR01_48b", "ISY92", "KE94",
+                           "OregS90", "TN09", "UR95", "YEQ92", "Zt09")
+
+annot_continent_effector = left_join(annot_continent_effector, color_PacBio) %>%
+  dplyr::select(effector_name, Continent)
+rownames(annot_continent_effector) <- annot_continent_effector$effector_name
+annot_continent_effector = annot_continent_effector %>% dplyr::select(-effector_name)
+
+my_colour = list(Continent = myColors)
+
+
+
+pheatmap(as.matrix(temp[,c(2:ncol(temp))]), 
+         color=my_palette, 
+         cluster_cols = TRUE, 
+         cluster_rows=TRUE, 
+         border_color = NA,
+         show_rownames = F, 
+         show_colnames = F, 
+         annotation_row = annot_continent,
+         annotation_colors = my_colour,
+         annotation_col = annot_continent_effector)
 
 ```
