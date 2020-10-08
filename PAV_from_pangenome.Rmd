@@ -477,7 +477,11 @@ depth_per_gene = left_join(depth_per_gene, median_depth_cor_per_ind) %>%
   mutate(Rounded_norm = round(Normalized_depth)) 
 
 
-
+depth_per_gene %>%
+  dplyr::select(ID_file, Locus_name, 
+                Gene_ID, Depth, Median_core_depth, Normalized_depth, 
+                Rounded_norm, effector) %>%
+  write_tsv(paste0(VAR_dir,"2_Depth_per_gene/All_samples.tab"))
 
 ```
 
@@ -574,7 +578,7 @@ ggplotly(p)
 
 ```
 
-Different datasets have very different depth of coverage. It is possible that this explains de clustering observed above. What if I simplified the matrix to include only rounded numbers which would be an approximation of CNV?
+Different datasets have very different depth of coverage. It is possible that this explains thee clustering observed above. What if I simplified the matrix to include only rounded numbers which would be an approximation of CNV?
 ```{r PCA CNV}
 library(FactoMineR)
 depth_genes_PCA = depth_per_gene %>%
@@ -666,6 +670,14 @@ depth_per_gene %>%
                                 "of two?"),  width = 60),
         subtitle = "The estimation of the copy number is based on depth of coverage.")
 
+
+depth_per_gene %>%
+  filter(Median_core_depth >= 10 & Median_core_depth <= 50) %>%
+  filter(Rounded_norm > 1) %>%
+  filter(Rounded_norm <= 2) %>%
+  filter(!is.na(Continent_Region)) %>%
+  group_by(ID_file, Continent_Region) %>%
+  summarize(Nb_duplicated_genes = n()) 
 
 ```
 
