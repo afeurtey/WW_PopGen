@@ -48,9 +48,11 @@ DIM_blast=${DIM2_DIR}1_Blast_dim2_deRIPped/
 #Climatic adapation
 GEA_dir=${project_dir}5_GEA/
 
-#Fungicides
+#Fungicide resistance
 fung_dir=${project_dir}6_Fungicide_resistance/
 
+#Virulence
+virulence_dir=${project_dir}7_Virulence/
 
 
 # File paths
