@@ -88,7 +88,7 @@ fung_dir=paste0(project_dir, "6_Fungicide_resistance/")
 virulence_dir = paste0(project_dir, "7_Virulence/")
 sel_dir = paste0(project_dir, "8_Selection/")
   gene_list_dir = paste0(sel_dir, "0_Lists_unique_copy/")
-  
+
 #Files
 #vcf_name=paste0(project_dir, "Ztritici_global_March2020.filtered-clean.SNP.max-m-0.8.maf-0.05.thin-1000bp")
 vcf_name="Ztritici_global_March2020.filtered-clean.SNP.max-m-0.8.maf-0.05.thin-1000bp"
@@ -102,7 +102,7 @@ gene_annotation = read_tsv(paste0(data_dir, "Badet_GLOBAL_PANGENOME_TABLE.txt"))
 
 Sys.setenv(PROJECTDIR=project_dir)
 Sys.setenv(VARDIR=VAR_dir)
-Sys.setenv(VCFDIR=vcf_dir) 
+Sys.setenv(VCFDIR=vcf_dir)
 Sys.setenv(POPSTR=PopStr_dir)
 Sys.setenv(SUMST=Sumstats_dir)
 Sys.setenv(GEADIR=GEA_dir)
@@ -131,7 +131,7 @@ blues=c("#08386E", "#1C89C9", "#28A7C0", "#B0DFE8", "grey")
 
 
 ```{bash Importation from cluster, eval = F}
-# 1 - Variant calling 
+# 1 - Variant calling
 rsync -avP \
   alice@130.125.25.187:/data2/alice/WW_project/1_Variant_calling/1* \
   /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/1_Variant_calling/
@@ -153,8 +153,8 @@ rsync -avP \
 rsync -avP \
   alice@130.125.25.187:/data2/alice/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/1_Blast_dim2_deRIPped/*txt \
   /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/
-  
-  
+
+
 ```
 
 # Sampling
@@ -166,16 +166,16 @@ vcftools --vcf ${VCFDIR}${VCFNAME}.recode.vcf \
 
 
 ```{r metadata summary, message = F, warning=F}
-depth = read_delim(paste0(vcf_dir, vcf_name, ".idepth"), delim = "\t") 
+depth = read_delim(paste0(vcf_dir, vcf_name, ".idepth"), delim = "\t")
 
 
-Zt_meta=readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_onlyWW.xlsx"), 
+Zt_meta=readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_onlyWW.xlsx"),
                            sheet = 1, n_max = 1000) %>%
   filter(Species == "Ztritici") %>%
   unite(Coordinates, Latitude, Longitude, sep = ";", remove = F)
 
-Zt_meta_future=readxl::read_excel(paste0(metadata_dir, "New_sequencing.xlsx"), 
-                           sheet = 1, n_max = 1000) 
+Zt_meta_future=readxl::read_excel(paste0(metadata_dir, "New_sequencing.xlsx"),
+                           sheet = 1, n_max = 1000)
 
 Zt_meta = Zt_meta %>%
   filter(is.na(Duplicate_Clone_LowQual_Flags) | Duplicate_Clone_LowQual_Flags != "DUPLICATE_remove") %>%
@@ -210,11 +210,11 @@ Some of the available genomes are still under embargo (waiting for the publicati
 ```{r Sampling map , message = F, warning=F, eval= T}
 
 Zt_meta_for_shiny = bind_rows(
-  Zt_meta_future %>% 
-    mutate(Sampling_collection = "Future sequencing"), 
-  Zt_meta %>% 
+  Zt_meta_future %>%
+    mutate(Sampling_collection = "Future sequencing"),
+  Zt_meta %>%
     filter(!is.na(Latitude)) %>%
-    mutate(Sampling_collection = ifelse((Duplicate_Clone_LowQual_Flags != "Publication_embargo" | 
+    mutate(Sampling_collection = ifelse((Duplicate_Clone_LowQual_Flags != "Publication_embargo" |
                                            is.na(Duplicate_Clone_LowQual_Flags)),"Usable_genomes",
                                       "Embargoed genomes")))
 
@@ -245,7 +245,7 @@ temp = Zt_meta_for_shiny %>%
    filter(Number_genomes > 0)
 
 isolate_map = ggplot() + theme_void() +
-  geom_polygon(data = world, aes(x=long, y = lat, group = group), fill="#ede7e3", alpha=0.7) + 
+  geom_polygon(data = world, aes(x=long, y = lat, group = group), fill="#ede7e3", alpha=0.7) +
   geom_point (data = temp, aes(x=as.numeric(Longitude), y=as.numeric(Latitude),
                                     size=Number_genomes,
                                     text = Country),
@@ -281,11 +281,11 @@ sum_temp = Zt_meta_for_shiny %>%
     full_join(., temp) %>%
     mutate(`Genome number` = replace_na(n, 0))
 
-sum_temp %>% 
+sum_temp %>%
 ggplot(aes(x=`Sampling year`, y =`Genome number`, fill = Continent_Region)) +
-  geom_bar(stat = "identity") + 
-  theme_bw() + theme(axis.title = element_blank(), 
-                     axis.text.x = element_text(angle = 60, hjust = 1)) + 
+  geom_bar(stat = "identity") +
+  theme_bw() + theme(axis.title = element_blank(),
+                     axis.text.x = element_text(angle = 60, hjust = 1)) +
   Fill_Continent
 ```
 
@@ -311,8 +311,8 @@ __Methods__: Based on the depth of coverage for all samples, we can identify for
 #NB: this table is currently not used. See TODO in next chunk.
 nb_sites_table=${VCFDIR}Nb_sites.txt
 echo "CHROM NB_SITES" > ${nb_sites_table}
-for i in {1..21}; 
-do 
+for i in {1..21};
+do
   vcftools --vcf ${VCFDIR}${VCFNAME}.recode.vcf \
    --out ${VCFDIR}${VCFNAME}.chr_${i} \
    --chr ${i} \
@@ -345,7 +345,7 @@ for (i in c(1:21)) {
 
 depth = bind_rows(depth_results)
 depth$MEAN_DEPTH[is.na(depth$MEAN_DEPTH)] = 0
-summary_depth = depth[depth$CHROM < 14,] %>% 
+summary_depth = depth[depth$CHROM < 14,] %>%
   dplyr::group_by(INDV) %>%
   dplyr::summarise(core_genome_depth = median(MEAN_DEPTH, na.rm = TRUE), coverage = sum(N_SITES))
 
@@ -353,7 +353,7 @@ summary_depth = depth[depth$CHROM < 14,] %>%
 depth =full_join(depth, summary_depth[,c(1,2)])
 
 
-depth$NORM_MEAN_DEPTH = depth$MEAN_DEPTH / depth$core_genome_depth 
+depth$NORM_MEAN_DEPTH = depth$MEAN_DEPTH / depth$core_genome_depth
 depth$NORM_MEAN_DEPTH_CAPPED = ifelse(depth$NORM_MEAN_DEPTH < 2, depth$NORM_MEAN_DEPTH, 2)
 
 depth = inner_join(Zt_meta, depth, by = c("ID_file" = "INDV")) %>%
@@ -365,24 +365,24 @@ In the heatmap, I represent the depth normalized by the median depth over all co
 
 ```{r}
 
-heatmap_depth = ggplot(data = depth, aes(x = CHROM, y=Sample, fill=NORM_MEAN_DEPTH)) + 
-  geom_tile() + scale_fill_gradient(low="white", high = "#16697a") + 
+heatmap_depth = ggplot(data = depth, aes(x = CHROM, y=Sample, fill=NORM_MEAN_DEPTH)) +
+  geom_tile() + scale_fill_gradient(low="white", high = "#16697a") +
   geom_vline(xintercept = 13.5, linetype = "longdash", colour = "gray20") +
   theme(axis.text.y = element_blank(),
-        axis.title.y = element_blank(), axis.ticks.y=element_blank()) + 
+        axis.title.y = element_blank(), axis.ticks.y=element_blank()) +
   labs(fill = "Depth") + xlim(c(0.5, 21.5))
     labs(x= "Chromosome")
- 
 
-plot_continent = ggplot(data = depth, aes(x = 1, y=Sample, fill=Continent_Region)) + 
+
+plot_continent = ggplot(data = depth, aes(x = 1, y=Sample, fill=Continent_Region)) +
   geom_tile(aes(width = 2))  +
-  theme_classic() + 
-  theme(axis.text.y = element_blank(), axis.ticks.y=element_blank(), 
-        legend.position="left", 
-        axis.text.x=element_text(colour="white")) + 
+  theme_classic() +
+  theme(axis.text.y = element_blank(), axis.ticks.y=element_blank(),
+        legend.position="left",
+        axis.text.x=element_text(colour="white")) +
   scale_fill_brewer(palette = "Dark2") +
-    labs(y= "Isolate") + Fill_Continent 
-  
+    labs(y= "Isolate") + Fill_Continent
+
 plot_grid(plot_continent, heatmap_depth, rel_widths = c(2, 5))
 
 ```
@@ -394,10 +394,10 @@ Hthres = 1.50
 depth = depth %>%
   dplyr::mutate(Depth_is = ifelse(NORM_MEAN_DEPTH > Hthres, "High",ifelse(NORM_MEAN_DEPTH < Lthres, "Low", "Normal")))
 
-bar_Ndepth_per_CHR =ggplot(depth, aes(x = CHROM, fill = Depth_is)) + 
-  geom_bar(stat = "count") + 
+bar_Ndepth_per_CHR =ggplot(depth, aes(x = CHROM, fill = Depth_is)) +
+  geom_bar(stat = "count") +
   scale_fill_manual(values =c("#16697a", "#82c0cc", "#EDE7E3")) +
-    theme_light()+ 
+    theme_light()+
     labs(x= "Chromosome", y = "Number of isolates")
 
 #lollipop plots
@@ -405,15 +405,15 @@ bar_Ndepth_per_CHR =ggplot(depth, aes(x = CHROM, fill = Depth_is)) +
 temp = depth %>%
   filter(Depth_is == "High") %>%
   dplyr::group_by(CHROM) %>%
-  dplyr::count() 
+  dplyr::count()
 lolhigh =  ggplot(temp, aes(x = as.character(CHROM), y = n)) +
-    geom_segment( aes(x=as.character(CHROM), xend=as.character(CHROM), y=0, yend=max(temp$n)), 
+    geom_segment( aes(x=as.character(CHROM), xend=as.character(CHROM), y=0, yend=max(temp$n)),
                   color="grey80", size = 1) +
-    geom_segment( aes(x=as.character(CHROM), xend=as.character(CHROM), y=0, yend=n), 
+    geom_segment( aes(x=as.character(CHROM), xend=as.character(CHROM), y=0, yend=n),
                   color="grey20", size = 1) +
     geom_point( color="#16697a", size=4)  +
     geom_text(aes( label = n,
-                     y= n), stat= "identity", 
+                     y= n), stat= "identity",
               hjust = -0.5, vjust = -0.2) +
     theme_light() +
     theme(
@@ -423,7 +423,7 @@ lolhigh =  ggplot(temp, aes(x = as.character(CHROM), y = n)) +
     axis.text.x = element_text(size = 10),
     axis.text.y = element_text(size = 10)
     ) +
-    ylim(c(0,max(temp$n)+2+ max(temp$n)*0.1)) + 
+    ylim(c(0,max(temp$n)+2+ max(temp$n)*0.1)) +
     labs(x= "Chromosome", y = "Number of isolates with supernumerary chromosome") +
     coord_flip()
 
@@ -434,13 +434,13 @@ temp = depth %>%
   dplyr::count()
 
 lollow = ggplot(temp, aes(x = as.character(CHROM), y = n)) +
-    geom_segment( aes(x=as.character(CHROM), xend=as.character(CHROM), y=0, yend=max(temp$n)), 
+    geom_segment( aes(x=as.character(CHROM), xend=as.character(CHROM), y=0, yend=max(temp$n)),
                   color="grey80", size = 1) +
-    geom_segment( aes(x=as.character(CHROM), xend=as.character(CHROM), y=0, yend=n), 
+    geom_segment( aes(x=as.character(CHROM), xend=as.character(CHROM), y=0, yend=n),
                   color="grey20", size = 1) +
     geom_point( color="#82c0cc", size=4)  +
     geom_text(aes( label = n,
-                     y= n), stat= "identity", 
+                     y= n), stat= "identity",
               hjust = -0.5, vjust = -0.2) +
     theme_light() +
     theme(
@@ -450,7 +450,7 @@ lollow = ggplot(temp, aes(x = as.character(CHROM), y = n)) +
     axis.text.x = element_text(size = 10),
     axis.text.y = element_text(size = 10)
     ) +
-    ylim(c(0,max(temp$n)+ max(temp$n)*0.1)) + 
+    ylim(c(0,max(temp$n)+ max(temp$n)*0.1)) +
     labs( x= "Chromosome", y = "Number of isolates without chromosome") +
     coord_flip()
 
@@ -466,7 +466,7 @@ depth  %>%
   dplyr::filter(CHROM < 13)
 ```
 
-And an overlook of the accessory chromosomes PAV per continent (only considering continents with more than 10 isolates). 
+And an overlook of the accessory chromosomes PAV per continent (only considering continents with more than 10 isolates).
 ```{r}
 depth %>%
   dplyr::filter(CHROM > 13) %>%
@@ -474,9 +474,9 @@ depth %>%
   dplyr::mutate(Count_sample_per_continent = n()) %>%
   dplyr::filter(Count_sample_per_continent >= 10) %>%
   ggplot(aes(x = Continent_Region, fill = Depth_is)) +
-  geom_bar(position = "fill" ) + facet_wrap(CHROM~.) + 
+  geom_bar(position = "fill" ) + facet_wrap(CHROM~.) +
   theme_light() +
-  scale_fill_manual(values = c("#16697a", "#82c0cc", "#EDE7E3")) + 
+  scale_fill_manual(values = c("#16697a", "#82c0cc", "#EDE7E3")) +
     theme(axis.text.x = element_text(angle = 40, hjust = 1)) +
   ylab("Proportion of chromosomes") + xlab("")
 ```
@@ -484,7 +484,7 @@ depth %>%
 
 ## Genes PAV
 __Question__: Could genes PAV be related to phylogeny, environment, host or time? What about predicted effector genes?
- 
+
 __Methods__: Based on depth of coverage + SGSGeneloss
 For this section, iI expanded the gene selection from all genes in the pangenome. This means remapping everything unfortunately, but it captures more or the overall diversity and might be the only way to catch some population specific variants.
 
@@ -492,33 +492,33 @@ See PAV from pangenome file (had to be separated because it was way too long to 
 
 ```{r}
 depth_per_gene = read_tsv(paste0(VAR_dir,"2_Depth_per_gene/All_samples.tab")) %>%
-  left_join(.,readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_DC_AFperso.xlsx"), 
+  left_join(.,readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_DC_AFperso.xlsx"),
                            sheet = 1, n_max = 1000))
 
 ```
 
 ```{r summary PAV per PacBio}
 
-depth_per_PacBio = depth_per_gene %>% 
+depth_per_PacBio = depth_per_gene %>%
   filter(grepl("\\[", Locus_name)) %>%
-  separate(col = Locus_name, 
-           sep = "\\.", 
+  separate(col = Locus_name,
+           sep = "\\.",
            into= c("PacBio", "rest"),
-           remove = F, 
+           remove = F,
            fill = "left") %>%
-  group_by(ID_file, PacBio, Continent_Region) %>% 
+  group_by(ID_file, PacBio, Continent_Region) %>%
   dplyr::summarise(Median_depth = median(as.numeric(Depth), na.rm = T),
                    Nb_windows = n())  %>%
-  inner_join(., summary_depth, by=c("ID_file" = "INDV")) %>% 
+  inner_join(., summary_depth, by=c("ID_file" = "INDV")) %>%
   mutate(Normalized_depth = Median_depth / core_genome_depth)
 
 
-for_pheatmap = spread(depth_per_PacBio[, c(1, 2, 8)], "PacBio", "Normalized_depth") 
+for_pheatmap = spread(depth_per_PacBio[, c(1, 2, 8)], "PacBio", "Normalized_depth")
 for_pheatmap = Zt_meta %>% dplyr::select(ID_file, Continent_Region) %>%
   inner_join(., for_pheatmap) %>%
   filter(complete.cases(.))
 
-temp = as.data.frame(for_pheatmap) 
+temp = as.data.frame(for_pheatmap)
 rownames(temp) = temp[,1]
 temp = temp[,-1]
 my_palette <- colorRampPalette(c("white", "black"))(n = 299)
@@ -528,13 +528,13 @@ row.names(annot_continent) <- row.names(temp)
 colnames(annot_continent) <- "Continent"
 
 
-color_PacBio = data.frame(Continent = c("Europe", "Europe",  "Europe", "Europe", "South America", 
-                           "Oceania", "South America", "North America", "Europe", 
+color_PacBio = data.frame(Continent = c("Europe", "Europe",  "Europe", "Europe", "South America",
+                           "Oceania", "South America", "North America", "Europe",
                            "North America", "Middle East", "Middle East", "Middle East", "Africa",
                            "North America", "Africa", "Europe", "Middle East"))
-  
-rownames(color_PacBio) <- c("1A5", "1E4",  "3D1", "3D7", "Arg00_1D1a1", 
-                           "Aus01_1H8", "CH95_3B2a", "CNR93_D3a1", "CRI10_0616", 
+
+rownames(color_PacBio) <- c("1A5", "1E4",  "3D1", "3D7", "Arg00_1D1a1",
+                           "Aus01_1H8", "CH95_3B2a", "CNR93_D3a1", "CRI10_0616",
                            "I93_11a_2", "IR01_26b", "IR01_48b", "ISY92_Ar4f", "KE94_MF1a",
                            "OregS90_a15_4A_10", "TN09_26_2-0", "UR95_E2C_2", "YEQ92_4")
 
@@ -542,12 +542,12 @@ my_colour = list(Continent = myColors)
 
 
 
-pheatmap(as.matrix(temp[,c(2:ncol(temp))]), 
-         color=my_palette, 
-         cluster_cols = TRUE, 
-         cluster_rows=TRUE, 
+pheatmap(as.matrix(temp[,c(2:ncol(temp))]),
+         color=my_palette,
+         cluster_cols = TRUE,
+         cluster_rows=TRUE,
          border_color = NA,
-         show_rownames = F, 
+         show_rownames = F,
          annotation_row = annot_continent,
          annotation_col = color_PacBio,
          annotation_colors = my_colour)
@@ -569,21 +569,21 @@ res.pca = PCA(temp2, scale.unit=TRUE, ncp=10, graph=F)
 
 results = as.tibble(res.pca$ind$coord) %>%
    mutate(ID_file = as.data.frame(depth_genes_PCA)[complete.cases(depth_genes_PCA),1]) %>%
-  left_join(.,readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_DC_AFperso.xlsx"), 
+  left_join(.,readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_DC_AFperso.xlsx"),
                            sheet = 1, n_max = 1000))
 
-p = ggplot(results, aes(x = Dim.1, y = Dim.2, text = ID_file, color = Continent_Region)) + 
+p = ggplot(results, aes(x = Dim.1, y = Dim.2, text = ID_file, color = Continent_Region)) +
   geom_point(aes(color = Continent_Region)) +
   labs(x = paste0("PC 1 (", round(res.pca$eig[1,2]), "%)"),
-       y = paste0("PC 2 (", round(res.pca$eig[2,2]), "%)")) + 
-  Color_Continent + 
+       y = paste0("PC 2 (", round(res.pca$eig[2,2]), "%)")) +
+  Color_Continent +
   theme_bw()
 ggplotly(p)
 
-p = ggplot(results, aes(x = Dim.1, y = Dim.2, text = ID_file, color = Collection)) + 
+p = ggplot(results, aes(x = Dim.1, y = Dim.2, text = ID_file, color = Collection)) +
   geom_point() +
   labs(x = paste0("PC 1 (", round(res.pca$eig[1,2]), "%)"),
-       y = paste0("PC 2 (", round(res.pca$eig[2,2]), "%)")) + 
+       y = paste0("PC 2 (", round(res.pca$eig[2,2]), "%)")) +
   theme_bw()
 ggplotly(p)
 
@@ -607,28 +607,28 @@ res.pca = PCA(temp2, scale.unit=TRUE, ncp=10, graph=F)
 
 results = as.tibble(res.pca$ind$coord) %>%
    mutate(ID_file = as.data.frame(depth_genes_PCA)[complete.cases(depth_genes_PCA),1]) %>%
-  left_join(.,readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_DC_AFperso.xlsx"), 
+  left_join(.,readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_DC_AFperso.xlsx"),
                            sheet = 1, n_max = 1000))
 
-p = ggplot(results, aes(x = Dim.1, y = Dim.2, text = ID_file, color = Continent_Region)) + 
+p = ggplot(results, aes(x = Dim.1, y = Dim.2, text = ID_file, color = Continent_Region)) +
   geom_point(aes(color = Continent_Region)) +
   labs(x = paste0("PC 1 (", round(res.pca$eig[1,2]), "%)"),
-       y = paste0("PC 2 (", round(res.pca$eig[2,2]), "%)")) + 
-  Color_Continent + 
+       y = paste0("PC 2 (", round(res.pca$eig[2,2]), "%)")) +
+  Color_Continent +
   theme_bw()
 ggplotly(p)
-p = ggplot(results, aes(x = Dim.2, y = Dim.3, text = ID_file, color = Continent_Region)) + 
+p = ggplot(results, aes(x = Dim.2, y = Dim.3, text = ID_file, color = Continent_Region)) +
   geom_point(aes(color = Continent_Region)) +
   labs(x = paste0("PC 2 (", round(res.pca$eig[1,2]), "%)"),
-       y = paste0("PC 3 (", round(res.pca$eig[2,2]), "%)")) + 
-  Color_Continent + 
+       y = paste0("PC 3 (", round(res.pca$eig[2,2]), "%)")) +
+  Color_Continent +
   theme_bw()
 ggplotly(p)
 
-p = ggplot(results, aes(x = Dim.1, y = Dim.2, text = ID_file, color = Collection)) + 
+p = ggplot(results, aes(x = Dim.1, y = Dim.2, text = ID_file, color = Collection)) +
   geom_point() +
   labs(x = paste0("PC 1 (", round(res.pca$eig[1,2]), "%)"),
-       y = paste0("PC 2 (", round(res.pca$eig[2,2]), "%)")) + 
+       y = paste0("PC 2 (", round(res.pca$eig[2,2]), "%)")) +
   theme_bw()
 ggplotly(p)
 
@@ -649,15 +649,15 @@ depth_per_gene %>%
   group_by(ID_file, Continent_Region) %>%
   summarize(Nb_duplicated_genes = n()) %>%
   #filter(Nb_duplicated_genes < 400) %>%
-  ggplot(aes(x = Continent_Region, 
-             y = Nb_duplicated_genes, 
+  ggplot(aes(x = Continent_Region,
+             y = Nb_duplicated_genes,
              fill = Continent_Region)) +
-    geom_violin() + 
+    geom_violin() +
     geom_boxplot(color = "white", width=0.08, outlier.shape = NA) +
-    Fill_Continent + 
+    Fill_Continent +
     theme_bw() +
   theme(legend.position = "none",
-        axis.text.x = element_text(size = 10, angle = 20, hjust = 1)) + 
+        axis.text.x = element_text(size = 10, angle = 20, hjust = 1)) +
   labs( x = "", y = "Number  of genes",
         title = str_wrap(paste0("How many genes have a copy number ",
                                 "higher than one?"),  width = 60),
@@ -673,15 +673,15 @@ duplicated_genes = depth_per_gene %>%
   summarize(Nb_duplicated_genes = n())
   #filter(Nb_duplicated_genes < 400) %>%
 
-ggplot(duplicated_genes, aes(x = Continent_Region, 
-             y = Nb_duplicated_genes, 
+ggplot(duplicated_genes, aes(x = Continent_Region,
+             y = Nb_duplicated_genes,
              fill = Continent_Region)) +
-    geom_violin() + 
+    geom_violin() +
     geom_boxplot(color = "white", width=0.08, outlier.shape = NA) +
-    Fill_Continent + 
+    Fill_Continent +
     theme_bw() +
   theme(legend.position = "none",
-        axis.text.x = element_text(size = 10, angle = 20, hjust = 1)) + 
+        axis.text.x = element_text(size = 10, angle = 20, hjust = 1)) +
   labs( x = "", y = "Number of genes",
         title = str_wrap(paste0("How many genes have a copy number ",
                                 "of two?"),  width = 60),
@@ -694,7 +694,7 @@ depth_per_gene %>%
   filter(Rounded_norm <= 2) %>%
   filter(!is.na(Continent_Region)) %>%
   group_by(ID_file, Continent_Region) %>%
-  summarize(Nb_duplicated_genes = n()) 
+  summarize(Nb_duplicated_genes = n())
 
 
 ```
@@ -707,26 +707,27 @@ depth_per_gene %>%
 
 ```
 
+Just creating a file to use on the cluster
 ```{python create list of samples per gene}
 
+out = open(r.sel_dir + "Only_unique_copies.tab", "w")
 with open(r.VAR_dir + "2_Depth_per_gene/Rounded_depth_per_gene_per_sample.tab") as depth_input :
   for i, line in enumerate(depth_input) :
+    
     if i == 0 :
       header = line.strip().split("\t")
-      
-    elif i < 10 :
+    else :
       line_sp = line.strip().split("\t")
       gene = line_sp[0]
-      out = open(r.gene_list_dir + gene, "w")
-      sample_list = []
+      sample_list = [gene]
       for sample, CNV in zip(header[1:], line_sp[1:]) :
         if CNV == "1" :
-          print(gene, sample, CNV)
           sample_list.append(sample)
-      out.write("\n".join(sample_list))
-      out.close()
-    else :
-      break
+      p=out.write("\t".join(sample_list) + "\n")
+
+out.close()
+
+print("I'm done.")
 ```
 
 
@@ -750,7 +751,7 @@ Previous genomic work has shown very clear structure between populations of _Z.t
 __Methods__: Analyses to create would be:
 
  * PCA
- * Structure-like analysis, 
+ * Structure-like analysis,
  * Tree (rooted on Za to infer origin if pattern?) #TODO
  * Map with cluster if clusters #TODO
 
@@ -767,18 +768,18 @@ vcftools --vcf ${VCFDIR}${VCFNAME}.recode.vcf \
   --non-ref-ac-any 1 \
   --remove-filtered-all --recode --recode-INFO-all \
   --out ${VCFDIR}${VCFNAME}.pass
-  
-  
+
+
 ```
 
 ```{r PCA All run, results = F}
-snpgdsVCF2GDS(paste0(vcf_dir, vcf_name, ".pass.recode.vcf"), 
+snpgdsVCF2GDS(paste0(vcf_dir, vcf_name, ".pass.recode.vcf"),
               paste0(PopStr_dir, vcf_name, ".pass.recode.gds"), method="biallelic.only")
 genofile <- snpgdsOpen(paste0(PopStr_dir, vcf_name, ".pass.recode.gds"))
 pca <-snpgdsPCA(genofile)
 snpgdsClose(genofile)
 
-pca2 = as.tibble(pca$eigenvect) %>% dplyr::select(V1:V4) 
+pca2 = as.tibble(pca$eigenvect) %>% dplyr::select(V1:V4)
 colnames(pca2) = c("PC1", "PC2", "PC3", "PC4")
 pca2 = pca2 %>%
   dplyr::mutate(sample_id = pca$sample.id ) %>%
@@ -786,44 +787,44 @@ pca2 = pca2 %>%
   unite(sample_id, Country, col = "for_display", remove = F)
 
 as.tibble(pca$eigenval[!is.na(pca$eigenval)]) %>%
-  ggplot(aes(x = c(1:length(pca$eigenval[!is.na(pca$eigenval)])), 
-             y =value)) + geom_point() + 
+  ggplot(aes(x = c(1:length(pca$eigenval[!is.na(pca$eigenval)])),
+             y =value)) + geom_point() +
   theme_bw()
 ```
 
 ```{r PCA All plot}
 eigen_sum = sum(pca$eigenval[!is.na(pca$eigenval)])
-p = ggplot(pca2, aes(x = PC1, y= PC2, text = for_display)) + 
+p = ggplot(pca2, aes(x = PC1, y= PC2, text = for_display)) +
   geom_point(aes(color = Continent_Region)) +
   labs(x = paste0("PC 1 (", round(pca$eigenval[1]*100/eigen_sum, 2), "%)"),
-       y = paste0("PC 2 (", round(pca$eigenval[2]*100/eigen_sum, 2), "%)")) + 
-  Color_Continent + 
+       y = paste0("PC 2 (", round(pca$eigenval[2]*100/eigen_sum, 2), "%)")) +
+  Color_Continent +
   theme_bw()
-  
+
 #p
 ggplotly(p)
 
-q = ggplot(pca2, aes(x = PC3, y= PC4, text = for_display)) + 
+q = ggplot(pca2, aes(x = PC3, y= PC4, text = for_display)) +
   geom_point(aes(color = Continent_Region)) +
   labs(x = paste0("PC 3 (", round(pca$eigenval[3]*100/eigen_sum, 2), "%)"),
-       y = paste0("PC 4 (", round(pca$eigenval[4]*100/eigen_sum, 2), "%)")) + 
-  Color_Continent + 
+       y = paste0("PC 4 (", round(pca$eigenval[4]*100/eigen_sum, 2), "%)")) +
+  Color_Continent +
   theme_bw()
-  
+
 #q
 ggplotly(q)
 ```
 
 ``` {r PCA ggpairs}
 
-p = ggpairs(pca2, columns = c(1:4), 
+p = ggpairs(pca2, columns = c(1:4),
             ggplot2::aes(col=Continent_Region, fill = Continent_Region, alpha = 0.6),
-            title = "PCA based thinned SNPs", 
+            title = "PCA based thinned SNPs",
             upper = list(continuous = "points", combo = "box_no_facet"))
 
 for(i in 1:p$nrow) {
   for(j in 1:p$ncol){
-    p[i,j] <- p[i,j] + theme_bw() + Color_Continent +Fill_Continent 
+    p[i,j] <- p[i,j] + theme_bw() + Color_Continent +Fill_Continent
   }
 }
 
@@ -837,7 +838,7 @@ Zt_meta  %>%
   filter(is.na(Duplicate_Clone_LowQual_Flags) | Duplicate_Clone_LowQual_Flags != "DUPLICATE_remove") %>%
   #filter(is.na(Duplicate_Clone_LowQual_Flags) | Duplicate_Clone_LowQual_Flags != "Publication_embargo") %>%
   inner_join(., depth %>% filter(MEAN_DEPTH >= 5)) %>%
-  filter(Continent_Region != "Oceania") %>% 
+  filter(Continent_Region != "Oceania") %>%
   dplyr::select(ID_file) %>% write_delim(paste0(PopStr_dir, "Zt_list_wo_oceania.txt"))
 
 ```
@@ -852,8 +853,8 @@ vcftools --vcf ${VCFDIR}${VCFNAME}.recode.vcf \
 ```
 
 ```{r PCA woOc run, results = F}
-snpgdsVCF2GDS(paste0(PopStr_dir, vcf_name, ".pass.wo_oceania.recode.vcf"), 
-              paste0(PopStr_dir, vcf_name, ".pass.wo_oceania.recode.gds"), 
+snpgdsVCF2GDS(paste0(PopStr_dir, vcf_name, ".pass.wo_oceania.recode.vcf"),
+              paste0(PopStr_dir, vcf_name, ".pass.wo_oceania.recode.gds"),
               method="biallelic.only")
 genofile <- snpgdsOpen(paste0(PopStr_dir, vcf_name, ".pass.wo_oceania.recode.gds"))
 pca <-snpgdsPCA(genofile)
@@ -868,23 +869,23 @@ eigen_sum = sum(pca$eigenval[!is.na(pca$eigenval)])
 ```
 
 ```{r PCA woOc plot}
-p = ggplot(pca2, aes(x = V1, y= V2, text = for_display)) + 
+p = ggplot(pca2, aes(x = V1, y= V2, text = for_display)) +
   geom_point(aes(color = Continent_Region)) +
   labs(x = paste0("PC 1 (", round(pca$eigenval[1]*100/eigen_sum, 2), "%)"),
-       y = paste0("PC 2 (", round(pca$eigenval[2]*100/eigen_sum, 2), "%)")) + 
-  Color_Continent + 
+       y = paste0("PC 2 (", round(pca$eigenval[2]*100/eigen_sum, 2), "%)")) +
+  Color_Continent +
   theme_bw()
-  
+
 #p
 ggplotly(p)
 
-q = ggplot(pca2, aes(x = V3, y= V4, text = for_display)) + 
+q = ggplot(pca2, aes(x = V3, y= V4, text = for_display)) +
   geom_point(aes(color = Continent_Region)) +
   labs(x = paste0("PC 3 (", round(pca$eigenval[3]*100/eigen_sum, 2), "%)"),
-       y = paste0("PC 4 (", round(pca$eigenval[4]*100/eigen_sum, 2), "%)")) + 
-  Color_Continent + 
+       y = paste0("PC 4 (", round(pca$eigenval[4]*100/eigen_sum, 2), "%)")) +
+  Color_Continent +
   theme_bw()
-  
+
 #q
 ggplotly(q)
 ```
@@ -898,7 +899,7 @@ Zt_meta %>%
   filter(is.na(Duplicate_Clone_LowQual_Flags) | Duplicate_Clone_LowQual_Flags != "DUPLICATE_remove") %>%
   filter(is.na(Duplicate_Clone_LowQual_Flags) | Duplicate_Clone_LowQual_Flags != "Publication_embargo") %>%
   inner_join(., depth %>% filter(MEAN_DEPTH >= 5)) %>%
-  filter(Continent_Region == "Oceania") %>% 
+  filter(Continent_Region == "Oceania") %>%
   dplyr::select(ID_file) %>% write_delim(paste0(PopStr_dir, "Zt_list_only_oceania.txt"))
 
 ```
@@ -910,12 +911,12 @@ vcftools --vcf ${VCFDIR}$VCFNAME.recode.vcf \
   --remove-filtered-all --recode --recode-INFO-all \
   --non-ref-ac-any 1 \
   --out ${POPSTR}$VCFNAME.pass.only_oceania
-  
+
 ```
 
 ```{r PCA onlyOC run, results = F}
-snpgdsVCF2GDS(paste0(PopStr_dir, vcf_name, ".pass.only_oceania.recode.vcf"), 
-              paste0(PopStr_dir, vcf_name, ".pass.only_oceania.recode.gds"), 
+snpgdsVCF2GDS(paste0(PopStr_dir, vcf_name, ".pass.only_oceania.recode.vcf"),
+              paste0(PopStr_dir, vcf_name, ".pass.only_oceania.recode.gds"),
               method="biallelic.only")
 genofile <- snpgdsOpen(paste0(PopStr_dir, vcf_name, ".pass.only_oceania.recode.gds"))
 pca <-snpgdsPCA(genofile)
@@ -933,23 +934,23 @@ eigen_sum = sum(pca$eigenval[!is.na(pca$eigenval)])
 ```{r PCA onlyOC plot}
 
 
-p = ggplot(pca2, aes(x = V1, y= V2, text = for_display)) + 
+p = ggplot(pca2, aes(x = V1, y= V2, text = for_display)) +
   geom_point(aes(color = as.character(Date_Year), shape = Country)) +
   labs(x = paste0("PC 1 (", round(pca$eigenval[1]*100/eigen_sum, 2), "%)"),
        y = paste0("PC 2 (", round(pca$eigenval[2]*100/eigen_sum, 2), "%)")) +
-      scale_color_manual(values = blues) + 
+      scale_color_manual(values = blues) +
   theme_bw()
-  
+
 #p
 ggplotly(p)
 
-q = ggplot(pca2, aes(x = V3, y= V4, text = for_display)) + 
+q = ggplot(pca2, aes(x = V3, y= V4, text = for_display)) +
   geom_point(aes(color = as.character(Date_Year), shape = Country)) +
   labs(x = paste0("PC 3 (", round(pca$eigenval[3]*100/eigen_sum, 2), "%)"),
        y = paste0("PC 4 (", round(pca$eigenval[4]*100/eigen_sum, 2), "%)")) +
-      scale_color_manual(values = blues) + 
+      scale_color_manual(values = blues) +
   theme_bw()
-  
+
 #q
 ggplotly(q)
 ```
@@ -969,8 +970,8 @@ vcftools --vcf ${VCFDIR}$VCFNAME.recode.vcf \
   --max-missing 1.0 --min-alleles 2 --max-alleles 2 \
   --maf 0.05 \
   --out ${POPSTR}$VCFNAME.pass_noNA
-  
-  
+
+
 cat  ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT | cut -f 3- \
     > ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT2
 cat  ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT | cut -f 1,2 \
@@ -979,23 +980,23 @@ head -n1 ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT2 | gsed "s/\t/\n/g"  \
     > ${POPSTR}$VCFNAME.pass_noNA.ind
 gsed "s/\t//g"  ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT2 | tail -n +2 \
     > ${POPSTR}$VCFNAME.pass_noNA.geno
-  
+
 ```
 
 ```{r, eval =F}
-project = snmf(paste0(PopStr_dir, vcf_name, ".pass_noNA.geno"), K=1:15, entropy = TRUE, 
-                        repetitions = 10, project = "new", ploidy = 1) 
+project = snmf(paste0(PopStr_dir, vcf_name, ".pass_noNA.geno"), K=1:15, entropy = TRUE,
+                        repetitions = 10, project = "new", ploidy = 1)
 ```
-First, let's look at the cross-validation results. sNMF estimates an entropy criterion which evaluates the quality of fit of the model to the data, potentially helping to find the best number of ancestral populations. 
+First, let's look at the cross-validation results. sNMF estimates an entropy criterion which evaluates the quality of fit of the model to the data, potentially helping to find the best number of ancestral populations.
 ```{r Cross-entropy plot}
 project = load.snmfProject(paste0(PopStr_dir, vcf_name, ".pass_noNA.snmfProject"))
 
 plot(project, col = "goldenrod", pch = 19, cex = 1.2)
 
 ```
-In the case of our analysis, we do not have a very clear-cut minimum value for the cross-entropy criterion value. There is however a plateau starting from K=6. I chose to represent as barplots the best run for each value of K (as defined as the one with the lowest cross-entropy value). This seem to confirm the choice of a reasonable K value at 6 since no new major cluster seem to appear in the at higher values. It is possible again that the Oceanian samples would separate more as in the PCA at higher values of K. 
+In the case of our analysis, we do not have a very clear-cut minimum value for the cross-entropy criterion value. There is however a plateau starting from K=6. I chose to represent as barplots the best run for each value of K (as defined as the one with the lowest cross-entropy value). This seem to confirm the choice of a reasonable K value at 6 since no new major cluster seem to appear in the at higher values. It is possible again that the Oceanian samples would separate more as in the PCA at higher values of K.
 
-The results from the PCA and from the clutering analysis are coherent: Oceania separates into 3 clusters (one in New_Zealand, and two in Australia) and the North American isolates form a separate cluster. Higher K values also distinguish a Middle-Eastern/African cluster from the European cluster, representing the two extreme points of the gradient found between these populations in the PCA. 
+The results from the PCA and from the clutering analysis are coherent: Oceania separates into 3 clusters (one in New_Zealand, and two in Australia) and the North American isolates form a separate cluster. Higher K values also distinguish a Middle-Eastern/African cluster from the European cluster, representing the two extreme points of the gradient found between these populations in the PCA.
 ```{r sNMF barplots}
 
 indv_snmf = read_tsv(paste0(PopStr_dir, vcf_name, ".pass_noNA.ind"), col_names = F)
@@ -1006,28 +1007,28 @@ for (i in c(2, 3, 4, 5, 6, 7, 8)){
   best = which.min(cross.entropy(project, K = i))
   temp = as.data.frame(Q(project, i, best))
   temp= cbind(indv_snmf, temp)
-  
+
   temp = temp %>%
     gather("Cluster", "Admix_coef", -"Sample") %>%
     mutate(K=i)
    datalist[[i]] = as.tibble(temp)
 }
-snmf_results_per_K = bind_rows(datalist) %>% 
+snmf_results_per_K = bind_rows(datalist) %>%
   inner_join(., Zt_meta, by = c("Sample" = "ID_file"))  %>%
   unite(Continent_Region, Country, col = "for_display", remove = F)  %>%
   mutate(Sample = fct_reorder(Sample, Date_Year)) %>%
   mutate(Sample = fct_reorder(Sample, Country)) %>%
   mutate(Sample = fct_reorder(Sample, Continent_Region))
 
-p = ggplot(snmf_results_per_K, aes(x = Sample, y = Admix_coef, fill = Cluster, text = for_display)) + 
-  geom_bar(position = "stack", stat = "identity") + facet_grid(K~.) + 
-  theme_bw() + theme(axis.title = element_blank(), 
+p = ggplot(snmf_results_per_K, aes(x = Sample, y = Admix_coef, fill = Cluster, text = for_display)) +
+  geom_bar(position = "stack", stat = "identity") + facet_grid(K~.) +
+  theme_bw() + theme(axis.title = element_blank(),
                      axis.text.x = element_blank(),
                      legend.title = element_blank()) #element_text(angle = 60, hjust = 1))
 
 ggplotly(p)
 
-  
+
 ```
 
 ```{r sNMF pretty plots}
@@ -1062,21 +1063,21 @@ grid.arrange(p1$plot[[1]])
 chosen_K = 6
 chosen_threshold = 0.8
 
-snmf_results_per_K %>% 
+snmf_results_per_K %>%
   filter(K == chosen_K) %>%
   dplyr::group_by(Continent_Region, for_display, Cluster) %>%
   dplyr::summarize(Ave_admix_coef = round(mean(Admix_coef), 2)) %>%
   dplyr::filter(Ave_admix_coef >= 0.02) %>%
-  ggplot(aes(x = for_display, y = Cluster, 
-             size =  Ave_admix_coef, color = Continent_Region)) + 
+  ggplot(aes(x = for_display, y = Cluster,
+             size =  Ave_admix_coef, color = Continent_Region)) +
   geom_point(alpha = 0.5) + Color_Continent+ theme_bw() +
   theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
     labs(x = "", title = "Average admixture coefficient per country")
 
 #Looking at individuals with admixture coef higher than the threshold defined above.
-high_anc_coef_snmf = snmf_results_per_K %>% 
-  filter(K == chosen_K) %>% 
-  filter(Admix_coef > chosen_threshold) 
+high_anc_coef_snmf = snmf_results_per_K %>%
+  filter(K == chosen_K) %>%
+  filter(Admix_coef > chosen_threshold)
 
 ##Table
 kable(high_anc_coef_snmf %>%
@@ -1088,8 +1089,8 @@ kable(high_anc_coef_snmf %>%
 p_cluster = high_anc_coef_snmf %>%
   dplyr::group_by(Continent_Region, for_display, Cluster) %>%
   dplyr::count() %>%
-  ggplot(aes(x = for_display, y = Cluster, 
-             size = n, color = Continent_Region)) + 
+  ggplot(aes(x = for_display, y = Cluster,
+             size = n, color = Continent_Region)) +
   geom_point(alpha = 0.5) + Color_Continent+ theme_bw() +
   theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
     labs(x = "", title = "Number of genotypes with admix coef > 0.8")
@@ -1099,7 +1100,7 @@ p_cluster
 high_anc_coef_snmf %>% dplyr::select(Sample) %>%
   write_tsv(., path = paste0(PopStr_dir, vcf_name, ".pass_noNA.high_anc_coef_snmf.ind"),
             col_names = F)
-high_anc_coef_snmf %>% 
+high_anc_coef_snmf %>%
   write_tsv(., path = paste0(PopStr_dir, vcf_name, ".pass_noNA.high_anc_coef_snmf.tsv"),
             col_names = T)
 ```
@@ -1112,7 +1113,7 @@ __Note__: I am not entirely sure about whether the high density of isolates from
 
 
 ## Population trees
-In the steps before, I have learned about population history indirectly by inferring genetic populations from the genomic data. The relationship between the population and the underlying demography is not explicit in these however. It is possible however to infer splits between populations and create a population tree. Here, I use [treemix](https://journals.plos.org/plosgenetics/article?id=10.1371/journal.pgen.1002967), which takes into account the possibility of gene flow between populations and indeed test of it in the process of creating a population tree. 
+In the steps before, I have learned about population history indirectly by inferring genetic populations from the genomic data. The relationship between the population and the underlying demography is not explicit in these however. It is possible however to infer splits between populations and create a population tree. Here, I use [treemix](https://journals.plos.org/plosgenetics/article?id=10.1371/journal.pgen.1002967), which takes into account the possibility of gene flow between populations and indeed test of it in the process of creating a population tree.
 
 Because the populations in the clustering were not perfectly distinct from one another, I start with "discretized" populations by choosing only the isolates with high ancestry in one of the sNMF clusters.
 ```{bash discretized pop vcf, eval = F}
@@ -1122,7 +1123,7 @@ vcftools --vcf ${VCFDIR}$VCFNAME.recode.vcf \
   --max-missing 1.0 --min-alleles 2 --max-alleles 2 \
   --maf 0.05 \
   --out ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf
-  
+
 cat  ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.GT.FORMAT | cut -f 3- \
    >  ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.GT.FORMAT2
 ```
@@ -1169,8 +1170,8 @@ with open(r.PopStr_dir + r.vcf_name + ".pass_noNA.high_anc_coef_snmf.GT.FORMAT2"
     #If I have not found anything weird, I will write the result to the output file.
     if Lets_write :
       shutup = out.write(" ".join([",".join([str(dict_snp0[pop]), str(dict_snp1[pop])])  for pop in all_pops]) + "\n")
-          
-out.close() 
+
+out.close()
 ```
 
 ```{bash run treemix, eval = F, message = F}
@@ -1189,9 +1190,9 @@ t = plot_tree(paste0(PopStr_dir, vcf_name, ".pass_noNA.high_anc_coef_snmf.treemi
 p_cluster
 ```
 
-Along with the treemix software, are distribution the software treepop and fourpop. These measure f3 and f4 statistics which test for treeness in population trees. 
+Along with the treemix software, are distribution the software treepop and fourpop. These measure f3 and f4 statistics which test for treeness in population trees.
 
-The three-population test is of the form f3(A;B;C), where a significantly negative value of the f3 statistic implies that population A is admixed. The output is four columns: populations | f3 statistic | standard error | Z-score 
+The three-population test is of the form f3(A;B;C), where a significantly negative value of the f3 statistic implies that population A is admixed. The output is four columns: populations | f3 statistic | standard error | Z-score
 ```{bash run threepop}
 threepop -i ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.gz -k 500
 ```
@@ -1227,12 +1228,12 @@ java -jar /Users/feurtey/Documents/Software/snpEff/SnpSift.jar \
     split ${VCFDIR}${VCFNAME_NOMAF}.recode.vcf
 
 # create directories named after each vcf file, moves each file into its own folder
-for x in {1..21} ; 
-do 
-  mkdir vcf/$x 
+for x in {1..21} ;
+do
+  mkdir vcf/$x
   mv ${VCFDIR}${VCFNAME_NOMAF}.recode.${x}.vcf vcf/${x}/${x}.vcf
-  
-  mkdir gff/$x 
+
+  mkdir gff/$x
   grep "^${x}\t" ${GFFFILE} > ${SUMST}PopGenome_splitchr/gff/${x}/${x}.gff
 
 ~/Documents/Software/samtools-1.10/samtools faidx \
@@ -1285,14 +1286,14 @@ for (chr in chr_vec) {
 
       info <- file.info(paste0(Sumstats_dir, "PopGenome_splitchr/gff/", chr,"/", chr,".gff"))[,"size"]
       if (info==0) stop(paste("No genes on chr", chr,"- skipping!"))
-      
+
       ### define paths and load data
       vcf.path <- paste0(Pop_vcf_dir, chr)
       gff.path <- paste0(Pop_gff_dir, chr)
       GENOME.class <- readData(vcf.path, format="VCF", include.unknown=TRUE, gffpath=gff.path)
       all <- unlist(get.individuals(GENOME.class))
-      
-      # check how many SNPs were loaded using 
+
+      # check how many SNPs were loaded using
       GENOME.class@n.biallelic.sites
 
 
@@ -1300,42 +1301,42 @@ for (chr in chr_vec) {
       # Important: the output only refers to pop1, pop2, pop3 instead of the listed pops below. You must record the correct order of pop names
       GENOME.class <- set.populations(GENOME.class, list(all, V1, V2, V3, V4, V5, V6), diploid = FALSE)
       GENOME.class <- set.synnonsyn(GENOME.class, ref.chr=paste0(Pop_ref_dir, chr,".fa"),save.codons=TRUE)
-      
+
       # estimate pairwise Fst and creates a slightly more convenient format
       GENOME.class <- F_ST.stats(GENOME.class, mode="nucleotide")
       pairwise.FST <- t(GENOME.class@nuc.F_ST.pairwise)
-      pairwise.FST <- as.data.frame(GENOME.class@nuc.F_ST.pairwise) %>% 
-        mutate(pops = rownames(GENOME.class@nuc.F_ST.pairwise)) %>% 
+      pairwise.FST <- as.data.frame(GENOME.class@nuc.F_ST.pairwise) %>%
+        mutate(pops = rownames(GENOME.class@nuc.F_ST.pairwise)) %>%
         separate(pops, into = c("Pop1", "Pop2"), sep = "/")
-      results = data.frame(CHROM = chr, 
+      results = data.frame(CHROM = chr,
                            position = GENOME.class@region.data@biallelic.sites,
                            CodingSNPS = GENOME.class@region.data@CodingSNPS[[1]],
                            synonymous = GENOME.class@region.data@synonymous[[1]],
                            ExonSNPS = GENOME.class@region.data@ExonSNPS[[1]])
       colnames(results) = c("#CHROM", "POS", "CodingSNPS", "synonymous", "ExonSNPS")
-      
+
       PopGenome_results_list[[chr]] = results
-      
-      
+
+
       #Getting statistics from the synonymous positions
       GENOME.class.syn <- neutrality.stats(GENOME.class,subsites="syn")
       GENOME.class.syn  <- diversity.stats(GENOME.class.syn,subsites="syn")
-      
+
       data.Number_SNPs <- data.frame(GENOME.class.syn@n.segregating.sites, statistic="Number_SNPs", chromosome = chr)
-      data.TajD <- data.frame(GENOME.class.syn@Tajima.D, 
+      data.TajD <- data.frame(GENOME.class.syn@Tajima.D,
                               statistic="TajimaD", chromosome = chr)
-      data.theta <- data.frame(GENOME.class.syn@theta_Watterson, 
+      data.theta <- data.frame(GENOME.class.syn@theta_Watterson,
                                statistic="theta_Watterson", chromosome = chr)
-      data.Nucl_div <- data.frame(GENOME.class.syn@nuc.diversity.within, 
+      data.Nucl_div <- data.frame(GENOME.class.syn@nuc.diversity.within,
                                   statistic="Nuc_Div", chromosome = chr)
-      data.Nucl_div_per_site <- data.frame(GENOME.class.syn@nuc.diversity.within/GENOME.class.syn@n.sites, 
+      data.Nucl_div_per_site <- data.frame(GENOME.class.syn@nuc.diversity.within/GENOME.class.syn@n.sites,
                                            statistic="Nuc_Div_per_site", chromosome = chr)
-      
-      
-      data.full <- rbind(data.Number_SNPs, data.theta, 
+
+
+      data.full <- rbind(data.Number_SNPs, data.theta,
                          data.TajD, data.Nucl_div, data.Nucl_div_per_site)
-      
-      
+
+
       syn_PopGenome_results_list[[chr]] = data.full
   # used to abort loop
   }, error=function(e){})
@@ -1348,7 +1349,7 @@ PopGenome_results_whole %>%
   dplyr::select(`#CHROM`, POS) %>%
   write_tsv(paste0(Sumstats_dir, "Synonymous_SNPs.list.txt"), col_names = F)
 
-syn_PopGenome_results_per_chr = bind_rows(syn_PopGenome_results_list) %>% 
+syn_PopGenome_results_per_chr = bind_rows(syn_PopGenome_results_list) %>%
   na_if(., "NaN") %>%
   dplyr::mutate_at(vars(starts_with("pop")), funs(as.numeric)) %>%
   pivot_longer(-c(statistic, chromosome), names_to = "Population", values_to = "Estimate")
@@ -1358,10 +1359,10 @@ syn_PopGenome_results_per_chr = bind_rows(syn_PopGenome_results_list) %>%
 ```{r Popgenome per chr heatmaps}
 p1 = syn_PopGenome_results_per_chr %>%
   filter(statistic == "TajimaD") %>%
-  ggplot(aes(x = Population, y = as.numeric(chromosome), fill = Estimate)) + 
+  ggplot(aes(x = Population, y = as.numeric(chromosome), fill = Estimate)) +
   geom_tile() +
   scale_fill_viridis_c() +
-  labs (x = "Populations", y = "Chromosome", 
+  labs (x = "Populations", y = "Chromosome",
         title = "Tajima's D in synonymous positions",
         subtitle = str_wrap(paste(""), width = 70),
         fill = "Tajima's D")+
@@ -1369,10 +1370,10 @@ p1 = syn_PopGenome_results_per_chr %>%
 
 p2 = syn_PopGenome_results_per_chr %>%
   filter(statistic == "Nuc_Div_per_site") %>%
-  ggplot(aes(x = Population, y = as.numeric(chromosome), fill = Estimate)) + 
+  ggplot(aes(x = Population, y = as.numeric(chromosome), fill = Estimate)) +
   geom_tile() +
   scale_fill_viridis_c(option = "magma") +
-  labs (x = "Populations", y = "Chromosome", 
+  labs (x = "Populations", y = "Chromosome",
         title = str_wrap(paste("Nucleotide diversity per site ",
                                "in synonymous positions"), width = 40),
         subtitle = str_wrap(paste(""), width = 70),
@@ -1403,7 +1404,7 @@ gff.path <- paste0(Pop_gff_dir, chr)
 GENOME.class <- readData(vcf.path, format="VCF", include.unknown=TRUE, gffpath=gff.path)
 all <- unlist(get.individuals(GENOME.class))
 
-# check how many SNPs were loaded using 
+# check how many SNPs were loaded using
 GENOME.class@n.biallelic.sites
 
 
@@ -1430,16 +1431,16 @@ data.Nucl_div_per_site <- data.frame(GENOME.class.split@nuc.diversity.within/GEN
 syn.count <- sapply(GENOME.class.split@region.data@synonymous, function(x) {sum(x == 1, na.rm = T)})
 nonsyn.count <- sapply(GENOME.class.split@region.data@synonymous, function(x) {sum(x == 0, na.rm = T)})
 
-data.Number_synSNPs <- data.frame(pop.1=syn.count, pop.2="NA", pop.3="NA", pop.4="NA", 
-                                  pop.5="NA", pop.6="NA", pop.7="NA", 
-                                  statistic="Number_synSNPs", chromosome = chr, 
+data.Number_synSNPs <- data.frame(pop.1=syn.count, pop.2="NA", pop.3="NA", pop.4="NA",
+                                  pop.5="NA", pop.6="NA", pop.7="NA",
+                                  statistic="Number_synSNPs", chromosome = chr,
                                   position=GENOME.class.split@region.names)
-data.Number_nonsynSNPs <- data.frame(pop.1=nonsyn.count, pop.2="NA", pop.3="NA", pop.4="NA", 
+data.Number_nonsynSNPs <- data.frame(pop.1=nonsyn.count, pop.2="NA", pop.3="NA", pop.4="NA",
                                   pop.5="NA", pop.6="NA", pop.7="NA",
                                   statistic="Number_nonsynSNPs", chromosome = chr,
                                   position=GENOME.class.split@region.names)
 
-data.full <- rbind(data.Number_SNPs, data.Number_synSNPs, data.Number_nonsynSNPs, 
+data.full <- rbind(data.Number_SNPs, data.Number_synSNPs, data.Number_nonsynSNPs,
                    data.TajD, data.Nucl_div, data.Nucl_div_per_site)
 
 PopGenome_results_list[[chr]] = data.full
@@ -1456,22 +1457,22 @@ rm(PopGenome_results_list)
 
 # Tajima's D
 temp = PopGenome_results_per_gene %>%
-  dplyr::filter(statistic == "TajimaD") %>% 
+  dplyr::filter(statistic == "TajimaD") %>%
   na_if(., "NaN") %>%
   dplyr::mutate_at(vars(starts_with("pop")), funs(as.numeric)) %>%
   pivot_longer(-c(statistic, chromosome, position), names_to = "Population", values_to = "Estimate") %>%
-  separate(position, into = c("start", "stop")) 
+  separate(position, into = c("start", "stop"))
 
-temp_sum = temp %>% group_by(Population) %>% 
+temp_sum = temp %>% group_by(Population) %>%
   dplyr::summarize(Median_value = median(Estimate, na.rm = T))
 
 temp = full_join(temp,temp_sum)
 
-p3 = ggplot(temp, aes(x = Population, y = as.numeric(Estimate), fill = Median_value)) + 
+p3 = ggplot(temp, aes(x = Population, y = as.numeric(Estimate), fill = Median_value)) +
   geom_violin() +
   geom_boxplot(width = 0.1,
-                 outlier.shape = NA, color = "white")+ 
-  labs (x = "", y = "Tajima's D", 
+                 outlier.shape = NA, color = "white")+
+  labs (x = "", y = "Tajima's D",
         title = "Tajima's D per population in genes",
         subtitle = str_wrap(paste(""), width = 70),
         fill = "Median per pop") +
@@ -1481,21 +1482,21 @@ p3 = ggplot(temp, aes(x = Population, y = as.numeric(Estimate), fill = Median_va
 
 # Nucleotide diversity
 temp = PopGenome_results_per_gene %>%
-  dplyr::filter(statistic == "Nuc_Div_per_site") %>% 
+  dplyr::filter(statistic == "Nuc_Div_per_site") %>%
   na_if(., "NaN") %>%
   dplyr::mutate_at(vars(starts_with("pop")), funs(as.numeric)) %>%
   pivot_longer(-c(statistic, chromosome, position), names_to = "Population", values_to = "Estimate") %>%
   separate(position, into = c("start", "stop"))  
-  
-temp_sum = temp %>% group_by(Population) %>% 
+
+temp_sum = temp %>% group_by(Population) %>%
   dplyr::summarize(Median_value = median(Estimate, na.rm = T))
 
 temp = full_join(temp,temp_sum)
-p4 = ggplot(temp, aes(x = Population, y = log(as.numeric(Estimate)), fill = Median_value)) + 
-  geom_violin() + 
+p4 = ggplot(temp, aes(x = Population, y = log(as.numeric(Estimate)), fill = Median_value)) +
+  geom_violin() +
   labs (x = "", y = str_wrap(paste("Nucleotide diversity per site",
-                                   "in log scale"), width = 30), 
-        title = str_wrap(paste("Nucleotide diversity per site ", 
+                                   "in log scale"), width = 30),
+        title = str_wrap(paste("Nucleotide diversity per site ",
                                "per population in genes"), width = 50),
         subtitle = str_wrap(paste(""), width = 70),
         fill = "Median per pop")+
@@ -1528,10 +1529,10 @@ vcftools \
   --max-missing 1.0 --min-alleles 2 --max-alleles 2 \
   --recode \
   --out ${SUMST}${VCFNAME_NOMAF}.pass_noNA.syn
-  
+
 #Create one count file per population
 for x in {1..6} ;
-do 
+do
 cut -f 1,2 ${POPSTR}${VCFNAME}.pass_noNA.high_anc_coef_snmf.tsv \
   | grep -w "V${x}" | cut -f 1 \
   > ${SUMST}${VCFNAME}.pass_noNA.high_anc_coef_snmf.pop${x}.ind
@@ -1541,7 +1542,7 @@ vcftools \
   --keep ${SUMST}${VCFNAME}.pass_noNA.high_anc_coef_snmf.pop${x}.ind \
   --remove-filtered-all \
   --counts \
-  --out ${SUMST}${VCFNAME_NOMAF}.pass_noNA.high_anc_coef_snmf.pop${x} 
+  --out ${SUMST}${VCFNAME_NOMAF}.pass_noNA.high_anc_coef_snmf.pop${x}
 
 done
 
@@ -1552,7 +1553,7 @@ done
   --recode-INFO-all --recode \
 	--out ${SUMST}${VCFNAME_NOMAF}.pass_noNA.syn.for_dadi \
 	--max-indv 1
-	
+
 
 /Users/feurtey/Documents/Software/bcftools/bcftools query -f '%CHROM\t%POS\t%REF[\t%TGT]\n' \
   ${SUMST}${VCFNAME_NOMAF}.pass_noNA.syn.for_dadi.recode.vcf > \
@@ -1564,13 +1565,13 @@ done
 SFS_counts_list = list()
 
 for (x in c(1:6)) {
-count_file = paste0(Sumstats_dir, vcf_name_nomaf, 
-                    ".pass_noNA.high_anc_coef_snmf.pop", 
+count_file = paste0(Sumstats_dir, vcf_name_nomaf,
+                    ".pass_noNA.high_anc_coef_snmf.pop",
                     x,".frq.count")
 
 counts = read_tsv(count_file,
-                  skip = 1, col_names = F) %>% 
-         separate(X5, into = c("REF allele", "REF_count")) %>% 
+                  skip = 1, col_names = F) %>%
+         separate(X5, into = c("REF allele", "REF_count")) %>%
          separate(X6, into = c("ALT allele", "ALT_count")) %>%
          dplyr::mutate(MAC = pmin(as.numeric(REF_count), as.numeric(ALT_count))) %>%
          dplyr::mutate(Pop = x)
@@ -1582,7 +1583,7 @@ SFS_counts %>%
   filter(MAC > 0) %>%
   dplyr::group_by(Pop, MAC) %>%
   dplyr::count(name = "count") %>%
-  ggplot(aes(as.numeric(x = as.numeric(MAC)), y = count)) + 
+  ggplot(aes(as.numeric(x = as.numeric(MAC)), y = count)) +
     geom_bar(stat = "identity") +
     labs(title = "Site frequency spectrum from the different populations") +
     theme_bw() +
@@ -1595,12 +1596,12 @@ SFS_counts %>%
 
 # Repeat-induced point mutations and transposable elements
 ***
-Previously, based on the study of TE and RIP in 9 *Z.tritici* genomes, a hypothesis was drawn. 
-![Repeat Induced Point (RIP) mutations in transposons of Zymoseptoria spp.](/Users/feurtey/Documents/Postdoc_Eva/Manuscripts/Cecile_TE_annot/Lorrain_TE_09032020/Figure_4.png) 
+Previously, based on the study of TE and RIP in 9 *Z.tritici* genomes, a hypothesis was drawn.
+![Repeat Induced Point (RIP) mutations in transposons of Zymoseptoria spp.](/Users/feurtey/Documents/Postdoc_Eva/Manuscripts/Cecile_TE_annot/Lorrain_TE_09032020/Figure_4.png)
 **Figure from Lorrain et al. 2020: Repeat Induced Point (RIP) mutations in transposons of Zymoseptoria spp.** Histograms of Composite RIP index (CRI) frequencies of transposons estimated using a 50bp sliding windows approach as follows: CRI =(TpA/ ApT) – (CpA + TpG/ ApC + GpT) for A) Z. passerinii, Z. ardabiliae, Z. brevis and Z. pseudotritici, and B) Iranian Z. tritici isolates and C) European Z. tritici isolates. Vertical dash lines exhibit the threshold (0) above which CRI values indicate a RIP signature.
 
 
-The lower RIP in TEs of European samples, as compared to Iranian isolates, could indicate a loss of RIP in *Z.tritici* when it spread out of its area of origin. Here, I would like to investigate this possibility in the different pop. 
+The lower RIP in TEs of European samples, as compared to Iranian isolates, could indicate a loss of RIP in *Z.tritici* when it spread out of its area of origin. Here, I would like to investigate this possibility in the different pop.
 
 
 ## RIP and TE content between populations
@@ -1619,9 +1620,9 @@ dir=/legserv/NGS_data/Zymoseptoria/Aligned_reads_Nuc_Mito_genomes/SRA_2019/PE/Ba
 dir=/legserv/NGS_data/Zymoseptoria/Aligned_reads_Nuc_Mito_genomes/MM_NZ_TAS/Bam/
 list_name=$(ls ${dir}*bai | sed "s|${dir}||" | sed 's/.bam.bai//' )
 
-for x in $list_name ; do 
-  echo $x; 
-  sbatch TE_GC_RIP_bowtie.sh  $x ${dir} ; 
+for x in $list_name ; do
+  echo $x;
+  sbatch TE_GC_RIP_bowtie.sh  $x ${dir} ;
   sleep 2m
 done
 
@@ -1650,7 +1651,7 @@ grep "GC" /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/3_RIP_estimation/*RI
 
 REF_NAME=/data2/alice/WW_project/0_Data/Badet_BMC_Biology_2020_TE_consensus_sequences
 ls_TE=$(grep ">" ${REF_NAME}.fasta | sed 's/>//')
-for TE in $ls_TE; 
+for TE in $ls_TE;
 do
   grep "Compo" /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/3_RIP_estimation/*${TE}.txt  | \
   sed 's|/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/3_RIP_estimation/||' | \
@@ -1664,23 +1665,23 @@ done
 echo "ID_file Te_aligned_reads Total_reads" > /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/Nb_reads.txt
 for fq in /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/*fq.gz ;  
 do  
-  name=$(echo $fq | sed 's|/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/||' | sed 's/.fq.gz//' ); 
+  name=$(echo $fq | sed 's|/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/||' | sed 's/.fq.gz//' );
   echo $name
   total_reads=$(~/Software/samtools-1.10/samtools flagstat /data2/alice/WW_project/1_Variant_calling/0_Mappings/${name}.bam | grep "mapped" | grep "with" -v | cut -f1 -d " ");    
   aln_reads=$(~/Software/samtools-1.10/samtools flagstat /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/${name}.bam | grep "mapped" | grep "with" -v | cut -f1 -d " ");
   #aln_reads=$(zcat /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/${name}.fq.gz | paste - - - - | wc -l | cut -f 1);  
-  echo $name $aln_reads $total_reads >> /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/Nb_reads.txt; 
+  echo $name $aln_reads $total_reads >> /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/Nb_reads.txt;
 done
 
 #Get read number per sample per TE
 rm /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/Nb_reads_per_TE.txt
 for bamF in /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/*bam ;  
-do 
+do
   echo $bamF ;  
-  name=$(echo $bamF | sed 's|/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/||' | sed 's/.bam//' ) ; 
+  name=$(echo $bamF | sed 's|/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/||' | sed 's/.bam//' ) ;
   /home/alice/Software/samtools-1.10/samtools idxstats $bamF > temp.txt ;  
   awk -v var="$name"  '{OFS="\t"} {print var, $1, $2, $3, $4}' temp.txt >> \
-    /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/Nb_reads_per_TE.txt ; 
+    /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/Nb_reads_per_TE.txt ;
 done
 ```
 
@@ -1691,31 +1692,31 @@ First, I mapped the reads on the TE consensus created by Ursula based on Thomas'
 #Reading in the data
 TE_qty = read_delim(paste0(RIP_DIR, "Nb_reads.txt"), delim = " ") %>%
   dplyr::filter(Total_reads > Te_aligned_reads) %>%
-  dplyr::mutate(Percent_TE_Reads = Te_aligned_reads * 100 / Total_reads) %>% 
-  left_join(readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_DC_AFperso.xlsx"), 
+  dplyr::mutate(Percent_TE_Reads = Te_aligned_reads * 100 / Total_reads) %>%
+  left_join(readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_DC_AFperso.xlsx"),
                            sheet = 1, n_max = 1000)) %>%
-  unite(Continent_Region, Country, ID_file, col = "for_display", remove = F) 
+  unite(Continent_Region, Country, ID_file, col = "for_display", remove = F)
 
-world_avg <- 
+world_avg <-
   TE_qty  %>%
   dplyr::summarize(avg = mean(as.numeric(Percent_TE_Reads), na.rm = T)) %>%
   pull(avg)
 
 #Building the basic violin plot per continent
-TE_prop =  TE_qty %>% 
+TE_prop =  TE_qty %>%
   filter(!is.na(Continent_Region)) %>%
   ggplot(aes(x = Continent_Region, y = Percent_TE_Reads, fill = Continent_Region)) +
-  geom_hline(aes(yintercept = world_avg), 
+  geom_hline(aes(yintercept = world_avg),
              color = "gray30", size = 0.6, linetype = "dashed") +
     geom_violin(alpha = .8) +
   stat_summary(fun = mean, geom = "point", size = 2, color = "grey30") +
     theme_classic() + Fill_Continent + Color_Continent +
-  theme_cowplot()  + 
-    theme(axis.text.x = element_text(angle = 40, hjust = 1)) + 
-  labs (x = "", y = str_wrap("Percentage of reads", width = 30), 
+  theme_cowplot()  +
+    theme(axis.text.x = element_text(angle = 40, hjust = 1)) +
+  labs (x = "", y = str_wrap("Percentage of reads", width = 30),
         title = "Amount of reads mapping on TE consensus per continent",
         subtitle = str_wrap(paste(""), width = 70))
-  
+
 #TE_prop
 
 
@@ -1727,7 +1728,7 @@ summary(model)   ### Will show overall p-value and r-squared
 
 ##Conduct analysis of variance
 Anova(model,type = "II")  
-summary(model) 
+summary(model)
 
 hist(residuals(model), col="darkgray")
 
@@ -1754,14 +1755,14 @@ TE_prop +
 ```
 The statistics used here are a one-way [ANOVA with block](https://rcompanion.org/handbook/I_06.html). Blocks are used in an analysis of variance or similar models in order to account for suspected variation from factors other than the treatments or main independent variables being investigated. Here I considered the collection as the confounging factor. It definitely has an effect and was thus accounted for in the statistics related to TE content and to RIP level.
 
-I would like to go finer in the TE content analysis and look at the reads aligning on each consensus sequence. 
+I would like to go finer in the TE content analysis and look at the reads aligning on each consensus sequence.
 ```{r reads per TE}
-reads_per_TE = read_delim(paste0(RIP_DIR, "Nb_reads_per_TE.txt"), delim = "\t", 
-                    col_names = c("ID_file", "TE", "Length", 
+reads_per_TE = read_delim(paste0(RIP_DIR, "Nb_reads_per_TE.txt"), delim = "\t",
+                    col_names = c("ID_file", "TE", "Length",
                                   "# mapped read-segments",  "# unmapped read-segments")) %>%
-  separate(TE, into = c("Superfamily", "TE_id"), sep = "_", remove = F) %>% 
-  dplyr::mutate(Order = ifelse(!grepl('^D',TE), "Class II (DNA transposons)", "Class I (retrotransposons)")) %>% 
-  left_join(readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_DC_AFperso.xlsx"), 
+  separate(TE, into = c("Superfamily", "TE_id"), sep = "_", remove = F) %>%
+  dplyr::mutate(Order = ifelse(!grepl('^D',TE), "Class II (DNA transposons)", "Class I (retrotransposons)")) %>%
+  left_join(readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_DC_AFperso.xlsx"),
                            sheet = 1, n_max = 1000)) %>%
   unite(Continent_Region, Country, ID_file, col = "for_display", remove = F)
 
@@ -1774,7 +1775,7 @@ reads_per_TE = left_join(reads_per_TE, temp) %>%
 
 
 #reads_per_TE %>%
-#  mutate(ID_file = fct_reorder(ID_file, Continent_Region)) %>% 
+#  mutate(ID_file = fct_reorder(ID_file, Continent_Region)) %>%
 #  ggplot(aes(x = ID_file, y = Normalized_nb_reads_mapped, fill = Superfamily)) +
 #    geom_bar(stat = "identity")
 ```
@@ -1785,7 +1786,7 @@ Let's try to make a PCA based on the proportion of reads mapping on each TE. Is 
 ```{r PCA prop reads TE}
 TE_PCA_mat = reads_per_TE %>%
   dplyr::select(ID_file, Continent_Region, for_display, TE, Normalized_nb_reads_mapped) %>%
-  spread(key = TE, value = as.numeric(Normalized_nb_reads_mapped)) 
+  spread(key = TE, value = as.numeric(Normalized_nb_reads_mapped))
 
 temp =as.matrix(sapply(TE_PCA_mat[,c(5:ncol(TE_PCA_mat))], as.numeric))
 temp = temp[,apply(temp, 2, var, na.rm=TRUE) != 0]
@@ -1817,15 +1818,15 @@ Let's now plot the same results but all 4 axis against all and not interactive.
 ``` {r PCA prop TE ggpairs}
 #And now all against all but not interactive
 temp = as.tibble(cbind(TE_PCA_mat, as.data.frame(TE.pca$x))) %>%
-  dplyr::select(for_display, Continent_Region, PC1, PC2, PC3, PC4) 
+  dplyr::select(for_display, Continent_Region, PC1, PC2, PC3, PC4)
 
 p = ggpairs(temp, columns = c(3:6), ggplot2::aes(col=Continent_Region, fill = Continent_Region, alpha = 0.6),
-            title = "PCA based on normalized reads mapping on each TE consensus", 
+            title = "PCA based on normalized reads mapping on each TE consensus",
             upper = list(continuous = "points", combo = "box_no_facet"))
 
 for(i in 1:p$nrow) {
   for(j in 1:p$ncol){
-    p[i,j] <- p[i,j] + theme_bw() + Color_Continent +Fill_Continent 
+    p[i,j] <- p[i,j] + theme_bw() + Color_Continent +Fill_Continent
   }
 }
 
@@ -1836,22 +1837,22 @@ It does look like there is clustering of samples according to geography. This is
 <br>
 
 
-I now look at the repeat-induced point mutations in reads that map on the different TE consensus. We expect to see differences in the different geographical groups so I start by visualizing this. 
+I now look at the repeat-induced point mutations in reads that map on the different TE consensus. We expect to see differences in the different geographical groups so I start by visualizing this.
 ```{r RIP input and plot per geography}
 
-RIP=read_tsv(paste0(RIP_DIR, "Composite_index.txt"), 
+RIP=read_tsv(paste0(RIP_DIR, "Composite_index.txt"),
              col_names = c("ID_file", "TE",  "Composite_median", "Composite_mean" )) %>%
-  separate(TE, into = c("Superfamily", "TE_id"), sep = "_", remove = F) %>% 
+  separate(TE, into = c("Superfamily", "TE_id"), sep = "_", remove = F) %>%
   mutate(Order = ifelse(!grepl('^D',TE), "Class II (DNA transposons)", "Class I (retrotransposons)"))%>%
-  left_join(readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_DC_AFperso.xlsx"), 
+  left_join(readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_DC_AFperso.xlsx"),
                            sheet = 1, n_max = 1000)) %>%
-  unite(Continent_Region, Country, ID_file, col = "for_display", remove = F) %>% 
-  left_join(., reads_per_TE) 
+  unite(Continent_Region, Country, ID_file, col = "for_display", remove = F) %>%
+  left_join(., reads_per_TE)
 #DONE: merge with reads_per_TE to be able to filter the points that have too few reads mapped!
 
 #Per continent
 
-world_RIP_avg <- 
+world_RIP_avg <-
   RIP %>%
   filter(TE == "RIP_est") %>%
   dplyr::summarize(avg = mean(as.numeric(Composite_median), na.rm = T)) %>%
@@ -1861,22 +1862,22 @@ temp = RIP %>%
   filter(TE == "RIP_est") %>%
   filter(!is.na(Continent_Region)) %>%
   group_by(Continent_Region) %>%
-  dplyr::mutate(region_avg = mean(as.numeric(Composite_median), na.rm = T)) 
+  dplyr::mutate(region_avg = mean(as.numeric(Composite_median), na.rm = T))
 
-RIP_plot = ggplot(temp, aes(x = Continent_Region, 
-                            y = as.numeric(Composite_median), 
-                            color = Continent_Region))   + 
+RIP_plot = ggplot(temp, aes(x = Continent_Region,
+                            y = as.numeric(Composite_median),
+                            color = Continent_Region))   +
   coord_flip() +
   geom_segment(aes(x = Continent_Region, xend = Continent_Region,
         y = world_RIP_avg, yend = region_avg), size = 0.8) +
   geom_jitter(size = 1.5, alpha = 0.2, width = 0.2) +
   geom_hline(aes(yintercept = world_RIP_avg), color = "gray70", size = 0.6) +
-  stat_summary(fun = mean, geom = "point", size = 5) + 
+  stat_summary(fun = mean, geom = "point", size = 5) +
   Color_Continent +
-  theme_cowplot() + 
+  theme_cowplot() +
     theme(legend.position = "none",
-          axis.text.x = element_text(angle = 40, hjust = 1)) + 
-  labs (x = "", y = "RIP composite index", 
+          axis.text.x = element_text(angle = 40, hjust = 1)) +
+  labs (x = "", y = "RIP composite index",
         title = "RIP levels per continents",
         subtitle = str_wrap(paste("The RIP levels in reads mapping on TE consensus",
                                   "are high in the Middle-East",
@@ -1892,7 +1893,7 @@ summary(model)   ### Will show overall p-value and r-squared
 
 ##Conduct analysis of variance
 Anova(model,type = "II")  
-summary(model) 
+summary(model)
 
 hist(residuals(model), col="darkgray")
 
@@ -1913,8 +1914,8 @@ CLD_RIP$.group=gsub(" ", "", CLD_RIP$.group)
 text_y = (max(as.numeric(temp$Composite_median), na.rm = T) + 0.1*max(as.numeric(temp$Composite_median), na.rm = T))
 
 RIP_plot +
-  geom_text(data = CLD_RIP, aes(x = Continent_Region, 
-                            y = text_y, 
+  geom_text(data = CLD_RIP, aes(x = Continent_Region,
+                            y = text_y,
                             label = .group), color = "black")
 ```
 
@@ -1926,14 +1927,14 @@ RIP  %>%
   filter(Normalized_nb_reads_mapped > 0.0001) %>%
   group_by(Superfamily)%>%
   mutate(median_Superfamily=median(Composite_median, na.rm = T) )%>%
-  ggplot(aes(x = Superfamily, 
+  ggplot(aes(x = Superfamily,
              y = as.numeric(Composite_median),
              fill = median_Superfamily)) +
     geom_boxplot(outlier.shape = NA) +
-    theme_bw() + 
+    theme_bw() +
     ylab("Median of composite index on TE reads") +
     theme(legend.position = "none",
-          axis.text.x = element_text(angle = 40, hjust = 1)) + 
+          axis.text.x = element_text(angle = 40, hjust = 1)) +
   ylim(-1, 5) + geom_hline( yintercept = 0, color = "navy")
 
 temp = RIP  %>%
@@ -1943,30 +1944,30 @@ temp = RIP  %>%
 
 temp %>%
   filter(Order == "Class I (retrotransposons)") %>%
-  ggplot(aes(x = Superfamily, 
+  ggplot(aes(x = Superfamily,
              y = median_Superfamily,
              fill = Continent_Region)) +
     geom_bar(stat = "identity", position=position_dodge()) +
   Fill_Continent +    
-  theme_bw() + 
+  theme_bw() +
     ylab("Median of composite index on TE reads") +
-    theme(axis.text.x = element_text(angle = 40, hjust = 1)) 
+    theme(axis.text.x = element_text(angle = 40, hjust = 1))
 
 temp %>%
   filter(Order == "Class II (DNA transposons)") %>%
-  ggplot(aes(x = Superfamily, 
+  ggplot(aes(x = Superfamily,
              y = median_Superfamily,
              fill = Continent_Region)) +
     geom_bar(stat = "identity", position=position_dodge()) +
   Fill_Continent +    
-  theme_bw() + 
+  theme_bw() +
     ylab("Median of composite index on TE reads") +
-    theme(axis.text.x = element_text(angle = 40, hjust = 1)) 
+    theme(axis.text.x = element_text(angle = 40, hjust = 1))
 
 #As relating to TE size
 #NB: in the following plot, the alpha parameter is set to make the TE without any reads (or near so) invisible
 #This means that not all consensus are visible. In particular, some, annotated  by Ursula as "verylowcopy" are not.
-TE_consensus_faidx =read_tsv(paste0(TE_RIP_dir, "Badet_BMC_Biology_2020_TE_consensus_sequences.fasta.fai"), 
+TE_consensus_faidx =read_tsv(paste0(TE_RIP_dir, "Badet_BMC_Biology_2020_TE_consensus_sequences.fasta.fai"),
              col_names = c("TE",  "length",  "offset",  
              "number of bases per line",  "number of bytes per line"))
 
@@ -1976,10 +1977,10 @@ p = inner_join(RIP, TE_consensus_faidx) %>%
   filter(!is.na(Normalized_nb_reads_mapped)) %>%
   dplyr::summarize(median_per_consensus=median(Composite_median, na.rm = T),
                    read_mapped = median(Normalized_nb_reads_mapped), na.rm = T) %>%
-  ggplot(aes(x = log(length), 
+  ggplot(aes(x = log(length),
              y = median_per_consensus,
              color = Order)) +
-  geom_point(aes( text = TE, 
+  geom_point(aes( text = TE,
              alpha = log(read_mapped)))  + theme_bw() +
   ylim(c(-2, 4)) + geom_hline(yintercept = 0) +
   labs(x = "TE length (log-scale)",
@@ -1996,9 +1997,9 @@ p = inner_join(RIP, TE_consensus_faidx) %>%
   dplyr::summarize(median_per_consensus=median(Composite_median, na.rm = T),
                    read_mapped = median(Normalized_nb_reads_mapped), na.rm = T) %>%
   filter(str_detect(TE, pattern = "SINE") | str_detect(TE, pattern = "MITE") ) %>%
-  ggplot(aes(x = log(length), 
+  ggplot(aes(x = log(length),
              y = median_per_consensus,
-             color = Order, text = TE, 
+             color = Order, text = TE,
              alpha = log2(read_mapped))) +
   geom_point()  + theme_bw() +
   ylim(c(-2, 4)) + geom_hline(yintercept = 0)
@@ -2009,7 +2010,7 @@ ggplotly(p)
 Finally, I look at the relation between the amount of reads mapping on TE consensus and the level of RIP detected. I also investigate several possible bias.  
 ```{r RIP and TE together}
 TE_RIP = inner_join(TE_qty, RIP %>%
-  filter(TE == "RIP_est") ) 
+  filter(TE == "RIP_est") )
 
 TE_RIP$Date_Year[is.na(TE_RIP$Date_Year)] <- "Unknown"
 
@@ -2020,44 +2021,44 @@ temp = TE_RIP %>%
   dplyr::mutate(for_display = Continent_Region)
 
 #TE and RIP together
-t = ggplot(TE_RIP, aes(as.numeric(Percent_TE_Reads), 
-                          as.numeric(Composite_median), 
-                          color = Continent_Region, 
+t = ggplot(TE_RIP, aes(as.numeric(Percent_TE_Reads),
+                          as.numeric(Composite_median),
+                          color = Continent_Region,
                           text = for_display))+
   theme_cowplot()  +
   geom_point(alpha = 0.6) + Color_Continent +
   labs(color = "Geographical group",
        x = "Percentage of TE reads", y = "RIP composite median",
-       title = "Amount of transposable elements vs RIP level") + 
-  geom_point(data = temp, aes(as.numeric(TE_qty), 
-                                as.numeric(Composite_median), 
+       title = "Amount of transposable elements vs RIP level") +
+  geom_point(data = temp, aes(as.numeric(TE_qty),
+                                as.numeric(Composite_median),
                                 color = Continent_Region), size = 5)
 ggplotly(t)
 
 
-t 
+t
 
 bias1 = TE_RIP %>% ggplot(aes(Percent_TE_Reads, as.numeric(Composite_median), color =Collection, text = for_display)) +
   theme_cowplot() +
-  geom_point(alpha = 0.8) 
+  geom_point(alpha = 0.8)
 
 #bias2 = TE_RIP %>% ggplot(aes(Percent_TE_Reads, as.numeric(Composite_median), color =Library_strategy, text = for_display)) +
 #  theme_cowplot() +
-#  geom_point(alpha = 0.8) 
+#  geom_point(alpha = 0.8)
 
 ggplotly(bias1)
 
 cowplot::plot_grid(RIP_plot +
                      labs (title = "", subtitle = "") +
-                     geom_text(data = CLD_RIP, aes(x = Continent_Region, 
+                     geom_text(data = CLD_RIP, aes(x = Continent_Region,
                                                y = text_y,
-                                               label = .group), 
+                                               label = .group),
                                color = "black"),
                    TE_prop +
                      labs (title = "", subtitle = "") +
-                     geom_text(data = CLD, aes(x = Continent_Region, 
-                                               label = .group, 
-                                               y = 34), 
+                     geom_text(data = CLD, aes(x = Continent_Region,
+                                               label = .group,
+                                               y = 34),
                                color   = "black") +
                      theme(legend.position = "none") +
                      coord_flip())
@@ -2066,7 +2067,7 @@ cowplot::plot_grid(RIP_plot +
 
 ```{r}
 subset = TE_RIP %>%
-  filter(Collection != "Hartmann") 
+  filter(Collection != "Hartmann")
 
 temp = subset %>%
   group_by(Continent_Region) %>%
@@ -2082,18 +2083,18 @@ t = ggplot(subset, aes(as.numeric(Percent_TE_Reads),
   geom_point(alpha = 0.6) + Color_Continent +
   labs(color = "Geographical group",
        x = "Percentage of TE reads", y = "RIP composite median",
-       title = "Amount of transposable elements vs RIP level") + 
-  geom_point(data = temp, aes(as.numeric(TE_qty), 
-                                as.numeric(Composite_median), 
+       title = "Amount of transposable elements vs RIP level") +
+  geom_point(data = temp, aes(as.numeric(TE_qty),
+                                as.numeric(Composite_median),
                                 color = Continent_Region), size = 5)
 ggplotly(t)
 ```
 
 
-Besides geographical origin and collection, I also wanted to check time for subsets of the genomes. The Oceanian samples have often shown their own pattern, so I looked at them separately. Additionally, I am curious about the North American samples since Ursula saw a temporal pattern. 
+Besides geographical origin and collection, I also wanted to check time for subsets of the genomes. The Oceanian samples have often shown their own pattern, so I looked at them separately. Additionally, I am curious about the North American samples since Ursula saw a temporal pattern.
 ```{r RIP and TE together per region}
 #Checking the Oceanian samples
-TE_RIP %>% 
+TE_RIP %>%
   filter(Continent_Region == "Oceania") %>%
   ggplot(aes(Percent_TE_Reads, as.numeric(Composite_median), color = as.character(Date_Year), shape = Country, text = for_display)) +
   geom_point(alpha = 0.8) +
@@ -2103,13 +2104,13 @@ TE_RIP %>%
        x = "Percentage of TE reads", y = "RIP composite median",
        title = "TE vs RIP level in Oceania",
        subtitle = str_wrap(paste0("Oceanian samples have shown a clear ",
-                                  "temporal and geographical substructure ", 
-                                  "based on SNPs. How about RIP/TE content?"), 
+                                  "temporal and geographical substructure ",
+                                  "based on SNPs. How about RIP/TE content?"),
                                   width = 70))
 
-t = TE_RIP %>% 
+t = TE_RIP %>%
     filter(Country == "United States") %>%
-    ggplot(aes(Percent_TE_Reads, as.numeric(Composite_median), 
+    ggplot(aes(Percent_TE_Reads, as.numeric(Composite_median),
                color = Collection, shape = as.character(Date_Year))) +
     geom_point(alpha = 0.8) +
     theme_bw() +
@@ -2117,34 +2118,34 @@ t = TE_RIP %>%
        x = "Percentage of TE reads", y = "RIP composite median",
        title = "TE vs RIP level in North America",
        subtitle = str_wrap(paste0("Ursula's data shows a geographical and a ",
-                                  "temporal pattern in the TE content. ", 
-                                  "Can this be recovered here?"), 
+                                  "temporal pattern in the TE content. ",
+                                  "Can this be recovered here?"),
                                   width = 70))
 t
 ```
 
 
-The RIP index does seem consistent so far with what Cécile has found, with higher RIP in the Middle-East and African populations and lower in the rest (in particular North America and Oceania). 
+The RIP index does seem consistent so far with what Cécile has found, with higher RIP in the Middle-East and African populations and lower in the rest (in particular North America and Oceania).
 
 Careful, there is a strong difference between the data from the Hartmann dataset and the rest. Let's investigate a potential GC bias in the sequencing.
 
 
 ```{r long coverage transform, eval = F}
 #The coverage files here are produced by bedtools coverage with the hist option using the aligned bam files and a bed file describing 1kb windows.
-# Example loop: 
+# Example loop:
 #for sample in STnnJGI_SRR4235066 STnnJGI_SRR4235068 STnnJGI_SRR4235067 STnnJGI_SRR4235068 ; do rsync -avP /legserv/NGS_data/Zymoseptoria/Aligned_reads_Nuc_Mito_genomes/SRA_2019/PE/Bam/${sample}.bam ./ ; ~/Software/bedtools coverage -a Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa.1kb.bed -b ${sample}.bam -hist > ${sample}.coverage.txt ; done
-#And gathered like this: 
+#And gathered like this:
   #for file in *.coverage.txt ; do sample=$(echo $file | sed 's/.coverage.txt//') ; echo $sample ; awk -v #var=$sample '{print var, $1, $2, $3, $4, $5, $6, $7}' $file ; done > Coverage_in_windows.txt
 
 
 depth = read_tsv(paste0(TE_RIP_dir, "Coverage_in_windows.txt"),
-                             col_names = c("Sample", "Chr", "Start", "Stop", 
-                                           "Depth", "Nb_bases_with_depth", 
+                             col_names = c("Sample", "Chr", "Start", "Stop",
+                                           "Depth", "Nb_bases_with_depth",
                                            "Size", "Fraction_covered")) %>%
     mutate(Sum_bases = Depth * Nb_bases_with_depth) %>%
     group_by(Sample, Chr, Start, Stop) %>%
     summarize(Nb_bases = sum(Nb_bases_with_depth), Sum_depth = sum(Sum_bases)) %>%
-    mutate(mean_depth = Sum_depth / Nb_bases) 
+    mutate(mean_depth = Sum_depth / Nb_bases)
 write_tsv(depth, path = paste0(TE_RIP_dir, "Coverage_in_windows_summary.txt"))
 
 ```
@@ -2175,16 +2176,16 @@ for (i in smaller_files) {
 }
 
 
-median_depth_cor_per_ind = depth_per_locus %>% 
+median_depth_cor_per_ind = depth_per_locus %>%
   filter(!grepl("\\[", Locus_name)) %>%
   separate(col = Locus_name, into = c("ignore", "chr", "start", "end")) %>%
   filter(as.numeric(chr) <= 13) %>%
-  group_by(ID_file) %>% 
+  group_by(ID_file) %>%
   dplyr::summarise(Median_core_depth = median(as.numeric(Depth), na.rm = T))
 
 
-depth_per_locus = left_join(depth_per_locus, median_depth_cor_per_ind) %>% 
-  left_join(., readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_DC_AFperso.xlsx"), 
+depth_per_locus = left_join(depth_per_locus, median_depth_cor_per_ind) %>%
+  left_join(., readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_DC_AFperso.xlsx"),
                            sheet = 1, n_max = 1000)) %>%
   mutate(Normalized_depth = Depth / Median_core_depth) %>%
   filter(Median_core_depth > 10)
@@ -2198,7 +2199,7 @@ depth_per_locus = left_join(depth_per_locus, median_depth_cor_per_ind) %>%
 #depth per locus coming from the PAV from pangenome
 
 #t = read_tsv(paste0(TE_RIP_dir, "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.nucl_content")) %>%
-#  unite("#1_usercol", "2_usercol", "3_usercol", col = "Locus_name", remove = F) %>% 
+#  unite("#1_usercol", "2_usercol", "3_usercol", col = "Locus_name", remove = F) %>%
 #  ggplot(aes(`5_pct_gc`)) + geom_density()
 
 Nucl_content = read_tsv(paste0(data_dir, "all_19_pangenome.windows.nuc_GC.tab")) %>%
@@ -2209,83 +2210,83 @@ scale_this <- function(x){
 }
 
 
-GC_coverage = inner_join(depth_per_locus, Nucl_content, 
-           by = "Locus_name") %>% 
+GC_coverage = inner_join(depth_per_locus, Nucl_content,
+           by = "Locus_name") %>%
   filter(!grepl("\\[", Locus_name)) %>%
   separate(col = Locus_name, into = c("ignore", "chr", "start", "end")) %>%
   filter(as.numeric(chr) <= 4) %>% #Check GC bias only on core chromosomes to limit accessory bias in coverage
-  mutate(scaled_depth = scale_this(Depth)) 
+  mutate(scaled_depth = scale_this(Depth))
 
 
-getAlpha<-function(i){ 
+getAlpha<-function(i){
   #print(i)
   temp = GC_coverage %>%
     filter(ID_file == i) %>%
     mutate(log_depth = log(Depth + 1))
-  
+
   linearMod <- lm(log_depth ~ `5_pct_gc`, data=temp)  # build linear regression model on full data
-  alpha = linearMod$coefficients["`5_pct_gc`"] 
+  alpha = linearMod$coefficients["`5_pct_gc`"]
   return (alpha)}
-v_getAlpha <- Vectorize(getAlpha) 
+v_getAlpha <- Vectorize(getAlpha)
 
 GC_bias = GC_coverage %>%
   dplyr::group_by(ID_file) %>%
   dplyr::summarise(Median_core_depth = mean(Median_core_depth, na.rm = T),
                    Median_depth = mean(Depth, na.rm = T))  %>%
-  dplyr::mutate(GC_bias_slope = v_getAlpha(ID_file)) 
+  dplyr::mutate(GC_bias_slope = v_getAlpha(ID_file))
 
 ```
 
 ```{r, fig.height = 5}
 
-temp = GC_coverage %>% 
+temp = GC_coverage %>%
   filter(chr == 1) %>%
   mutate(GC_percent = round(`5_pct_gc` * 100, 0)) %>%
   mutate(Date_Year = ifelse(is.na(Date_Year), "corrected", Date_Year)) %>%
  group_by(ID_file, GC_percent, Date_Year) %>%
  dplyr::summarize(Average_depth = mean(Depth, na.rm = T),
-                  Window_count = n()) 
+                  Window_count = n())
 
 p1 = temp %>%
- ggplot(aes(x = GC_percent, y = Average_depth, color = ID_file, linetype = Date_Year)) + 
+ ggplot(aes(x = GC_percent, y = Average_depth, color = ID_file, linetype = Date_Year)) +
   geom_line() + theme_bw() + geom_hline(yintercept = 3) +
-  theme(legend.position = "top") + 
-  xlim(c(20, 70)) + 
+  theme(legend.position = "top") +
+  xlim(c(20, 70)) +
   labs(x = "GC percent of the window",
-       y = str_wrap("Average depth per window of a given GC percent", width = 20)) 
+       y = str_wrap("Average depth per window of a given GC percent", width = 20))
 
 p2 = temp %>%
   dplyr::filter(ID_file == unique(temp$ID_file[[1]])) %>%
-  ggplot(aes(GC_percent, Window_count)) + geom_bar(stat = "identity") + 
-  theme_bw() + 
+  ggplot(aes(GC_percent, Window_count)) + geom_bar(stat = "identity") +
+  theme_bw() +
   labs(x = "GC percent of the window",
-       y = str_wrap("Number of windows of a given GC percent", width = 20)) 
+       y = str_wrap("Number of windows of a given GC percent", width = 20))
 
 
 p3 = read_tsv(paste0(RIP_DIR, "GC_percent.txt"), col_names = c("ID_file", "TE", "GC_median", "GC_mean")) %>%
-  inner_join(readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_DC_AFperso.xlsx"), 
+  inner_join(readxl::read_excel(paste0(metadata_dir, "Zt_global_data_set_09April2020_DC_AFperso.xlsx"),
                            sheet = 1, n_max = 1000)) %>%
   filter(Continent_Region == "North America") %>%
-  ggplot(aes(GC_median, fill = Collection, color = Collection)) + 
-  geom_density(alpha = 0.4) + 
-  theme_bw() + 
-  labs(x = "Median GC content of the reads aligning on TEs") + 
+  ggplot(aes(GC_median, fill = Collection, color = Collection)) +
+  geom_density(alpha = 0.4) +
+  theme_bw() +
+  labs(x = "Median GC content of the reads aligning on TEs") +
   xlim(c(20, 70)) +
   theme(legend.position = "bottom")
 
 plot_grid(p1, p2, p3, nrow = 3, ncol = 1, rel_heights = c(1, 0.5, 0.7))
 
 ```
-I’ve created a new representation of the GC bias and the first test for the correction. 
+I’ve created a new representation of the GC bias and the first test for the correction.
 
-For the top plot, I have sorted the windows of chromosome 1 in GC percent bins (1% bins). For each bin and for each sample, I then measure the average depth for all windows of the corresponding GC percent and this is what is plotted here. 
-In the middle, you can see an histogram of the number of windows for each bin and, at the bottom, is the median GC content of reads aligning on TEs which I use as a proxy to estimate the GC content of TEs in general. 
+For the top plot, I have sorted the windows of chromosome 1 in GC percent bins (1% bins). For each bin and for each sample, I then measure the average depth for all windows of the corresponding GC percent and this is what is plotted here.
+In the middle, you can see an histogram of the number of windows for each bin and, at the bottom, is the median GC content of reads aligning on TEs which I use as a proxy to estimate the GC content of TEs in general.
 
 As we have seen before, there is a severe GC bias in the older genomes: in the windows with a GC content similar to TE reads (42 - 47), the coverage is often below 3 (black horizontal line). I know that you had tested the effect of depth on your method, Ursula, but this is quite an extreme difference between around 20 to 3... Perhaps this could be tested with a manually GC-biased sample.
 
 I have tried the correction on one sample. You can see it in the top panel as a dashed purple line. It really does correct! Obviously the most extreme values don't get corrected because 0 reads is 0 reads... But it's not as bad as I expected honestly!
 
-I did also try the in silico sequencing with GC bias but I could find only one software which claimed to include GCbias in simulated reads and it really did not go as extreme as we needed, unfortunately. 
+I did also try the in silico sequencing with GC bias but I could find only one software which claimed to include GCbias in simulated reads and it really did not go as extreme as we needed, unfortunately.
 
 
 ```{r plot GCbias alpha}
@@ -2297,10 +2298,10 @@ GC_coverage %>%
     geom_hex(bins = 70) +
     scale_fill_continuous(type = "viridis") +
     theme_bw() + facet_wrap(~ID_file, scale = "free") +
-    geom_smooth(method = "lm", se = FALSE, 
+    geom_smooth(method = "lm", se = FALSE,
                 color = "#29AF7F", size= 0.7) +
     labs(x = "GC percent per window",
-         y = "Depth per window", 
+         y = "Depth per window",
          title = "Illustration of the GC bias",
          subtitle = "I use the slope of a linear model to infer the GC bias.")
 
@@ -2350,13 +2351,13 @@ temp = inner_join(GC_bias, TE_RIP, by = "ID_file") %>%
   ggplot(aes(`Estimated value`, GC_bias_slope, text = for_display, color = Collection)) +
   geom_point() + theme_light() +
   facet_wrap(vars(`Confounded estimate`), scales = "free") +
-  labs(x = "", 
+  labs(x = "",
        y = "GC bias (slope of the per window estimate)",
        title = "Effect of GC bias on TE and RIP estimation")
 ggplotly(temp)
 
 t = TE_RIP %>%
-     ggplot(aes(Percent_TE_Reads, as.numeric(Composite_median), color = Collection, 
+     ggplot(aes(Percent_TE_Reads, as.numeric(Composite_median), color = Collection,
                 shape = as.character(Date_Year), text = for_display)) +
      geom_point(alpha = 0.8) +
      theme_bw()
@@ -2365,9 +2366,9 @@ ggplotly(t)
 ```
 
 
-I tried to correct the GC bias by using deeptools correctGCBias on one sample from the Oregon population. I then rerun the PCA for the TE content. Although the individual values for the depth did change, it did not change the place of the sample in the PCA. 
+I tried to correct the GC bias by using deeptools correctGCBias on one sample from the Oregon population. I then rerun the PCA for the TE content. Although the individual values for the depth did change, it did not change the place of the sample in the PCA.
 
-I don't know if the GC bias is the reason for the clear difference between the Hartmann dataset or if the two are consequence of something else. Either way, it does not seem reasonable to compare this dataset to the rest. It seems that, inside of this dataset, the observed differences match with what can be inferred from the rest of the samples. 
+I don't know if the GC bias is the reason for the clear difference between the Hartmann dataset or if the two are consequence of something else. Either way, it does not seem reasonable to compare this dataset to the rest. It seems that, inside of this dataset, the observed differences match with what can be inferred from the rest of the samples.
 <br>
 
 
@@ -2375,24 +2376,24 @@ I don't know if the GC bias is the reason for the clear difference between the H
 ## RIP along the chromosomes
 
 ```{r, fig.height = 5}
-RIP_in_high_copies_TE = read_tsv(paste0(TE_RIP_dir, "All_genomes.all_TEs.GC.RIP.tab"), 
+RIP_in_high_copies_TE = read_tsv(paste0(TE_RIP_dir, "All_genomes.all_TEs.GC.RIP.tab"),
              col_names = c("Sample", "Seq_ID", "GC", "Product_index", "Substrate_index", "Composite_index"))
 
 temp = RIP_in_high_copies_TE %>%
-  separate(Seq_ID, into = c("Sample", "Chrom", "Start", "End"), 
+  separate(Seq_ID, into = c("Sample", "Chrom", "Start", "End"),
            sep = "\\.|-|:", remove = F) %>%
   dplyr::mutate(Start = as.integer(Start), End = as.integer(End)) %>%
-  dplyr::mutate(Coord = (Start + End)/2) 
+  dplyr::mutate(Coord = (Start + End)/2)
 
 #temp %>%
-#  filter(Chrom == "chr_4") %>% 
-#  filter(Composite_index <= 2 & Composite_index >= - 2 )%>% 
+#  filter(Chrom == "chr_4") %>%
+#  filter(Composite_index <= 2 & Composite_index >= - 2 )%>%
 #  ggplot(aes(Coord, Composite_index, col = Composite_index)) +
 #    geom_point() +
 #    facet_wrap (vars(Sample), ncol = 1) +
-#  theme_bw() + 
-#  scale_color_viridis_c() 
-  
+#  theme_bw() +
+#  scale_color_viridis_c()
+
 temp %>%
   dplyr::mutate(Nb = str_pad(round((Coord / 100000), 0), 6, pad = "0")) %>%
   filter(Composite_index >= -2 & Composite_index<= 2) %>%
@@ -2402,8 +2403,8 @@ temp %>%
   dplyr::summarize(Composite = mean(Composite_index, na.rm = T)) %>%
   ggplot(aes(Window, Sample, fill = Composite)) +
     geom_tile() +
-  theme_bw() + 
-  scale_fill_viridis_c() 
+  theme_bw() +
+  scale_fill_viridis_c()
 
 temp %>%
   filter(Composite_index >= -3 & Composite_index<= 3) %>%
@@ -2412,14 +2413,14 @@ temp %>%
   dplyr::summarize(Composite = mean(Composite_index, na.rm = T)) %>%
   ggplot(aes(Chr, Sample, fill = Composite)) +
     geom_tile() +
-  theme_bw() + 
-  scale_fill_viridis_c() 
+  theme_bw() +
+  scale_fill_viridis_c()
 ```
 
 
 ## Is dim2 present in its intact version in some populations?
 
-Next step will be to check if dim2 is present where the RIP values suggest they are: intact copies in the Middle-East and Africa and absence/degeneration in the rest. 
+Next step will be to check if dim2 is present where the RIP values suggest they are: intact copies in the Middle-East and Africa and absence/degeneration in the rest.
 Here, I use **de novo** genome assemblies and try to identify copies of dim2. For this, I use a deRIPped sequence of dim2 in the reference, blasted it on to Zt10 to get the sequence of Zt10_dim2 since it is known to have an intact sequence (see Mareike's paper). I then compare this sequence (blastn) with de **de novo** assemblies to pull all the copies and identify the highest identity score.
 ```{bash dim2_detect_blast, eval = F}
 #Here the Zt10_dim2_from_MgDNMT_deRIP.fa is the sequence of Zt10_6.417 which corresponds to the deRIPPed version of dim2 in the reference IPO323 https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2940312/pdf/GEN186167.pdf
@@ -2427,36 +2428,36 @@ dir_source=/legserv/NGS_data/Zymoseptoria/Data_files/Illumina_Denovo/Hartmann_20
 list_spades=$(ls $dir_source)
 out_file=/data2/alice/WW_project/4_TE_RIP/1_Ztdim2_detection/1_Blast_from_denovo_assemblies/Results_blast_dim2.txt
 echo "sample qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore" > $out_file
-for x in $list_spades ; 
-  do 
-  sample=$(echo $x | sed 's/\.R/_R/' | sed 's/\.S\./_S\./' | cut -d '.' -f 3) ; echo $sample $x ; 
+for x in $list_spades ;
+  do
+  sample=$(echo $x | sed 's/\.R/_R/' | sed 's/\.S\./_S\./' | cut -d '.' -f 3) ; echo $sample $x ;
 
 rsync -avP \
   ${dir_source}${x}/scaffolds.fasta \
   /data2/alice/WW_project/4_TE_RIP/1_Ztdim2_detection/1_Blast_from_denovo_assemblies/
-  
+
 python2 /userhome/alice/Scripts/Rename_fragments_in_fasta.py  \
     -i /data2/alice/WW_project/4_TE_RIP/1_Ztdim2_detection/1_Blast_from_denovo_assemblies/scaffolds.fasta \
     -o /data2/alice/WW_project/4_TE_RIP/1_Ztdim2_detection/1_Blast_from_denovo_assemblies/${sample}.fasta \
     --simple -f spades
-    
+
 ~/Software/ncbi-blast-2.10.0+/bin/makeblastdb \
   -dbtype nucl \
   -in /data2/alice/WW_project/4_TE_RIP/1_Ztdim2_detection/1_Blast_from_denovo_assemblies/${sample}.fasta \
   -out /data2/alice/WW_project/4_TE_RIP/1_Ztdim2_detection/1_Blast_from_denovo_assemblies/${sample}
-  
+
 ~/Software/ncbi-blast-2.10.0+/bin/blastn \
   -query /userhome/alice/WW_project/WW_TE_RIP/Zt10_dim2_from_MgDNMT_deRIP.fa \
   -db /data2/alice/WW_project/4_TE_RIP/1_Ztdim2_detection/1_Blast_from_denovo_assemblies/${sample} \
   -outfmt 6  | \
   awk -v sample="${sample}" 'BEGIN {OFS = " "} {print sample, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12}' >> \
   $out_file
-  
+
  done
- 
- 
+
+
 while read sample ;
-do 
+do
 
 out_file=/data2/alice/WW_project/4_TE_RIP/1_Ztdim2_detection/1_Blast_from_denovo_assemblies/Results_blast_dim2_${sample}.txt
 #Software directories
@@ -2507,12 +2508,12 @@ python2 ${SCRIPTS_PATH}Rename_fragments_in_fasta.py  \
     -i ${DIM_denovo}${sample}scaffolds.fasta \
     -o ${DIM_blast}${sample}.fasta \
     --simple -f spades
-    
+
 ${BLAST_PATH}makeblastdb \
   -dbtype nucl \
   -in ${DIM_blast}${sample}.fasta \
   -out ${DIM_blast}${sample}
-  
+
 ${BLAST_PATH}blastn \
   -query /userhome/alice/WW_project/WW_TE_RIP/Zt10_dim2_from_MgDNMT_deRIP.fa \
   -db ${DIM_blast}${sample} \
@@ -2542,23 +2543,23 @@ threshold_length_flank1 = 0.8 * length_flank1
 threshold_length_flank2 = 0.8 * length_flank2
 
 dim2_blast_results_complete = read_delim(paste0(DIM2_DIR, "Overall_results_blast_dim2.txt"), delim = " ",
-                                col_names = c("sample", "gene", "qseqid", "sseqid", "pident", "length", 
-                                              "mismatch", "gapopen", "qstart", "qend", 
+                                col_names = c("sample", "gene", "qseqid", "sseqid", "pident", "length",
+                                              "mismatch", "gapopen", "qstart", "qend",
                                               "sstart", "send", "evalue", "bitscore"))
 
 flank1 = dim2_blast_results_complete %>%
-  filter(gene == "dim2_flank1") %>% 
-  dplyr::select(sample, gene, sseqid, length, sstart, send) %>% 
-  dplyr::mutate(midcoord_flank1 = (sstart + send)/2) %>% 
+  filter(gene == "dim2_flank1") %>%
+  dplyr::select(sample, gene, sseqid, length, sstart, send) %>%
+  dplyr::mutate(midcoord_flank1 = (sstart + send)/2) %>%
   filter(length > threshold_length_flank1) %>%
   pivot_wider(names_from = gene, values_from = sseqid) %>%
   dplyr::select(-length, -sstart, -send) %>%
   group_by(sample) %>%
   dplyr::mutate(nb_gene = n())
 
-flank2 = dim2_blast_results_complete %>% 
-  filter(gene == "dim2_flank2") %>% 
-  dplyr::select(sample, gene, sseqid, length, sstart, send) %>% 
+flank2 = dim2_blast_results_complete %>%
+  filter(gene == "dim2_flank2") %>%
+  dplyr::select(sample, gene, sseqid, length, sstart, send) %>%
   dplyr::mutate(midcoord_flank2 = (sstart + send)/2) %>%
   filter(length > threshold_length_flank2) %>%
   pivot_wider(names_from = gene, values_from = sseqid) %>%
@@ -2566,7 +2567,7 @@ flank2 = dim2_blast_results_complete %>%
   group_by(sample) %>%
   dplyr::mutate(nb_gene = n())
 
-#First let's extract some information such as finding the middle coordinates for the 
+#First let's extract some information such as finding the middle coordinates for the
 # 3 genes of interest
 dim2_blast_results = dim2_blast_results_complete %>%
   dplyr::filter(gene == "dim2") %>%
@@ -2577,33 +2578,33 @@ dim2_blast_results = dim2_blast_results_complete %>%
                 midcoord_flank1 = replace_na(midcoord_flank1, "0"),
                 midcoord_flank2 = replace_na(midcoord_flank2, "0")) %>%
   dplyr::mutate(midcoord_flank1 = as.numeric(midcoord_flank1),
-                midcoord_flank2 = as.numeric(midcoord_flank2))  %>% 
-  dplyr::mutate(ave_coord = (sstart + send)/2)  %>% 
-  dplyr::mutate(min_fl = ifelse(midcoord_flank1 > midcoord_flank2, 
+                midcoord_flank2 = as.numeric(midcoord_flank2))  %>%
+  dplyr::mutate(ave_coord = (sstart + send)/2)  %>%
+  dplyr::mutate(min_fl = ifelse(midcoord_flank1 > midcoord_flank2,
                                 midcoord_flank2, midcoord_flank1))  %>%
-  dplyr::mutate(max_fl = ifelse(midcoord_flank1 > midcoord_flank2, 
-                                midcoord_flank1, midcoord_flank2)) 
+  dplyr::mutate(max_fl = ifelse(midcoord_flank1 > midcoord_flank2,
+                                midcoord_flank1, midcoord_flank2))
 
 #Now, let's compare the blast results of dim2 with the flanking genes
 # (contig name and distance)
 dim2_blast_results = dim2_blast_results %>%
   dplyr::mutate(is_same_contig = ifelse(sseqid == dim2_flank1 & sseqid == dim2_flank2,
-                                 "Both", 
+                                 "Both",
                                  ifelse(sseqid != dim2_flank1 & sseqid != dim2_flank2,
-                                 "None", 
+                                 "None",
                                  ifelse(sseqid == dim2_flank1, "Flank1",
                                  ifelse(sseqid == dim2_flank2, "Flank2", "What"))))) %>%
   dplyr::mutate(distance = ifelse(is_same_contig == "None", "No_distance",
                            ifelse(is_same_contig == "Both",
                                   ifelse(ave_coord >= min_fl &
-                                         ave_coord <= max_fl , 
-                                  "Distance_OK", "Not_between"), 
-                                  ifelse(is_same_contig == "Flank1", 
-                                         ifelse((abs(midcoord_flank1 - ave_coord) <= 10000), 
-                                  "Distance_OK", "Too_far"), 
-                                  ifelse((abs(midcoord_flank2 - ave_coord) <= 10000), 
+                                         ave_coord <= max_fl ,
+                                  "Distance_OK", "Not_between"),
+                                  ifelse(is_same_contig == "Flank1",
+                                         ifelse((abs(midcoord_flank1 - ave_coord) <= 10000),
+                                  "Distance_OK", "Too_far"),
+                                  ifelse((abs(midcoord_flank2 - ave_coord) <= 10000),
                                   "Distance_OK", "Too_far"))))) %>%
-  mutate(Nb_flanking_found_2cat = ifelse(is_same_contig == "None", "0", 
+  mutate(Nb_flanking_found_2cat = ifelse(is_same_contig == "None", "0",
                                          ifelse(distance == "Distance_OK", ">1", "0")))
 
 
@@ -2612,17 +2613,17 @@ dim2_blast_results = dim2_blast_results %>%
 
 
 
-dim2_blast_results %>% 
-  ggplot(aes(length)) + 
-    geom_density(alpha = 0.7) + 
-    theme_bw() + 
+dim2_blast_results %>%
+  ggplot(aes(length)) +
+    geom_density(alpha = 0.7) +
+    theme_bw() +
     geom_vline(aes(xintercept = threshold_length_dim2), color = "gray70", size = 0.6) +
     labs(x = "Length (bp)",
          y = "Density",
          title = "Length of all blast matches against Zt10dim2",
          subtitle = str_wrap(paste("There is a large range in the size of the matches.",
                                    " In order to ignore very short matches, I could set up a threshold",
-                                   " visualized here as the grey line."), 
+                                   " visualized here as the grey line."),
          width = 70))
 ```
 However, the length also greatly varies for copies for which we were able to detect one or two of the flanking genes on the same contig.
@@ -2630,25 +2631,25 @@ However, the length also greatly varies for copies for which we were able to det
 
 
 p1 = dim2_blast_results %>%
-  ggplot(aes(length, fill = is_same_contig, color = is_same_contig)) + 
-    geom_density(alpha = 0.7) + 
-    theme_bw() + 
+  ggplot(aes(length, fill = is_same_contig, color = is_same_contig)) +
+    geom_density(alpha = 0.7) +
+    theme_bw() +
     labs(x = "Length (bp)",
          y = "Density",
          title = str_wrap("Length of all blast matches against Zt10dim2", width = 30))
 
 
 p3 = dim2_blast_results %>%
-  ggplot(aes(Nb_flanking_found_2cat, fill = is_same_contig)) + 
-    geom_bar(alpha = 0.7) + 
-    theme_bw() + 
+  ggplot(aes(Nb_flanking_found_2cat, fill = is_same_contig)) +
+    geom_bar(alpha = 0.7) +
+    theme_bw() +
   labs ( x = "Number of flanking genes on the same contig",
          y = "Number of copies",
-         title = str_wrap("Numbers of copies found in the same contig as the flanking genes ", width = 30)) + 
-  theme(legend.position = "none") 
+         title = str_wrap("Numbers of copies found in the same contig as the flanking genes ", width = 30)) +
+  theme(legend.position = "none")
 
 legend_b <- get_legend(
-  p1 + 
+  p1 +
     guides(color = guide_legend(nrow = 1)) +
     theme(legend.position = "bottom")
 )
@@ -2677,7 +2678,7 @@ sum_dim2_blast = dim2_blast_results %>%
   dplyr::filter(Nb_flanking_found_2cat == ">1") %>%
   group_by(sample) %>%
   dplyr::summarize(length_sum = sum(length),
-                   pident_wm = weighted.mean(pident, length), 
+                   pident_wm = weighted.mean(pident, length),
                    n_matches_on_native_contigs = n()) %>%
   filter(length_sum < length_dim2 + 200) %>%
   inner_join(., temp) %>%
@@ -2686,49 +2687,49 @@ sum_dim2_blast = dim2_blast_results %>%
 
 
 #Plots of identity vs length of the original copy
-scatter <- sum_dim2_blast %>% 
-  ggplot(aes(length_sum, pident_wm, 
-             color = Continent_Region, 
+scatter <- sum_dim2_blast %>%
+  ggplot(aes(length_sum, pident_wm,
+             color = Continent_Region,
              shape = as.character(n_matches_on_native_contigs))) +
   geom_point() +
   theme_bw() + Color_Continent +
-  theme(legend.position = "none") + 
-  labs( x = "Length of the recovered native copy", 
+  theme(legend.position = "none") +
+  labs( x = "Length of the recovered native copy",
         y = "Identity with Zt10dim2")
 
-hist_top = sum_dim2_blast %>% 
+hist_top = sum_dim2_blast %>%
   filter(Continent_Region != "Asia") %>%
-  ggplot(aes(Continent_Region, length_sum, 
+  ggplot(aes(Continent_Region, length_sum,
              fill = Continent_Region, color = Continent_Region)) +
   geom_boxplot(alpha = 0.6, width = 0.4) +
-  theme_bw() + 
+  theme_bw() +
   Fill_Continent + Color_Continent+
   theme(legend.position = "none",
         axis.text.x = element_text(size = 7),
-        axis.text.y = element_text(size = 7)) + 
-  coord_flip() + 
+        axis.text.y = element_text(size = 7)) +
+  coord_flip() +
   labs( x = "", y = "")
 
-hist_right = sum_dim2_blast %>% 
+hist_right = sum_dim2_blast %>%
   filter(Continent_Region != "Asia") %>%
   ggplot(aes(Continent_Region, pident_wm, fill = Continent_Region)) +
   geom_violin(alpha = 0.6) +
   theme_bw() + Fill_Continent +
   theme(legend.position = "none",
-        axis.text.x = element_text(size = 7, angle = 20, hjust = 1)) + 
+        axis.text.x = element_text(size = 7, angle = 20, hjust = 1)) +
   labs( x = "", y = "")
 
 
 #Options for top right plot
 legend_b <- get_legend(
-  hist_top + 
+  hist_top +
     guides(color = guide_legend(nrow = 1)) +
     theme(legend.position = "right")
 )
 
 empty <- ggplot()+geom_point(aes(1,1), colour="white")+
-         theme(axis.ticks=element_blank(), 
-               panel.background=element_blank(), 
+         theme(axis.ticks=element_blank(),
+               panel.background=element_blank(),
                axis.text.x=element_blank(), axis.text.y=element_blank(),           
                axis.title.x=element_blank(), axis.title.y=element_blank())
 
@@ -2736,58 +2737,61 @@ empty <- ggplot()+geom_point(aes(1,1), colour="white")+
 
 
 #Gather all
-cowplot::plot_grid(hist_top, legend_b, scatter, hist_right, 
-                   ncol=2, nrow=2, 
+cowplot::plot_grid(hist_top, legend_b, scatter, hist_right,
+                   ncol=2, nrow=2,
                    rel_widths=c(1.2, 1), rel_heights=c(1, 1),  
                    align = 'vh')
 
 ```
 
 ```{r}
-sum_dim2_blast %>% 
+sum_dim2_blast %>%
   filter(Continent_Region != "Asia") %>%
   dplyr::mutate(Nb_frag = as.character(n_matches_on_native_contigs))  %>%
   dplyr::count(Nb_frag, Collection, Continent_Region) %>%
   ggplot(aes(Collection, Continent_Region, color = Collection)) +
   geom_point(aes(size = n), stat = "identity", alpha = 0.6) +
-  theme_bw() + 
+  theme_bw() +
   theme(legend.position = "none",
-        axis.text.x = element_text(size = 7, angle = 20, hjust = 1)) + 
-  labs( x = "", y = "") + 
+        axis.text.x = element_text(size = 7, angle = 20, hjust = 1)) +
+  labs( x = "", y = "") +
   Fill_Continent +
   facet_wrap(vars(Nb_frag))
 ```
 Here a large proportion of the Middle-Eastern samples from the old Hartmann dataset have two matches on the "right" contigs: this is due to a deletion found in one of the allele of dim2 (shown in Mareike's new version of her dim2 manuscript).
 
-Let's investigate quickly how many long copies there are in each genome. I'm also interested in the native match as related to RIP and geography. 
-```{r}
+Let's investigate quickly how many long copies there are in each genome. I'm also interested in the native match as related to RIP and geography.
+```{r RIP vs dim2}
 
 p1 = sum_dim2_blast %>%
-  ggplot(aes(as.numeric(Composite_median), pident_wm, color = Continent_Region))+
-  geom_point() + Color_Continent + 
+  ggplot(aes(as.numeric(Composite_median), pident_wm, color = Continent_Region,
+                      shape = Collection))+
+  geom_point() + Color_Continent +
   theme_bw() + theme(legend.position = "none") +
     labs(x = str_wrap(paste("RIP composite index",
-                            " (median per isolate)"), 
+                            " (median per isolate)"),
                       width = 20),
-         y = str_wrap("Identity of the native match", 
+         y = str_wrap("Identity of the native match",
                       width = 20))
 
 p2 = sum_dim2_blast %>%
-  ggplot(aes(as.numeric(Composite_median), n_long_matches, color = Continent_Region))+
-  geom_point() + Color_Continent + 
+  ggplot(aes(as.numeric(Composite_median), n_long_matches, color = Continent_Region,
+                      shape = Collection))+
+  geom_point() + Color_Continent +
   theme_bw() + theme(legend.position = "none") +
     labs(x = str_wrap(paste("RIP composite index",
-                            " (median per isolate)"), 
+                            " (median per isolate)"),
                       width = 20),
-         y = str_wrap("Number of long blast matches (above 1kb)", 
+         y = str_wrap("Number of long blast matches (above 1kb)",
                       width = 20))
 
 p3 = sum_dim2_blast %>%
-  ggplot(aes(x = pident_wm, y = n_long_matches, color = Continent_Region)) +
+  ggplot(aes(x = pident_wm, y = n_long_matches, color = Continent_Region,
+                      shape = Collection)) +
   geom_point() + Color_Continent + theme_bw()+
-    labs(x = str_wrap("Identity of the native match", 
+    labs(x = str_wrap("Identity of the native match",
                       width = 20),
-         y = str_wrap("Number of long blast matchess (above 1kb)", 
+         y = str_wrap("Number of long blast matchess (above 1kb)",
                       width = 20),
          color = "Geographical group") +
   theme(axis.title=element_text(size=10))
@@ -2802,7 +2806,34 @@ cor.test(sum_dim2_blast$pident_wm, sum_dim2_blast$n_long_matches, method="spearm
 cowplot::plot_grid(p3, bottom_row, labels = c('A', ''), label_size = 12, ncol = 1)
 
 ```
+```{r RIP vs dim2 separate Hartman}
 
+p1 = sum_dim2_blast %>%
+  filter(Collection == "Hartmann") %>%
+  ggplot(aes(as.numeric(Composite_median), pident_wm, color = Continent_Region))+
+  geom_point() + Color_Continent +
+  theme_bw() + theme(legend.position = "none") +
+    labs(x = str_wrap(paste("RIP composite index",
+                            " (median per isolate)"),
+                      width = 20),
+         y = str_wrap("Identity of the native match",
+                      width = 20))
+
+p2 = sum_dim2_blast %>%
+  filter(Collection != "Hartmann") %>%
+  ggplot(aes(as.numeric(Composite_median), pident_wm, color = Continent_Region))+
+  geom_point() + Color_Continent +
+  theme_bw() + theme(legend.position = "none") +
+    labs(x = str_wrap(paste("RIP composite index",
+                            " (median per isolate)"),
+                      width = 20),
+         y = str_wrap("Identity of the native match",
+                      width = 20))
+
+cowplot::plot_grid(p1, p2, labels = c('A', 'B'), label_size = 12)
+
+
+```
 ```{r}
 
 #Statistical test
@@ -2814,7 +2845,7 @@ summary(model)   ### Will show overall p-value and r-squared
 
 ##Conduct analysis of variance
 Anova(model,type = "II")  
-summary(model) 
+summary(model)
 
 hist(residuals(model), col="darkgray")
 
@@ -2838,15 +2869,15 @@ text_y = (max(as.numeric(temp$Composite_median), na.rm = T) + 0.1*max(as.numeric
 ```
 
 
-And then as boxplots per continental region. 
+And then as boxplots per continental region.
 ```{r dim2 blast results box}
 p1 = sum_dim2_blast %>%
   group_by(Continent_Region) %>%
   dplyr::mutate(avg_per_cont = mean(pident_wm, na.rm = T)) %>%
-  ggplot(aes(Continent_Region, pident_wm, 
+  ggplot(aes(Continent_Region, pident_wm,
              fill = Continent_Region)) +
   geom_violin(aes(fill = Continent_Region), alpha = 0.5) +
-    geom_jitter(aes(col = Continent_Region), size = 0.8, alpha = 0.8, width = 0.2, height = 0.1) + 
+    geom_jitter(aes(col = Continent_Region), size = 0.8, alpha = 0.8, width = 0.2, height = 0.1) +
   Fill_Continent + Color_Continent  +
     theme_light() +
     theme(
@@ -2855,22 +2886,22 @@ p1 = sum_dim2_blast %>%
     legend.position = "none",
     axis.text.x = element_text(size = 10, angle = 40, hjust = 1)) +
    coord_flip() +
-  labs(x = NULL, 
+  labs(x = NULL,
        y = "Identity of the native copy to Zt10dim2") +
-  geom_text(data = CLD_dim, aes(x = Continent_Region, 
-                            y = 102, 
+  geom_text(data = CLD_dim, aes(x = Continent_Region,
+                            y = 102,
                             label = .group), color = "black")
 
 
-p2 = ggplot(sum_dim2_blast, aes(Continent_Region, n_long_matches, 
-             fill = Continent_Region)) + 
+p2 = ggplot(sum_dim2_blast, aes(Continent_Region, n_long_matches,
+             fill = Continent_Region)) +
   geom_violin() + Fill_Continent +
-  theme_light() + 
+  theme_light() +
   theme(panel.grid.major.y = element_blank(),
     panel.border = element_blank(),
     legend.position = "none",
     axis.text.x = element_text(angle = 40, hjust = 1))+
-  labs(x = NULL, 
+  labs(x = NULL,
        y = "Number of dim2 copies") + coord_flip()
 cowplot::plot_grid(p1, p2, rel_widths = c(1, 1))
 
@@ -2882,11 +2913,11 @@ cowplot::plot_grid(p1, p2, rel_widths = c(1, 1))
 ```{r}
 
 # TODO
-# Use beginning and end of dim2 gene (100bp) to get gene boundaries on assemblies. 
-# Update: I tried. But it really does not work better... 
+# Use beginning and end of dim2 gene (100bp) to get gene boundaries on assemblies.
+# Update: I tried. But it really does not work better...
 #Here is the code of the comparison in case I need to use it later still
 
-#Selecting start and end coordinates which are found on a contig 
+#Selecting start and end coordinates which are found on a contig
 # with at least one of the flanking genes.
 dim2_start = dim2_blast_results_complete %>%
   filter(gene == "dim2_start") %>%
@@ -2895,14 +2926,14 @@ dim2_start = dim2_blast_results_complete %>%
   mutate(dim2_flank1 = replace_na(dim2_flank1, "Not_found"),
          dim2_flank2 = replace_na(dim2_flank2, "Not_found")) %>%
   mutate(is_same_contig = ifelse(sseqid == dim2_flank1 & sseqid == dim2_flank2,
-                                 "Both", 
+                                 "Both",
                                  ifelse(sseqid != dim2_flank1 & sseqid != dim2_flank2,
-                                 "None", 
+                                 "None",
                                  ifelse(sseqid == dim2_flank1, "Flank1",
-                                 ifelse(sseqid == dim2_flank2, "Flank2", "What")))))%>% 
+                                 ifelse(sseqid == dim2_flank2, "Flank2", "What")))))%>%
   mutate(Nb_flanking_found_2cat = ifelse(is_same_contig == "None", "0", ">1"))%>%
   filter(Nb_flanking_found_2cat == ">1")
-  
+
 dim2_end = dim2_blast_results_complete %>%
   filter(gene == "dim2_end") %>%
   full_join(., flank1) %>%
@@ -2910,11 +2941,11 @@ dim2_end = dim2_blast_results_complete %>%
   mutate(dim2_flank1 = replace_na(dim2_flank1, "Not_found"),
          dim2_flank2 = replace_na(dim2_flank2, "Not_found")) %>%
   mutate(is_same_contig = ifelse(sseqid == dim2_flank1 & sseqid == dim2_flank2,
-                                 "Both", 
+                                 "Both",
                                  ifelse(sseqid != dim2_flank1 & sseqid != dim2_flank2,
-                                 "None", 
+                                 "None",
                                  ifelse(sseqid == dim2_flank1, "Flank1",
-                                 ifelse(sseqid == dim2_flank2, "Flank2", "What")))))%>% 
+                                 ifelse(sseqid == dim2_flank2, "Flank2", "What")))))%>%
   mutate(Nb_flanking_found_2cat = ifelse(is_same_contig == "None", "0", ">1"))%>%
   filter(Nb_flanking_found_2cat == ">1")
 
@@ -2931,10 +2962,10 @@ dim2_end = dim2_blast_results_complete %>%
 #  pivot_wider(names_from = Continent_Region, values_from = `n()`)
 
 # Table from the "simple" blast as comparison
-#dim2_blast_results %>% 
+#dim2_blast_results %>%
 #  dplyr::filter(Nb_flanking_found_2cat == ">1") %>%
-#  left_join(., RIP %>% filter(TE == "RIP_est"), by = c("sample" = "ID_file")) %>% 
-#  filter(length > 2500) %>% 
+#  left_join(., RIP %>% filter(TE == "RIP_est"), by = c("sample" = "ID_file")) %>%
+#  filter(length > 2500) %>%
 #  dplyr::count(is_same_contig, Continent_Region) %>%
 #  pivot_wider(names_from = Continent_Region, values_from = n)
 
@@ -2942,26 +2973,26 @@ dim2_end = dim2_blast_results_complete %>%
 #   - both flanking genes
 #   - one flanking gene but a length of 2500 at least
 
-dim2_blast_results %>% 
+dim2_blast_results %>%
   dplyr::filter(Nb_flanking_found_2cat == ">1") %>%
-  left_join(., RIP %>% filter(TE == "RIP_est"), by = c("sample" = "ID_file")) %>% 
-  filter(length > 2500) %>% 
+  left_join(., RIP %>% filter(TE == "RIP_est"), by = c("sample" = "ID_file")) %>%
+  filter(length > 2500) %>%
   dplyr::count(is_same_contig, Continent_Region) %>%  
-  dplyr::group_by(Continent_Region) %>% 
-  dplyr::mutate(Somme_per_collection = sum(n)) %>% 
-  mutate(prop = n*100/Somme_per_collection) %>% 
-  ggplot(aes(x = is_same_contig, y = Continent_Region, fill = prop)) + 
-    geom_tile() + 
-    theme_bw() + 
-    scale_fill_viridis_c() + 
-  labs (title = str_wrap(paste0("Proportion of long dim2 matches ", 
-                                "with at least one flanking gene"), 
+  dplyr::group_by(Continent_Region) %>%
+  dplyr::mutate(Somme_per_collection = sum(n)) %>%
+  mutate(prop = n*100/Somme_per_collection) %>%
+  ggplot(aes(x = is_same_contig, y = Continent_Region, fill = prop)) +
+    geom_tile() +
+    theme_bw() +
+    scale_fill_viridis_c() +
+  labs (title = str_wrap(paste0("Proportion of long dim2 matches ",
+                                "with at least one flanking gene"),
                          width = 70))
 
 #Write the bed file to extract the sequences
-dim2_blast_results %>% 
+dim2_blast_results %>%
   dplyr::filter(Nb_flanking_found_2cat == ">1") %>%
-  left_join(., RIP %>% filter(TE == "RIP_est"), by = c("sample" = "ID_file")) %>% 
+  left_join(., RIP %>% filter(TE == "RIP_est"), by = c("sample" = "ID_file")) %>%
   dplyr::filter(length > 2500) %>%
   dplyr::mutate(start = ifelse(sstart > send, send, sstart),
                 end = ifelse(sstart > send, sstart, send)) %>%
@@ -2971,12 +3002,12 @@ dim2_blast_results %>%
 
 
 #This command has to be run on the cluster
-#while read sample chr start end ; do 
-# echo -e "${chr}\t${start}\t${end}" > temp.bed ; 
+#while read sample chr start end ; do
+# echo -e "${chr}\t${start}\t${end}" > temp.bed ;
 # ~/Software/bedtools getfasta \
 #    -fi /data2/alice/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/0_Spades/${sample}.fasta \
 #    -bed temp.bed | sed "s/>/>${sample}:/" >> \
-#    /data2/alice/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/1_Blast_dim2_deRIPped/Native_dim2_all_samples.fasta ; 
+#    /data2/alice/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/1_Blast_dim2_deRIPped/Native_dim2_all_samples.fasta ;
 #done < /data2/alice/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/1_Blast_dim2_deRIPped/Coordinates_dim2_all_samples.bed
 
 #Run through the website because laziness
@@ -2987,15 +3018,15 @@ For the following tree, I used the gene alignment from mafft (online) and create
 ```{r dim2 tree plots}
 
 #Prep data to add to tree
-temp2 = dim2_blast_results %>% 
+temp2 = dim2_blast_results %>%
   dplyr::filter(Nb_flanking_found_2cat == ">1") %>%
-  left_join(., RIP %>% filter(TE == "RIP_est"), by = c("sample" = "ID_file")) %>% 
+  left_join(., RIP %>% filter(TE == "RIP_est"), by = c("sample" = "ID_file")) %>%
   dplyr::filter(length > 2500) %>%
   dplyr::mutate(start = ifelse(sstart > send, send, sstart),
                 end = ifelse(sstart > send, sstart, send)) %>%
   unite(coord, start, end, sep = "-") %>%
   dplyr::mutate(no_dot = stringr::str_replace(sseqid, "\\.", "_"))%>%
-  unite(contig2, sample, no_dot, coord, sep = "_", remove = F) 
+  unite(contig2, sample, no_dot, coord, sep = "_", remove = F)
 
 
 #Read tree in
@@ -3013,44 +3044,44 @@ tree = as_tibble(treeio::read.tree("/Users/feurtey/Documents/Postdoc_Bruce/Proje
   dplyr::mutate(contig2 = stringr::str_replace(contig, "R_", "")) %>%
   full_join(., temp2, by = c("contig2")) %>%
   dplyr::mutate(label_temp = ifelse(is.na(sample), ifelse(is.na(contig), label, contig), sample)) %>%
-  unite(col = "label_new", nb, label_temp, sep = "_") 
+  unite(col = "label_new", nb, label_temp, sep = "_")
 
-tree2 = as_tibble(treeio::read.tree("/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/Essai_dim2_tree.nwk")) 
+tree2 = as_tibble(treeio::read.tree("/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/Essai_dim2_tree.nwk"))
 
-temp = tree %>% 
+temp = tree %>%
   dplyr::select(label, node, label_new, Continent_Region, Composite_median, Collection) %>%
   mutate(Composite_median = ifelse(is.na(Composite_median), 0, Composite_median)) %>%
   filter(!is.na(label)) %>%
   mutate(RIP = ifelse(Composite_median >= 1.5, "High", ifelse(Composite_median <= 1, "Low", "Medium")))
 
 #Find the outgroup!
-root_node = tree2 %>% 
+root_node = tree2 %>%
   filter(grepl("Zpa63", label)) %>%
   dplyr::select(node) %>%
   pull()
 
 
-rooted.tree <- ape::root(as.treedata(tree2), root_node) 
+rooted.tree <- ape::root(as.treedata(tree2), root_node)
 p <- ggtree(rooted.tree, layout = "rectangular") %<+% (temp %>% dplyr::select (-label))
-    
+
 p2 <- p + geom_tippoint(aes(color = Continent_Region)) +
   theme(legend.position = "right") +
   Color_Continent
-  
+
 p3 <- p + geom_tippoint(aes(color = RIP), alpha = 0.5) +
-  theme(legend.position = "right") + 
+  theme(legend.position = "right") +
   scale_color_manual(values = c("darkred", "yellow", "orange"))
 
 p4 <- p + geom_tippoint(aes(color = Collection), alpha = 0.5) +
-  theme(legend.position = "right") 
+  theme(legend.position = "right")
 
 cowplot::plot_grid(p2, p3)
 
 
 df = temp %>% dplyr::select(RIP)
 rownames(df) <- temp$label
-gheatmap(p2, df, width=.2) + 
-  scale_fill_manual(values = c("darkred", "yellow", "orange"), name = "RIP") + 
+gheatmap(p2, df, width=.2) +
+  scale_fill_manual(values = c("darkred", "yellow", "orange"), name = "RIP") +
   labs(title = "Gene tree for the dim2 sequence",
        y = "")
 
@@ -3069,9 +3100,9 @@ Based on these trees, there is some clustering according to geography. Additiona
 
 If there is a relaxation of RIP, we could expect that TEs would not be the only things impacted but that gene duplications would also be possible more in RIP-relaxed genomes than in RIP-active.
 ```{r}
-Badet_pan_table = read_tsv(paste0(TE_RIP_dir, "Badet_GLOBAL_PANGENOME_TABLE.txt")) 
+Badet_pan_table = read_tsv(paste0(TE_RIP_dir, "Badet_GLOBAL_PANGENOME_TABLE.txt"))
 
-Badet_pan_table %>% 
+Badet_pan_table %>%
   dplyr::select(isolate, orthogroup, N_genes, N_isolates, cat) %>%
   group_by(isolate) %>%
   dplyr::mutate(nb_genes = n()) %>%
@@ -3080,13 +3111,13 @@ Badet_pan_table %>%
   dplyr::mutate(Percent = 100 * count / nb_genes) %>%
   dplyr::filter(N_genes >= 2) %>%
   dplyr::filter(N_genes <= 10) %>%
-  ggplot(aes(isolate, Percent, fill = N_genes)) + 
+  ggplot(aes(isolate, Percent, fill = N_genes)) +
   geom_bar(stat = "identity") +
-  theme_bw() + 
+  theme_bw() +
   theme(axis.text.x = element_text(angle = 40, hjust = 1)) +
   scale_fill_gradient(low = "#EAEAEA", high = "#294D4A", na.value = NA)
-  
-Badet_pan_table %>% 
+
+Badet_pan_table %>%
   dplyr::select(isolate, orthogroup, N_genes, N_isolates, cat) %>%
   group_by(isolate) %>%
   dplyr::mutate(nb_genes = n()) %>%
@@ -3095,12 +3126,12 @@ Badet_pan_table %>%
   group_by(isolate, N_genes_cat) %>%
   dplyr::summarize(count = n(), nb_genes = mean(nb_genes)) %>%
   dplyr::mutate(Percent = 100 * count / nb_genes) %>%
-  ggplot(aes(isolate, Percent, fill = N_genes_cat)) + 
+  ggplot(aes(isolate, Percent, fill = N_genes_cat)) +
   geom_bar(stat = "identity") +
-  theme_bw() + 
-  theme(axis.text.x = element_text(angle = 40, hjust = 1)) 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 40, hjust = 1))
 
-Badet_pan_table %>% 
+Badet_pan_table %>%
   dplyr::select(isolate, orthogroup, N_genes, N_isolates, cat) %>%
   group_by(isolate) %>%
   dplyr::mutate(nb_genes = n()) %>%
@@ -3110,9 +3141,9 @@ Badet_pan_table %>%
   dplyr::summarize(count = n(), nb_genes = mean(nb_genes)) %>%
   dplyr::mutate(Percent = 100 * count / nb_genes) %>%
   dplyr::filter(N_genes_cat == 2) %>%
-  ggplot(aes(isolate, Percent, fill = N_genes_cat)) + 
+  ggplot(aes(isolate, Percent, fill = N_genes_cat)) +
   geom_bar(stat = "identity") +
-  theme_bw() + 
+  theme_bw() +
   theme(axis.text.x = element_text(angle = 40, hjust = 1))
 ```  
 
@@ -3122,27 +3153,27 @@ temp = inner_join(sum_dim2_blast, duplicated_genes, by = c("sample" = "ID_file",
   filter(Nb_duplicated_genes < 400)
 
 
-p1 = ggplot(temp, aes(as.numeric(Composite_median), 
-                      Nb_duplicated_genes, 
-                      color = Continent_Region, 
+p1 = ggplot(temp, aes(as.numeric(Composite_median),
+                      Nb_duplicated_genes,
+                      color = Continent_Region,
                       shape = Collection))+
-  geom_point() + Color_Continent + 
+  geom_point() + Color_Continent +
   theme_bw()  +
     labs(x = str_wrap(paste("RIP composite index",
-                            " (median per isolate)"), 
+                            " (median per isolate)"),
                       width = 20),
-         y = str_wrap("Number of duplicated genes", 
+         y = str_wrap("Number of duplicated genes",
                       width = 20))
 
-p2 = ggplot(temp, aes(pident_wm, 
-                      Nb_duplicated_genes, 
-                      color = Continent_Region, 
+p2 = ggplot(temp, aes(pident_wm,
+                      Nb_duplicated_genes,
+                      color = Continent_Region,
                       shape = Collection))+
-  geom_point() + Color_Continent + 
+  geom_point() + Color_Continent +
   theme_bw() + theme(legend.position = "none") +
-    labs(x = str_wrap(paste("Identity of the native match"), 
+    labs(x = str_wrap(paste("Identity of the native match"),
                       width = 20),
-         y = str_wrap("Number of duplicated genes", 
+         y = str_wrap("Number of duplicated genes",
                       width = 20))
 
 legend_b <- get_legend(
@@ -3165,11 +3196,11 @@ For the following points, different types of data need to be collected.
 
 __Genomic data__: ideally, we would work from both SNPs and CNV of genes as much as possible (not including TE at the moment, because too complex/uncertain?) + Add the structural variants if/when we can detect them from Illumina data?
 
-__Geographic/environmental data__: For this, I will use the sampling site of each isolate (as precisely as I can manage) to approximate environmental parameters such as temperature, precipitation or solar radiation. One possibility to find such data is this website, https://www.worldclim.org/data/worldclim21.html (published in Fick and Hijmans, 2017), which gives access to climate data for 1970-2018. These can be transformed into bioclimatic variables using the biovars function from the R package dismo (https://rdrr.io/cran/dismo/man/biovars.html). 
+__Geographic/environmental data__: For this, I will use the sampling site of each isolate (as precisely as I can manage) to approximate environmental parameters such as temperature, precipitation or solar radiation. One possibility to find such data is this website, https://www.worldclim.org/data/worldclim21.html (published in Fick and Hijmans, 2017), which gives access to climate data for 1970-2018. These can be transformed into bioclimatic variables using the biovars function from the R package dismo (https://rdrr.io/cran/dismo/man/biovars.html).
 
 ```{r Get Bioclim data}
 
-temp = Zt_meta_for_shiny %>% mutate(X = as.numeric(unlist(Longitude)), 
+temp = Zt_meta_for_shiny %>% mutate(X = as.numeric(unlist(Longitude)),
                             Y = as.numeric(unlist(Latitude))) %>%
   dplyr::select(X, Y) %>%
   distinct()
@@ -3178,15 +3209,15 @@ sp = SpatialPoints(temp[, c("X", "Y")])
 summary(sp)
 
 #Bioclim data (from Worldclim)
-Bioclim_var = c("Annual Mean Temperature", "Mean Diurnal Range ", 
+Bioclim_var = c("Annual Mean Temperature", "Mean Diurnal Range ",
                 "Isothermality (BIO2/BIO7) (×100)", "Temperature Seasonality (standard deviation ×100)",
                 "Max Temperature of Warmest Month", "Min Temperature of Coldest Month",
-                "Temperature Annual Range (BIO5-BIO6)", 
-                "Mean Temperature of Wettest Quarter","Mean Temperature of Driest Quarter", 
-                "Mean Temperature of Warmest Quarter", "Mean Temperature of Coldest Quarter", 
-                "Annual Precipitation", "Precipitation of Wettest Month", 
-                "Precipitation of Driest Month", "Precipitation Seasonality (Coefficient of Variation)", 
-                "Precipitation of Wettest Quarter", "Precipitation of Driest Quarter", 
+                "Temperature Annual Range (BIO5-BIO6)",
+                "Mean Temperature of Wettest Quarter","Mean Temperature of Driest Quarter",
+                "Mean Temperature of Warmest Quarter", "Mean Temperature of Coldest Quarter",
+                "Annual Precipitation", "Precipitation of Wettest Month",
+                "Precipitation of Driest Month", "Precipitation Seasonality (Coefficient of Variation)",
+                "Precipitation of Wettest Quarter", "Precipitation of Driest Quarter",
                 "Precipitation of Warmest Quarter","Precipitation of Coldest Quarter)")
 
 bio_list = list()
@@ -3207,7 +3238,7 @@ sol_months = cbind(temp, do.call(cbind, sol_list))
 sol_months$srad_max = apply(sol_months[, c(3:ncol(sol_months))], 1, max)
 sol_months = sol_months %>% dplyr::select(X,Y, srad_max)
 
-      
+
 climate_per_coordinates = cbind(temp, do.call(cbind, bio_list)) %>%
   full_join(., sol_months)
 
@@ -3216,7 +3247,7 @@ climate_per_coordinates = cbind(temp, do.call(cbind, bio_list)) %>%
 ```{r Plot distrib bioclim}
 
 dat = Zt_meta_for_shiny %>% dplyr::select(ID_file, Latitude, Longitude, Sampling_collection) %>%
-  full_join(., climate_per_coordinates, 
+  full_join(., climate_per_coordinates,
                 by= c("Longitude" = "X", "Latitude" = "Y")) %>%
   dplyr::select(-ID_file) %>%
   gather(key = "Bioclim_var", value = "Estimate", -c(Longitude, Latitude, Sampling_collection))
@@ -3228,7 +3259,7 @@ colScale = scale_colour_manual(name = "Sampling_collection", values = myColors)
 colScaleFill = scale_fill_manual(name = "Sampling_collection", values = myColors)
 
 ggplot(dat, aes(Estimate, fill =Sampling_collection, color =Sampling_collection)) +
-  geom_histogram(position = "stack") + 
+  geom_histogram(position = "stack") +
   facet_wrap(.~Bioclim_var, scales = "free") +
   theme_classic() + colScale + colScaleFill
 
@@ -3242,7 +3273,7 @@ Naturally, many of the variables investigated above are highly correlated. It is
 #Correlogram
 
 Ccor = cor(climate_per_coordinates)
-corrplot(Ccor, type="lower", order="hclust", 
+corrplot(Ccor, type="lower", order="hclust",
          col = mycolorsCorrel,
          tl.col="black", tl.srt=45, tl.cex = 0.7)
 
@@ -3260,10 +3291,10 @@ __How to choose the best variables?__
 
 country_climate = Zt_meta_for_shiny %>% dplyr::select(Latitude, Longitude, Continent_Region) %>% unique()
 bioclim.pca <- prcomp(climate_per_coordinates[,c(2:ncol(climate_per_coordinates))], scale. = TRUE)
-ggbiplot(bioclim.pca, obs.scale = 1, var.scale = 1, 
+ggbiplot(bioclim.pca, obs.scale = 1, var.scale = 1,
          group = country_climate$Continent_Region, ellipse = TRUE) +
   Color_Continent +
-  theme(legend.direction = 'horizontal', legend.position = 'top') + 
+  theme(legend.direction = 'horizontal', legend.position = 'top') +
   xlim(-10, 20) + ylim(-5, 20)
 ```
 
@@ -3271,9 +3302,9 @@ ggbiplot(bioclim.pca, obs.scale = 1, var.scale = 1,
 ```{r}
 
 
-tidy_cors <- climate_per_coordinates %>% 
+tidy_cors <- climate_per_coordinates %>%
   dplyr::select(everything(), -contains("uarter"), -Y, -X) %>%
-  correlate() %>% 
+  correlate() %>%
   stretch()
 
 graph_cors <- tidy_cors %>%
@@ -3297,7 +3328,7 @@ ggraph(graph_cors) +
 __Methods__: Several software to explore:
 
  * Lfmm: http://membres-timc.imag.fr/Olivier.Francois/lfmm/index.htm This method claim to identify genetic polymorphisms exhibiting high correlation with environmental gradients (or phenotypic traits) while controlling for confounding effects such as population structure.
- 
+
 ```{bash, eval =F}
 datamash transpose \
     < ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT2 \
@@ -3306,37 +3337,37 @@ datamash transpose \
 
 ```{r standard Bioclim var}
 
-#Create standardized values for the environment variables 
-climate_per_coord_standard = climate_per_coordinates %>% 
+#Create standardized values for the environment variables
+climate_per_coord_standard = climate_per_coordinates %>%
   mutate(Temp = scale(`Annual Mean Temperature`),
          Rain = scale(`Annual Precipitation`)) %>%
   dplyr::select(X, Y, Temp, Rain)
 
 ```
- 
+
 ```{r run lfmm}
 #Get genotypes
-genotypes = read_tsv(paste0(GEA_dir, vcf_name, ".pass_noNA.GT.FORMAT2.transposed"), 
-                     col_names = F) %>% 
+genotypes = read_tsv(paste0(GEA_dir, vcf_name, ".pass_noNA.GT.FORMAT2.transposed"),
+                     col_names = F) %>%
   dplyr::select(-X1) #removes ind_names
 ind_list = read_tsv(paste0(PopStr_dir, vcf_name, ".pass_noNA.ind"), col_names = "ID_file")
 genotypes_temp = bind_cols(genotypes, ind_list)
 
 #Get environmental data
 temp_Zt_meta = left_join(Zt_meta, climate_per_coord_standard, by = c("Latitude" = "Y", "Longitude" = "X"))
-temp_Zt_meta = left_join(ind_list, temp_Zt_meta %>% 
-                           dplyr::select(ID_file, Temp, Rain), 
-                         tibble(name = target), by = "ID_file") %>% 
+temp_Zt_meta = left_join(ind_list, temp_Zt_meta %>%
+                           dplyr::select(ID_file, Temp, Rain),
+                         tibble(name = target), by = "ID_file") %>%
   dplyr::select(-ID_file)  #removes ind_names
 
 
 mod.lfmm <- lfmm_lasso(Y = genotypes, X = temp_Zt_meta, K=6,
                         nozero.prop = 0.02)
-pv <- lfmm::lfmm_test(Y = genotypes, 
-                 X = temp_Zt_meta, 
-                 lfmm = mod.lfmm, 
+pv <- lfmm::lfmm_test(Y = genotypes,
+                 X = temp_Zt_meta,
+                 lfmm = mod.lfmm,
                  calibrate = "gif")
-pvalues <- pv$calibrated.pvalue 
+pvalues <- pv$calibrated.pvalue
 ```
 
 I need to check whether the obtained p-values are similar to what we would expect. Unfortunately, not much in the two examples I have chosen!
@@ -3356,35 +3387,35 @@ qqplot(rexp(length(pvalues[,"Temp"]), rate = log(10)),
 abline(0,1)
 par(mfrow=c(1, 1))
 ```
- 
- 
+
+
 Here are the resulting Manhattan plots. Seeing the two qqplots above, none of this should be taken too seriously!
 ```{r lfmm results plots}
 
-positions = read_tsv(paste0(PopStr_dir, vcf_name, ".pass_noNA.GT.FORMAT.pos"), col_names = T) 
+positions = read_tsv(paste0(PopStr_dir, vcf_name, ".pass_noNA.GT.FORMAT.pos"), col_names = T)
 
 ## Manhattan plot
-as_tibble(as.data.frame(pvalues)) %>% 
+as_tibble(as.data.frame(pvalues)) %>%
   mutate(SNP = c(1:nrow(pvalues))) %>%
   gather(key = "Bioclimatic variable", value = "pvalue", -SNP) %>%
   ggplot(aes(x=SNP, y = -log10(pvalue), color = `Bioclimatic variable`)) +
-  geom_point(alpha = 0.5) + 
+  geom_point(alpha = 0.5) +
   facet_wrap(~`Bioclimatic variable`, scales = "free") +
   theme_bw() + scale_color_manual(values = c("#82C0CC", "#FFA62B"))
 
-bind_cols(positions %>% dplyr::select(-POS), as_tibble(as.data.frame(pvalues))) %>% 
+bind_cols(positions %>% dplyr::select(-POS), as_tibble(as.data.frame(pvalues))) %>%
   mutate(SNP = c(1:nrow(pvalues))) %>%
   gather(key = "Bioclimatic variable", value = "pvalue", -SNP, -CHROM) %>%
   ggplot(aes(x=SNP, y = -log10(pvalue), color = factor(CHROM))) +
-  geom_point(alpha = 0.5) + 
+  geom_point(alpha = 0.5) +
   facet_grid(rows = vars(`Bioclimatic variable`), scales = "free") +
   theme_bw() + scale_color_manual(values = rep(c("#489fb5", "#82c0cc"), 10))
 
 ```
- 
- 
+
+
  * Bayenv 2: https://gcbias.org/bayenv/
- 
+
 ```{bash, eval = F}
 for CHR in {1..13}
 do
@@ -3405,11 +3436,11 @@ do
     --maf 0.05 \
     --not-chr ${CHR} \
     --out ${GEADIR}Chr_${CHR}_excepted
- 
+
   for i in only excepted ;
   do
     cat  ${GEADIR}Chr_${CHR}_${i}.GT.FORMAT | cut -f 3- > ${GEADIR}Chr_${CHR}_${i}.GT.FORMAT2
-  done 
+  done
 done
 ```
 
@@ -3425,8 +3456,8 @@ all_pops = list(set(r.Zt_meta["Coordinates"]))
 bayenv_pop_name = r.GEA_dir + "SNPSFILE_pop"
 with open(bayenv_pop_name, "w") as temp :
   temp.write("\n".join(all_pops))
-  
-  
+
+
 for chr in ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13"] :
   print(chr)
   for type in ["only", "excepted"] :
@@ -3442,7 +3473,7 @@ for chr in ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13"]
         dict_snp0 = defaultdict(int)
         dict_snp1 = defaultdict(int)
         Lets_write = True
-        
+
         #The first line is the name of the isolates
         if i == 0 :
           indv = snp.strip().split("\t")
@@ -3464,8 +3495,8 @@ for chr in ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13"]
           total = sum([int(dict_snp0[pop]) for pop in all_pops]) + sum([int(dict_snp1[pop]) for pop in all_pops])
           out.write("\t".join([str(dict_snp0[pop]) for pop in all_pops]) + "\n")
           out.write("\t".join([str(dict_snp1[pop]) for pop in all_pops]) + "\n")
-          
-    out.close() 
+
+    out.close()
 ```
 
 ```{r Check order bioclim for Bayenv2, eval = T}
@@ -3489,11 +3520,11 @@ echo $NUMPOPS
 
 ```{bash Run matrices estimation Bayenv2, eval =F}
 
-head -n 10000 ${GEADIR}SNPSFILE > temp ; 
+head -n 10000 ${GEADIR}SNPSFILE > temp ;
 cp /Users/feurtey/Documents/Software/bayenv2_mac/bayenv2 ${GEADIR}
 cd ${GEADIR}
 
-${GEADIR}bayenv2 -i temp -p $NUMPOPS -k 50001 > temp.mat 
+${GEADIR}bayenv2 -i temp -p $NUMPOPS -k 50001 > temp.mat
 tail -n $(($NUMPOPS + 1)) temp.mat > temp.MATRIXFILE
 
 for CHR in {1..13}
@@ -3502,7 +3533,7 @@ do
    head -n 10000 ${GEADIR}Chr_${CHR}_excepted.SNPSFILE > temp ;
    ${GEADIR}bayenv2 -i temp -p $NUMPOPS -k 50001 > temp.mat ;
    tail -n $(($NUMPOPS + 1)) temp.mat > ${GEADIR}Chr_${CHR}_excepted.MATRIXFILE ;
-   
+
 done
 
 
@@ -3520,12 +3551,12 @@ for CHR in {1..13}
 do
 
    #To do: CHECK IF THE PER SNP LOOP DOES WHAT I THINK IT DOES
-   
+
    #Get number of SNPs
    lnNB=$(cat ${GEADIR}Chr_${CHR}_only.SNPSFILE | wc -l)
    SNPNB=$(($lnNB/2))
    echo $CHR, $SNPNB
-   
+
    #Run bayenv per snp
    for i in $(seq 1 ${SNPNB}) ;
    do
@@ -3540,7 +3571,7 @@ do
       -k 10000 -t \
       -o Chr_${CHR}.Bayenv2_out
    done
-   
+
 done
 
 ```
@@ -3562,7 +3593,7 @@ temp %>%
 # Fungicide resistance
 ***
 
-This is based on the same scripts made for Fanny Hartmann's paper on the pairs of populations: looking for alleles already known to be involved in resistance to fungicide. 
+This is based on the same scripts made for Fanny Hartmann's paper on the pairs of populations: looking for alleles already known to be involved in resistance to fungicide.
 
 ```{r}
 genotypes_resistance = read_tsv(paste0(fung_dir, "genotypes_tidy_format.tab"),
@@ -3577,7 +3608,7 @@ genotypes_resistance %>%
   dplyr::count(AA_change, Gene, Allele_type) %>%
   ggplot(aes(x=n, y=AA_change, fill = Allele_type)) +
   geom_barh(stat="identity") +
-  facet_grid(Gene ~ ., scales = "free_y", space = "free_y") 
+  facet_grid(Gene ~ ., scales = "free_y", space = "free_y")
 
 
 
@@ -3597,7 +3628,7 @@ temp = genotypes_resistance %>%
   filter(!is.na(Continent_Region)) %>%
   group_by(AA_change) %>%
   dplyr::mutate(Somme = sum(Mutant)) %>%
-  filter(Somme > 0) 
+  filter(Somme > 0)
 
 temp %>%
   ggplot(aes(x=Date_Year, y=Continent_Region, size = prop_mutant, fill = prop_mutant)) +
@@ -3625,7 +3656,7 @@ genotypes_resistance %>%
   facet_wrap(.~AA_change) + scale_fill_gradient(low="white", high = "#16697a")+
   labs(title = str_wrap(paste("Mutant proportion per known mutation",
                               "in the beta tubuline gene"), width = 35),
-       subtitle = str_wrap(paste("This gene can mutate and cause resistance", 
+       subtitle = str_wrap(paste("This gene can mutate and cause resistance",
                                  " to benzimidazole fungicides."), width = 65),
        fill = "Proportion of mutants",
        size = "Proportion of mutants",
@@ -3684,12 +3715,12 @@ genotypes_resistance %>%
 ***
 
 ## Thierry Marcel's virulence GWAS
-I use the alleles identified in the GWAS of Thierry Marcel and track them in the world-wide populations. 
+I use the alleles identified in the GWAS of Thierry Marcel and track them in the world-wide populations.
 ```{r French GWAS Virulence}
 virulence_table = read_tsv(paste0(virulence_dir, "French_GWAS_virulence_alleles.tab")) %>%
   separate(VIRULENCE_ALLELES, into = c("VIRULENCE_ALLELE1", "VIRULENCE_ALLELE2"), sep = ",")
-  
-french_GWAS_variants = read_tsv(paste0(virulence_dir, "Positions_GWAS.short.vcf"), 
+
+french_GWAS_variants = read_tsv(paste0(virulence_dir, "Positions_GWAS.short.vcf"),
                                 na = ".")  %>%
   pivot_longer(-c(`#CHROM`, POS, REF, ALT), names_to = "ID_file", values_to = "Allele_nb") %>%
   separate(ALT, into = c("ALT1", "ALT2"), sep = ",") %>%
@@ -3713,12 +3744,12 @@ french_GWAS_variants %>%
   scale_fill_gradient(low="white", high = "#16697a")+
   labs(title = str_wrap(paste("Virulence alleles",
                               ""), width = 35),
-       subtitle = str_wrap(paste("These alleles were identified in a GWAS study", 
+       subtitle = str_wrap(paste("These alleles were identified in a GWAS study",
                                  " to increase either virulence or aggressiveness",
                                  " on some wheat varieties."), width = 65),
        fill = "Proportion of virulent",
        size = "Proportion of virulent",
-       x = "Years", y = "") + 
+       x = "Years", y = "") +
   facet_wrap(vars(position))
 
 ```
@@ -3733,20 +3764,20 @@ while read sample ; do sh Detect_gene_blast.sh ./Directories_new.sh /data2/alice
 cat /data2/alice/WW_project/7_Virulence/*Avr_Stb6.blast.tab > /data2/alice/WW_project/7_Virulence/Overall_results_blast_Avr_Stb6.txt
 
 #On the cluster: Gather blast results
-while read p ; 
- do 
-sample=$(echo $p | cut -f 1 -d " " ) ; 
+while read p ;
+ do
+sample=$(echo $p | cut -f 1 -d " " ) ;
  chr=$(echo $p | cut -f 4 -d " ") ;
- start=$(echo $p | cut -f 11 -d " ") ; end=$(echo $p | cut -f 12 -d " ") ; 
- echo $sample, $chr, $start, $end ; 
- order_start=$(echo -e "$start\n$end"  | sort -n | head -n1); 
- order_end=$(echo -e "$start\n$end"  | sort -nr | head -n1); 
- echo -e "${chr}\t${order_start}\t${order_end}" > temp.bed ; 
+ start=$(echo $p | cut -f 11 -d " ") ; end=$(echo $p | cut -f 12 -d " ") ;
+ echo $sample, $chr, $start, $end ;
+ order_start=$(echo -e "$start\n$end"  | sort -n | head -n1);
+ order_end=$(echo -e "$start\n$end"  | sort -nr | head -n1);
+ echo -e "${chr}\t${order_start}\t${order_end}" > temp.bed ;
  ~/Software/bedtools getfasta \
    -fi /data2/alice/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/0_Spades/${sample}.fasta\
    -bed temp.bed | \
    sed "s/>/>${sample}:/" >> \
- /data2/alice/WW_project/7_Virulence/Overall_results_blast_Avr_Stb6.fasta ; 
+ /data2/alice/WW_project/7_Virulence/Overall_results_blast_Avr_Stb6.fasta ;
 done < /data2/alice/WW_project/7_Virulence/Overall_results_blast_Avr_Stb6.txt
 
 #And on the website, because laziness
@@ -3757,7 +3788,7 @@ Here is the tree for the Avr_Stb6 gene. For reference, the allele carried by ST9
 
 ```{r AvrStb6 tree plots}
 #grep ">" ../7_Virulence/Overall_results_blast_Avr_Stb6.fasta | sed 's/>//' > ../7_Virulence/Overall_results_blast_Avr_Stb6.list
- 
+
 temp2 = read_tsv(paste0(virulence_dir, "Overall_results_blast_Avr_Stb6.list"), col_names = "Fasta_header") %>%
   separate(Fasta_header, into = c("ID_file", "chr", "coords"), sep=":", remove = F) %>%
   mutate(contig2 = stringr::str_replace_all(Fasta_header, "[:.]", "_")) %>%
@@ -3781,40 +3812,39 @@ tree = as_tibble(treeio::read.tree(paste0(virulence_dir, tree_file))) %>%
   dplyr::mutate(contig2 = stringr::str_replace(contig, "R_", "")) %>%
   left_join(., temp2, by = c("contig2")) %>%
   dplyr::mutate(label_temp = ifelse(is.na(ID_file), ifelse(is.na(contig), label, contig), ID_file)) %>%
-  unite(col = "label_new", nb, label_temp, sep = "_") 
+  unite(col = "label_new", nb, label_temp, sep = "_")
 
-tree2 = as_tibble(treeio::read.tree(paste0(virulence_dir, tree_file))) 
+tree2 = as_tibble(treeio::read.tree(paste0(virulence_dir, tree_file)))
 
-temp = tree %>% 
-  mutate(original_vir = ifelse(ID_file == "ST99CH_1A5", "ST99CH_1A5", 
+temp = tree %>%
+  mutate(original_vir = ifelse(ID_file == "ST99CH_1A5", "ST99CH_1A5",
   ifelse(ID_file == "ST99CH_1E4", "ST99CH_1E4", NA))) %>%
   dplyr::select(label, node, label_new, Continent_Region, Date_Year, Collection, original_vir) %>%
-  filter(!is.na(label)) 
+  filter(!is.na(label))
 
 #Find the outgroup!
-root_node = tree2 %>% 
+root_node = tree2 %>%
   filter(grepl("Zp13", label)) %>%
   dplyr::select(node) %>%
   pull()
 
 
-rooted.tree <- ape::root(as.treedata(tree2), root_node) 
+rooted.tree <- ape::root(as.treedata(tree2), root_node)
 p <- ggtree(rooted.tree, layout = "rectangular") %<+% (temp %>% dplyr::select (-label))
-    
+
 p2 <- p + geom_tippoint(aes(color = Continent_Region), alpha = 0.7) +
   theme(legend.position = "right") +
   Color_Continent
-  
+
 #p2
 
 p3 <- p + geom_tippoint(aes(color = original_vir)) +
-  theme(legend.position = "right")  + 
+  theme(legend.position = "right")  +
   scale_color_manual(values = c(mycolorsCorrel[1], mycolorsCorrel[20]))
 cowplot::plot_grid(p2, p3)
 
 
 p4 <- p + geom_tippoint(aes(color = Date_Year), alpha = 0.7) +
-  theme(legend.position = "right") 
+  theme(legend.position = "right")
 cowplot::plot_grid(p4, p3)
 ```
-
