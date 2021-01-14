@@ -10,8 +10,10 @@ BOWTIE_PATH=${SOFTPATH}bowtie2-2.4.1-linux-x86_64/bowtie2
 SCRIPTS_PATH=/home/alice/Scripts/
 SPADES_PATH=${SOFTPATH}SPAdes-3.14.1-Linux/bin/
 BLAST_PATH=${SOFTPATH}ncbi-blast-2.10.0+/bin/
-GATK_PATH=${SOFTPATH}gatk-4.1.8.0/gatk
+#GATK_PATH=${SOFTPATH}gatk-4.1.8.0/gatk
+GATK_PATH=${SOFTPATH}gatk-4.1.4.1/gatk #Matching Daniel's
 BCFTOOLS_PATH=${SOFTPATH}bcftools-1.10.2/bcftools
+VCFTOOLS_PATH=${SOFTPATH}vcftools_jydu/src/cpp/vcftools
 TABIX_PATH=${SOFTPATH}htslib-1.10.2/tabix
 
 # Files directories
@@ -27,9 +29,12 @@ PB_ASSEMB=${DATA_DIR}3_PacBio_assemblies/
 
 #Population genomics
 var_cal_dir=${project_dir}1_Variant_calling/
+mapped_dir=${var_cal_dir}0_Mappings/0_On_IPO323_REF/
+gvcf_dir=${var_cal_dir}3_Per_sample_calling/
+vcf_dir=${var_cal_dir}4_Joint_calling/
 
 #Pangenome
-pan_mapped=${var_cal_dir}0_Mappings/
+pan_mapped=${var_cal_dir}0_Mappings/1_On_Pangenome/
 pan_DP_win=${var_cal_dir}1_Depth_per_window/
 pan_DP_gene=${var_cal_dir}2_Depth_per_gene/
 
@@ -54,6 +59,9 @@ fung_dir=${project_dir}6_Fungicide_resistance/
 #Virulence
 virulence_dir=${project_dir}7_Virulence/
 
+#Selection
+sel_dir=${project_dir}8_Selection/
+pseudo_fasta_dir=${sel_dir}0_Pseudo_fasta/
 
 # File paths
 #-----------
@@ -67,3 +75,4 @@ dim2_flank2=${DATA_DIR}dim2_flank2_Zt10_unitig_006_0416.fasta
 dim2_start=${DATA_DIR}Zt10_dim2_start_from_MgDNMT_deRIP.fa
 dim2_end=${DATA_DIR}Zt10_dim2_end_from_MgDNMT_deRIP.fa
 IPO323_VCF=${var_cal_dir}Ztritici_global_March2020.filtered.vcf.gz 
+VCFBasename=Ztritici_global_December2020

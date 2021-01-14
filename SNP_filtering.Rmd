@@ -1,0 +1,178 @@
+---
+title: "SNP filtering"
+author: "Alice Feurtey"
+date: "01/13/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+test_CHR = 10
+dir_name = "/data2/alice/WW_project/"
+vcf_name = paste0(dir_name, 
+                  "1_Variant_calling/4_Joint_calling/",
+                  "Ztritici_global_December2020.genotyped.", 
+                  test_CHR)
+ref_genome = paste0(dir_name, 
+                    "0_Data/",
+                    "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa")
+soft_dir = "/home/alice/Software/"
+gatk_path = paste0(soft_dir, "gatk-4.1.4.1/gatk")
+#java_path = "/Library/Java/JavaAppletPlugin.plugin/Contents/Home/bin/java"
+bcftools_path = paste0(soft_dir, "bcftools-1.10.2/")
+
+
+Sys.setenv(DIRNAME=dir_name)
+Sys.setenv(VCFNAME=vcf_name)
+Sys.setenv(REF=ref_genome)
+Sys.setenv(GATKPATH=gatk_path)
+#Sys.setenv(JAVAPATH=java_path)
+Sys.setenv(BCFTOOLSPATH=bcftools_path)
+
+```
+
+
+## Initial filtering
+Below I first extract the snps and in a second time, I remove all genotypes with a depth that I consider too low for the data to be reliable. This threshold can and should be adapted depending on the dataset.
+Finally, I use bcftools to extract the values of the different estimates we can filter on.
+```{bash}
+
+#Removing indels
+${GATKPATH} SelectVariants  \
+  -R ${REF} \
+  -V ${VCFNAME}.vcf.gz \
+ --select-type-to-include SNP \
+ -O ${VCFNAME}.snps.vcf
+
+#Filtering on low depth per genotype
+${GATKPATH} VariantFiltration \
+ -R ${REF} \
+ -V ${VCFNAME}.snps.vcf \
+--genotype-filter-expression "DP < 3"  \
+--set-filtered-genotype-to-no-call   \
+--genotype-filter-name "Low_depth"   \
+-O ${VCFNAME}.snps.low_depth.vcf
+```
+Here, I clean the file to remove alternate alleles that do not exist anymore because they were only found in the filtered genotyped. And I additionally remove the positions which are non-variant, now that some genotypes are filtered out.
+```{bash}
+${GATKPATH} SelectVariants  \
+  -R ${REF} \
+  -V ${VCFNAME}.snps.low_depth.vcf \
+ --exclude-non-variants --remove-unused-alternates \
+ -O ${VCFNAME}.snps.low_depth.variants.vcf
+ 
+```
+
+```{bash}
+#Extracting the data for the figures
+${BCFTOOLSPATH}bcftools query -f '%CHROM %POS %MQ %QD %FS %DP %MQRankSum %QUAL %ReadPosRankSum %BaseQRankSum\n'  ${VCFNAME}.snps.low_depth.variants.vcf > ${VCFNAME}.snps.low_depth.variants.info_fields.tab
+
+```
+
+## Including Plots
+
+Now that we have the data extracted, I can make figures and test values for the filtering.
+
+```{r}
+FS_thr = 10
+MQ_thr = 20
+QD_thr = 20
+DP_thr = 60000
+ReadPosRankSum_thr_high = 2
+ReadPosRankSum_thr_low = -2
+MQRankSum_thr_high = 2
+MQRankSum_thr_low = -2
+BaseQRankSum_thr_high = 2
+BaseQRankSum_thr_low = -2
+  
+print(paste0(vcf_name, ".snps.low_depth.variants.info_fields.tab"))
+info = read_delim(paste0(vcf_name, ".snps.low_depth.variants.info_fields.tab"),
+                  delim = " ", col_names =  c("CHROM", "POS", "MQ", "QD", "FS", "DP",
+                                              "MQRankSum", "QUAL", "ReadPosRankSum", "BaseQRankSum"), na = ".")
+temp = info %>% 
+  gather(key = "info_field", value = "value", -CHROM, -POS) %>% 
+  mutate (Filter = "Unfiltered")
+
+temp2 = info  %>% filter(FS < FS_thr & MQ > MQ_thr & QD > QD_thr & DP < DP_thr) %>% 
+  filter(between(MQRankSum, MQRankSum_thr_low, MQRankSum_thr_high) | is.na(MQRankSum)) %>% 
+  filter(between(BaseQRankSum, BaseQRankSum_thr_low, BaseQRankSum_thr_high) | is.na(BaseQRankSum)) %>% 
+  filter(between(ReadPosRankSum, ReadPosRankSum_thr_low, ReadPosRankSum_thr_high) | is.na(ReadPosRankSum)) %>% 
+  filter(QUAL > 500) %>%
+  gather(key = "info_field", value = "value", -CHROM, -POS) %>% 
+  mutate (Filter = "Filtered")
+
+p = ggplot(temp, aes(value, fill = Filter)) + geom_density(alpha=0.6) 
+p + facet_wrap(info_field~., scales="free")  + theme_classic() 
+
+p2 = ggplot(temp2, aes(value, fill = Filter)) + geom_density(alpha=0.6) 
+p2 + facet_wrap(info_field~., scales="free")  + theme_classic() 
+
+
+dim(temp %>% select(CHROM, POS) %>% group_by_all %>% count)
+dim(temp2 %>% select(CHROM, POS) %>% group_by_all %>% count) 
+
+
+Sys.setenv(FSTHR = sprintf("%0.2f", FS_thr))
+Sys.setenv(MQTHR = sprintf("%0.2f", MQ_thr))
+Sys.setenv(QDTHR = sprintf("%0.2f", QD_thr))
+Sys.setenv(DPTHR = sprintf("%0.2f", DP_thr))
+```
+
+And now, let's do the actual filtering!
+```{bash, eval = F}
+
+for CHR in $(seq 19 21) mt ;
+do 
+
+echo "Working on chromosome" $CHR ;
+
+VCFNAME=${DIRNAME}1_Variant_calling/4_Joint_calling/Ztritici_global_December2020.genotyped.${CHR}
+
+#Filtering on the newly set parameters
+${GATKPATH} VariantFiltration  \
+ -R ${REF} \
+ -V ${VCFNAME}.vcf.gz \
+--filter-name "FS_filter" \
+   --filter-expression "FS > $FSTHR " \
+   --filter-name "MQ_filter" \
+   --filter-expression "MQ < $MQTHR"   \
+   --filter-name "QD_filter" \
+   --filter-expression "QD < $QDTHR"   \
+   --filter-name "DP_filter" \
+   --filter-expression "DP > $DPTHR"   \
+   --genotype-filter-expression "DP < 3"  \
+   --set-filtered-genotype-to-no-call   \
+   --genotype-filter-name "Low_depth"   \
+-O ${VCFNAME}.filtered.vcf
+
+gzip ${VCFNAME}.filtered.vcf
+
+#Cleaning the file
+${GATKPATH} SelectVariants  \
+  -R ${REF} \
+  -V ${VCFNAME}.filtered.vcf.gz \
+  --exclude-non-variants --remove-unused-alternates --exclude-filtered \
+  -O ${VCFNAME}.filtered.clean.vcf
+  
+gzip ${VCFNAME}.filtered.clean.vcf
+
+
+#Create additional, subset VCF files
+
+# for diversity analyses: SNPs only, max-missing 80%
+vcftools --gzvcf ${VCFNAME}.filtered.clean.vcf.gz \
+        --recode --recode-INFO-all --remove-filtered-all --remove-indels \
+        --max-missing 0.8 \
+        --out ${VCFNAME}.filtered.clean.SNP.max-m-0.8
+
+# for population genetics: SNPs only, max-missing, 5% MAF, thinned to 1 per 1000 bp
+vcftools --gzvcf ${VCFNAME}.filtered.clean.vcf.gz \
+        --recode --recode-INFO-all --remove-filtered-all --remove-indels \
+        --mac 1 --thin 1000 \
+        --max-missing 0.8 \
+        --maf 0.05 \
+        --out ${VCFNAME}.filtered.clean.SNP.max-m-0.8.maf-0.05.thin-1000bp
+  
+done
+
+```
