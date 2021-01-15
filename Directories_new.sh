@@ -76,3 +76,4 @@ dim2_start=${DATA_DIR}Zt10_dim2_start_from_MgDNMT_deRIP.fa
 dim2_end=${DATA_DIR}Zt10_dim2_end_from_MgDNMT_deRIP.fa
 IPO323_VCF=${var_cal_dir}Ztritici_global_March2020.filtered.vcf.gz 
 VCFBasename=Ztritici_global_December2020
+remove_ID_file=${DATA_DIR}Samples_to_filter_out.args

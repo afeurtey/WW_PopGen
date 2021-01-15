@@ -6,13 +6,27 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
+#Libraries needed
 library(tidyverse)
+library(ggExtra)
+library(tidygraph)
+library(ggraph)
+
+#Chromosome choice for different steps
 test_CHR = 10
+subset_CHR = 10
+
+#Files and directories 
 dir_name = "/data2/alice/WW_project/"
-vcf_name = paste0(dir_name, 
+test_vcf_name = paste0(dir_name, 
                   "1_Variant_calling/4_Joint_calling/",
                   "Ztritici_global_December2020.genotyped.", 
                   test_CHR)
+subset_vcf_name = paste0(dir_name, 
+                  "1_Variant_calling/4_Joint_calling/",
+                  "Ztritici_global_December2020.genotyped.", 
+                  subset_CHR,
+                  ".filtered.clean")
 ref_genome = paste0(dir_name, 
                     "0_Data/",
                     "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa")
@@ -23,7 +37,8 @@ bcftools_path = paste0(soft_dir, "bcftools-1.10.2/")
 
 
 Sys.setenv(DIRNAME=dir_name)
-Sys.setenv(VCFNAME=vcf_name)
+Sys.setenv(TESTVCFNAME=test_vcf_name)
+Sys.setenv(SUBVCFNAME=subset_vcf_name)
 Sys.setenv(REF=ref_genome)
 Sys.setenv(GATKPATH=gatk_path)
 #Sys.setenv(JAVAPATH=java_path)
@@ -32,44 +47,43 @@ Sys.setenv(BCFTOOLSPATH=bcftools_path)
 ```
 
 
-## Initial filtering
+# Filtering based on site: identifying the proper values
 Below I first extract the snps and in a second time, I remove all genotypes with a depth that I consider too low for the data to be reliable. This threshold can and should be adapted depending on the dataset.
 Finally, I use bcftools to extract the values of the different estimates we can filter on.
-```{bash}
+```{bash, eval = F}
 
 #Removing indels
 ${GATKPATH} SelectVariants  \
   -R ${REF} \
-  -V ${VCFNAME}.vcf.gz \
+  -V ${TESTVCFNAME}.vcf.gz \
  --select-type-to-include SNP \
- -O ${VCFNAME}.snps.vcf
+ -O ${TESTVCFNAME}.snps.vcf
 
 #Filtering on low depth per genotype
 ${GATKPATH} VariantFiltration \
  -R ${REF} \
- -V ${VCFNAME}.snps.vcf \
+ -V ${TESTVCFNAME}.snps.vcf \
 --genotype-filter-expression "DP < 3"  \
 --set-filtered-genotype-to-no-call   \
 --genotype-filter-name "Low_depth"   \
--O ${VCFNAME}.snps.low_depth.vcf
+-O ${TESTVCFNAME}.snps.low_depth.vcf
 ```
 Here, I clean the file to remove alternate alleles that do not exist anymore because they were only found in the filtered genotyped. And I additionally remove the positions which are non-variant, now that some genotypes are filtered out.
-```{bash}
+
+```{bash, eval = F}
 ${GATKPATH} SelectVariants  \
   -R ${REF} \
-  -V ${VCFNAME}.snps.low_depth.vcf \
+  -V ${TESTVCFNAME}.snps.low_depth.vcf \
  --exclude-non-variants --remove-unused-alternates \
- -O ${VCFNAME}.snps.low_depth.variants.vcf
+ -O ${TESTVCFNAME}.snps.low_depth.variants.vcf
  
 ```
 
-```{bash}
+```{bash, eval = F}
 #Extracting the data for the figures
-${BCFTOOLSPATH}bcftools query -f '%CHROM %POS %MQ %QD %FS %DP %MQRankSum %QUAL %ReadPosRankSum %BaseQRankSum\n'  ${VCFNAME}.snps.low_depth.variants.vcf > ${VCFNAME}.snps.low_depth.variants.info_fields.tab
+${BCFTOOLSPATH}bcftools query -f '%CHROM %POS %MQ %QD %FS %DP %MQRankSum %QUAL %ReadPosRankSum %BaseQRankSum\n'  ${TESTVCFNAME}.snps.low_depth.variants.vcf > ${TESTVCFNAME}.snps.low_depth.variants.info_fields.tab
 
 ```
-
-## Including Plots
 
 Now that we have the data extracted, I can make figures and test values for the filtering.
 
@@ -85,8 +99,8 @@ MQRankSum_thr_low = -2
 BaseQRankSum_thr_high = 2
 BaseQRankSum_thr_low = -2
   
-print(paste0(vcf_name, ".snps.low_depth.variants.info_fields.tab"))
-info = read_delim(paste0(vcf_name, ".snps.low_depth.variants.info_fields.tab"),
+print(paste0(test_vcf_name, ".snps.low_depth.variants.info_fields.tab"))
+info = read_delim(paste0(test_vcf_name, ".snps.low_depth.variants.info_fields.tab"),
                   delim = " ", col_names =  c("CHROM", "POS", "MQ", "QD", "FS", "DP",
                                               "MQRankSum", "QUAL", "ReadPosRankSum", "BaseQRankSum"), na = ".")
 temp = info %>% 
@@ -118,61 +132,210 @@ Sys.setenv(QDTHR = sprintf("%0.2f", QD_thr))
 Sys.setenv(DPTHR = sprintf("%0.2f", DP_thr))
 ```
 
-And now, let's do the actual filtering!
+The values obtained above can be used in a script to run directly on the cluster for all chromosomes.
+
+# Filtering based on individuals
 ```{bash, eval = F}
-
-for CHR in $(seq 19 21) mt ;
-do 
-
-echo "Working on chromosome" $CHR ;
-
-VCFNAME=${DIRNAME}1_Variant_calling/4_Joint_calling/Ztritici_global_December2020.genotyped.${CHR}
-
-#Filtering on the newly set parameters
-${GATKPATH} VariantFiltration  \
- -R ${REF} \
- -V ${VCFNAME}.vcf.gz \
---filter-name "FS_filter" \
-   --filter-expression "FS > $FSTHR " \
-   --filter-name "MQ_filter" \
-   --filter-expression "MQ < $MQTHR"   \
-   --filter-name "QD_filter" \
-   --filter-expression "QD < $QDTHR"   \
-   --filter-name "DP_filter" \
-   --filter-expression "DP > $DPTHR"   \
-   --genotype-filter-expression "DP < 3"  \
-   --set-filtered-genotype-to-no-call   \
-   --genotype-filter-name "Low_depth"   \
--O ${VCFNAME}.filtered.vcf
-
-gzip ${VCFNAME}.filtered.vcf
-
-#Cleaning the file
-${GATKPATH} SelectVariants  \
-  -R ${REF} \
-  -V ${VCFNAME}.filtered.vcf.gz \
-  --exclude-non-variants --remove-unused-alternates --exclude-filtered \
-  -O ${VCFNAME}.filtered.clean.vcf
+~/Software/vcftools_jydu/src/cpp/vcftools \
+  --gzvcf ${SUBVCFNAME}.vcf.gz \
+  --out ${SUBVCFNAME} \
+  --depth 
   
-gzip ${VCFNAME}.filtered.clean.vcf
+~/Software/vcftools_jydu/src/cpp/vcftools \
+  --gzvcf ${SUBVCFNAME}.vcf.gz  \
+  --out ${SUBVCFNAME} \
+  --missing-indv  
+```
 
+```{bash}
+~/Software/vcftools_jydu/src/cpp/vcftools \
+  --gzvcf ${SUBVCFNAME}.vcf.gz  \
+  --out ${SUBVCFNAME} \
+  --relatedness2
+```
 
-#Create additional, subset VCF files
+```{bash, eval = F}
+unzip ${SUBVCFNAME}.vcf.gz
+~/Software/plink \
+  --distance square ibs \
+  --vcf ${SUBVCFNAME}.vcf \
+  --out ${SUBVCFNAME} \
+  --const-fid
+```
 
-# for diversity analyses: SNPs only, max-missing 80%
-vcftools --gzvcf ${VCFNAME}.filtered.clean.vcf.gz \
-        --recode --recode-INFO-all --remove-filtered-all --remove-indels \
-        --max-missing 0.8 \
-        --out ${VCFNAME}.filtered.clean.SNP.max-m-0.8
+First, let's look at missing data and depth. Samples with a large amount of missing data are increasing the amount of positions with missing data (which will be filtered out in some instances) for nothing. So I would rather remove some samples completely rather than a higher number of positions for all samples.
+```{r}
+info_per_ind = full_join(read_tsv(paste0(subset_vcf_name, ".imiss")), 
+                         read_tsv(paste0(subset_vcf_name, ".idepth")))
 
-# for population genetics: SNPs only, max-missing, 5% MAF, thinned to 1 per 1000 bp
-vcftools --gzvcf ${VCFNAME}.filtered.clean.vcf.gz \
-        --recode --recode-INFO-all --remove-filtered-all --remove-indels \
-        --mac 1 --thin 1000 \
-        --max-missing 0.8 \
-        --maf 0.05 \
-        --out ${VCFNAME}.filtered.clean.SNP.max-m-0.8.maf-0.05.thin-1000bp
-  
-done
+NA_thr = 0.2
+p = ggplot(info_per_ind, aes(x = F_MISS, y = MEAN_DEPTH)) + 
+  geom_point(alpha = 0.6) +
+  geom_vline(aes(xintercept = NA_thr), col = "#ffa62b") + 
+  theme_classic() +
+  labs(title = "Missing data and depth in vcf",
+       subtitle = str_wrap(paste0("There are ", sum(info_per_ind$F_MISS > NA_thr), 
+                         " samples with too much missing data and ", 
+                         sum(info_per_ind$F_MISS <= NA_thr), " that are fine."), 
+                         width = 60))
+p1 <- ggMarginal(p, type="histogram", size = 2)
+p1
+
+samples_to_filter = info_per_ind %>% 
+  filter(F_MISS > NA_thr) %>%
+  select(INDV) %>% 
+  pull()
+
+info_per_ind %>% 
+  filter(F_MISS > NA_thr) %>%
+  select(INDV) %>%
+  write_tsv("")
+```
+The samples with too much missing data, on the right of the gold line, will be filtered out.
+
+```{r}
+ids = read_tsv(paste0(subset_vcf_name, ".mibs.id"), col_names = c("Whatever", "ID")) %>% select(ID) %>% pull()
+related = read_tsv(paste0(subset_vcf_name, ".mibs"), col_names = ids) %>%
+  mutate(ID1 = ids) %>%
+  pivot_longer(names_to = "ID2", values_to = "Relatedness", cols = -ID1) 
+
+related %>%
+  filter(ID1 != ID2) %>%
+  ggplot(aes(x = Relatedness)) +
+  geom_density() + 
+  geom_vline(aes(xintercept = 0.9))
+
+related = related %>% mutate(Bounded_relatedness = ifelse(Relatedness < 0.9, 0.9, Relatedness))
+
+related %>%
+  filter(ID1 != ID2) %>%
+  ggplot(aes(x = Bounded_relatedness)) +
+  geom_density() + 
+  geom_vline(aes(xintercept = 0.9)) + 
+  geom_vline(aes(xintercept = 0.99))
+
+ggplot(related, aes(x = ID1, y = ID2, fill = Bounded_relatedness)) +
+  geom_tile() +
+  scale_fill_gradient(high = "white", low = "#16697a") +
+  labs(title = "Pairwise IBS across all samples")
+```
+
+Now, I want to represent the same measure but including only the sample which have an IBS of at least 0.99 with any other sample.
+```{r}
+
+temp = related %>% 
+  filter(Relatedness >= 0.99) %>%
+  filter(ID1 != ID2) %>%
+  filter(!(ID1 %in% samples_to_filter)) %>%
+  filter(!(ID2 %in% samples_to_filter))
+vector_temp = c(temp %>% select(ID1) %>% pull(),
+        temp %>% select(ID2) %>% pull())
+table_temp = as.data.frame(table(vector_temp))
+length(unique(vector_temp))
+
+related %>% 
+  filter(!(ID1 %in% samples_to_filter)) %>%
+  filter(!(ID2 %in% samples_to_filter)) %>%
+  filter(ID1 %in% vector_temp) %>%
+  filter(ID2 %in% vector_temp) %>%
+  ggplot(aes(x = ID1, y = ID2, fill = Relatedness)) +
+  geom_tile() +
+  scale_fill_gradient(high = "white", low = "#16697a")
 
 ```
+```{r}
+
+#for the representation, I first filter the samples to remove all samples with only one connection 
+# (so they appear twice in the table)
+nodes <- table_temp %>% 
+  filter(Freq > 2) %>%
+  select(label = vector_temp) %>% 
+  rowid_to_column("id") 
+
+#Here I'm renaming the samples with the node number and filtering
+edges <- temp %>% 
+  filter(ID1 %in% nodes$label) %>%
+  filter(ID2 %in% nodes$label) %>%
+  select(-Bounded_relatedness) %>%
+  left_join(nodes, by = c("ID1" = "label")) %>% 
+  rename(from = id)
+
+edges <- edges %>% 
+  left_join(nodes, by = c("ID2" = "label")) %>% 
+  rename(to = id) %>%
+  select(from, to, weight = Relatedness )
+
+#I can then transform the data in a tbl_graph
+#I also want to color the nodes based on the component
+
+routes_tidy <- tbl_graph(nodes = nodes, edges = edges, directed = F)
+
+ggraph(routes_tidy) + 
+  geom_edge_link(color = "gray20", alpha = 0.3) + 
+  geom_node_point(aes(color = as.character(group_components())),show.legend = F) +
+  theme_graph() #+ facet_nodes(~ group_components())
+```
+
+This graphs shows that the components (subgraphs?) are accurately identified, as shown by the colors. This is the information I need since I would like to filter keeping only one sample per group. Now, I want to do this for all samples, not just the ones with more than one edge.
+```{r}
+nodes <- table_temp %>%
+  select(label = vector_temp) %>% 
+  rowid_to_column("id") 
+
+#Here I'm renaming the samples with the node number and filtering
+edges <- temp %>% 
+  filter(ID1 %in% nodes$label) %>%
+  filter(ID2 %in% nodes$label) %>%
+  select(-Bounded_relatedness) %>%
+  left_join(nodes, by = c("ID1" = "label")) %>% 
+  rename(from = id)
+
+edges <- edges %>% 
+  left_join(nodes, by = c("ID2" = "label")) %>% 
+  rename(to = id) %>%
+  select(from, to, weight = Relatedness )
+
+#I can then transform the data in a tbl_graph
+#I also want to color the nodes based on the component
+
+routes_tidy <- tbl_graph(nodes = nodes, edges = edges, directed = F)
+#Once I know it works as I expect, I get the group information for all samples !
+routes_tidy <- tbl_graph(nodes = nodes, edges = edges, directed = F) %>%
+  mutate(group = group_components())
+
+#I extract the group/component information 
+# and merge this with the depth and NA data per sample
+nodes_with_groups <- routes_tidy %>%
+  activate(nodes) %>%
+  data.frame() %>%
+  left_join(., info_per_ind, by = c("label" = "INDV"))
+
+nodes_with_groups = nodes_with_groups %>%
+  group_by(group) %>%
+  mutate(rank  = rank(F_MISS, ties.method = "random")) %>%
+  mutate(Filter_based_on_ibs = ifelse(rank == 1, "Keep", "Filter_out"))
+
+
+as.data.frame(table(nodes_with_groups$Filter_based_on_ibs)) %>%
+  ggplot(aes(x=2, y=Freq, fill=Var1)) +
+  geom_bar(stat="identity") +
+  xlim(0.5, 2.5) +
+  coord_polar(theta = "y") +
+  scale_fill_manual(values = c("#16697a", "#ffa62b")) +
+  labs(x=NULL, y=NULL, fill="",
+       title = "Filtering based on IBS threshold and depth/NA",
+       subtitle = "For each group, the sample with the lowest amount of missing data is kept.") +
+  theme_bw() +
+  theme(plot.title = element_text(face="bold",family=c("sans"),size=15),
+        legend.text=element_text(size=10),
+        axis.ticks=element_blank(),
+        axis.text=element_blank(),
+        axis.title=element_blank(),
+        panel.grid=element_blank(),
+        panel.border=element_blank()) + 
+  geom_text(aes(label = Freq), 
+               position = position_stack(vjust = 0.5), size = 4)
+
+```
+
+

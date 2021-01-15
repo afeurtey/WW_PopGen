@@ -27,27 +27,29 @@ VCFNAME=${vcf_dir}${VCFBasename}.genotyped.${CHR}
 echo $VCFNAME
 
 #Filtering on the newly set parameters
-${GATK_PATH} VariantFiltration  \
- -R ${IPO323_REF} \
- -V ${VCFNAME}.vcf.gz \
--O ${VCFNAME}.filtered.vcf \
-   --filter-expression "FS > $FSTHR " --filter-name "FS_filter" \
-   --filter-expression "MQ < $MQTHR"  --filter-name "MQ_filter" \
-   --filter-expression "QD < $QDTHR"  --filter-name "QD_filter" \
-   --filter-expression "DP > $DPTHR"  --filter-name "DP_filter" \
-   --genotype-filter-expression "DP < 3"   --genotype-filter-name "Low_depth"   --set-filtered-genotype-to-no-call   \
-   --filter-expression 'ReadPosRankSum < $ReadPosRankSum_lower' --filter-name 'ReadPosRankSumL' \
-   --filter-expression 'ReadPosRankSum > $ReadPosRankSum_upper' --filter-name 'ReadPosRankSumH' \
-   --filter-expression 'MQRankSum < $MQRankSum_lower' --filter-name 'MQRankSumL'\
-   --filter-expression 'MQRankSum > $MQRankSum_upper' --filter-name 'MQRankSumH' \
-   --filter-expression 'BaseQRankSum < $BaseQRankSum_lower' --filter-name 'BaseQRankSumL' \
-   --filter-expression 'BaseQRankSum > $BaseQRankSum_upper' --filter-name 'BaseQRankSumH' 
+#${GATK_PATH} VariantFiltration  \
+# -R ${IPO323_REF} \
+# -V ${VCFNAME}.vcf.gz \
+# -O ${VCFNAME}.filtered.vcf \
+#   --filter-expression "FS > $FSTHR " --filter-name "FS_filter" \
+#   --filter-expression "MQ < $MQTHR"  --filter-name "MQ_filter" \
+#   --filter-expression "QD < $QDTHR"  --filter-name "QD_filter" \
+#   --filter-expression "DP > $DPTHR"  --filter-name "DP_filter" \
+#   --genotype-filter-expression "DP < 3"   --genotype-filter-name "Low_depth"   --set-filtered-genotype-to-no-call   \
+#   --filter-expression 'ReadPosRankSum < $ReadPosRankSum_lower' --filter-name 'ReadPosRankSumL' \
+#   --filter-expression 'ReadPosRankSum > $ReadPosRankSum_upper' --filter-name 'ReadPosRankSumH' \
+#   --filter-expression 'MQRankSum < $MQRankSum_lower' --filter-name 'MQRankSumL'\
+#   --filter-expression 'MQRankSum > $MQRankSum_upper' --filter-name 'MQRankSumH' \
+#   --filter-expression 'BaseQRankSum < $BaseQRankSum_lower' --filter-name 'BaseQRankSumL' \
+#   --filter-expression 'BaseQRankSum > $BaseQRankSum_upper' --filter-name 'BaseQRankSumH' 
 
-
+gunzip ${VCFNAME}.filtered.vcf.gz
 #Cleaning the file
 ${GATK_PATH} SelectVariants  \
   -R ${IPO323_REF} \
   -V ${VCFNAME}.filtered.vcf \
+  --exclude-sample-name ${remove_ID_file} \
+  --exclude-filtered \
   --exclude-non-variants --remove-unused-alternates \
   -O ${VCFNAME}.filtered.clean.vcf
   
