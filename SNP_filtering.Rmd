@@ -2,7 +2,9 @@
 title: "SNP filtering"
 author: "Alice Feurtey"
 date: "01/13/2021"
-output: html_document
+output:
+  html_document: default
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -14,10 +16,11 @@ library(ggraph)
 
 #Chromosome choice for different steps
 test_CHR = 10
-subset_CHR = 10
+subset_CHR = 1
 
 #Files and directories 
 dir_name = "/data2/alice/WW_project/"
+data_dir = "/data2/alice/WW_project/0_Data/"
 test_vcf_name = paste0(dir_name, 
                   "1_Variant_calling/4_Joint_calling/",
                   "Ztritici_global_December2020.genotyped.", 
@@ -35,6 +38,9 @@ gatk_path = paste0(soft_dir, "gatk-4.1.4.1/gatk")
 #java_path = "/Library/Java/JavaAppletPlugin.plugin/Contents/Home/bin/java"
 bcftools_path = paste0(soft_dir, "bcftools-1.10.2/")
 
+#This is a file that contains the name of all samples I am not interested in
+# for example Michael Habig's mutants and other resequencing of IPO323.
+unwanted_samples=read_tsv(paste0(data_dir, "Samples_to_filter_out.args"), col_names = F) %>% pull()
 
 Sys.setenv(DIRNAME=dir_name)
 Sys.setenv(TESTVCFNAME=test_vcf_name)
@@ -147,15 +153,9 @@ The values obtained above can be used in a script to run directly on the cluster
   --missing-indv  
 ```
 
-```{bash}
-~/Software/vcftools_jydu/src/cpp/vcftools \
-  --gzvcf ${SUBVCFNAME}.vcf.gz  \
-  --out ${SUBVCFNAME} \
-  --relatedness2
-```
 
 ```{bash, eval = F}
-unzip ${SUBVCFNAME}.vcf.gz
+gunzip ${SUBVCFNAME}.vcf.gz
 ~/Software/plink \
   --distance square ibs \
   --vcf ${SUBVCFNAME}.vcf \
@@ -166,7 +166,8 @@ unzip ${SUBVCFNAME}.vcf.gz
 First, let's look at missing data and depth. Samples with a large amount of missing data are increasing the amount of positions with missing data (which will be filtered out in some instances) for nothing. So I would rather remove some samples completely rather than a higher number of positions for all samples.
 ```{r}
 info_per_ind = full_join(read_tsv(paste0(subset_vcf_name, ".imiss")), 
-                         read_tsv(paste0(subset_vcf_name, ".idepth")))
+                         read_tsv(paste0(subset_vcf_name, ".idepth"))) %>%
+  filter(!(INDV %in% unwanted_samples))
 
 NA_thr = 0.2
 p = ggplot(info_per_ind, aes(x = F_MISS, y = MEAN_DEPTH)) + 
@@ -189,7 +190,7 @@ samples_to_filter = info_per_ind %>%
 info_per_ind %>% 
   filter(F_MISS > NA_thr) %>%
   select(INDV) %>%
-  write_tsv("")
+  write_tsv(paste0(data_dir, "Sample_with_too_much_NA.args"), col_names = F)
 ```
 The samples with too much missing data, on the right of the gold line, will be filtered out.
 
@@ -197,7 +198,9 @@ The samples with too much missing data, on the right of the gold line, will be f
 ids = read_tsv(paste0(subset_vcf_name, ".mibs.id"), col_names = c("Whatever", "ID")) %>% select(ID) %>% pull()
 related = read_tsv(paste0(subset_vcf_name, ".mibs"), col_names = ids) %>%
   mutate(ID1 = ids) %>%
-  pivot_longer(names_to = "ID2", values_to = "Relatedness", cols = -ID1) 
+  pivot_longer(names_to = "ID2", values_to = "Relatedness", cols = -ID1) %>%
+  filter(!(ID1 %in% unwanted_samples)) %>%
+  filter(!(ID2 %in% unwanted_samples))
 
 related %>%
   filter(ID1 != ID2) %>%
@@ -310,12 +313,20 @@ nodes_with_groups <- routes_tidy %>%
   data.frame() %>%
   left_join(., info_per_ind, by = c("label" = "INDV"))
 
+#Identifying the sample with the lowest amount of missing data per group
 nodes_with_groups = nodes_with_groups %>%
   group_by(group) %>%
   mutate(rank  = rank(F_MISS, ties.method = "random")) %>%
   mutate(Filter_based_on_ibs = ifelse(rank == 1, "Keep", "Filter_out"))
 
+#Writing a file to indicate which samples to remove
+nodes_with_groups %>%
+  filter(Filter_based_on_ibs == "Filter_out") %>%
+  ungroup() %>%
+  select(label) %>%
+  write_tsv(paste0(data_dir, "Sample_removed_based_on_IBS.args"), col_names = F)
 
+#Let's make a pretty doughnut plot just for the fun of it.
 as.data.frame(table(nodes_with_groups$Filter_based_on_ibs)) %>%
   ggplot(aes(x=2, y=Freq, fill=Var1)) +
   geom_bar(stat="identity") +
