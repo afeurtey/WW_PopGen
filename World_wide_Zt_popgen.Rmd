@@ -1035,9 +1035,107 @@ high_anc_coef_snmf %>%
 ```
 
 
-### PCA with the mitochondrial genome
 
 
+
+## Population trees
+In the steps before, I have learned about population history indirectly by inferring genetic populations from the genomic data. The relationship between the population and the underlying demography is not explicit in these however. It is possible however to infer splits between populations and create a population tree. Here, I use [treemix](https://journals.plos.org/plosgenetics/article?id=10.1371/journal.pgen.1002967), which takes into account the possibility of gene flow between populations and indeed test of it in the process of creating a population tree.
+
+Because the populations in the clustering were not perfectly distinct from one another, I start with "discretized" populations by choosing only the isolates with high ancestry in one of the sNMF clusters.
+```{bash discretized pop vcf, eval = F}
+vcftools --vcf ${VCFDIR}$VCFNAME.recode.vcf \
+  --keep ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.ind \
+  --remove-filtered-all --extract-FORMAT-info GT \
+  --max-missing 1.0 --min-alleles 2 --max-alleles 2 \
+  --maf 0.05 \
+  --out ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf
+
+cat  ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.GT.FORMAT | cut -f 3- \
+   >  ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.GT.FORMAT2
+```
+
+
+```{python convert genotype file to treemix}
+from collections import defaultdict
+
+#For each isolate, store its pop (as in sampling site) in a dictionary
+dict_pop = dict(zip(r.high_anc_coef_snmf["Sample"],
+    r.high_anc_coef_snmf["Cluster"]))
+
+#Keep a list of the pop names/coordinates to write in the same order later
+all_pops = sorted(list(set(r.high_anc_coef_snmf["Cluster"])))
+out_name = r.PopStr_dir + r.vcf_name + ".pass_noNA.high_anc_coef_snmf.treemix"
+
+
+out = open(out_name, "w")
+shutup = out.write(" ".join(all_pops) + "\n")
+
+with open(r.PopStr_dir + r.vcf_name + ".pass_noNA.high_anc_coef_snmf.GT.FORMAT2", "r") as input_snps :
+  for i, snp in enumerate(input_snps) :
+    #Setting two dictionaries with values at 0
+    dict_snp0 = defaultdict(int)
+    dict_snp1 = defaultdict(int)
+    Lets_write = True
+
+    #The first line is the name of the isolates
+    if i == 0 :
+      indv = snp.strip().split("\t")
+      Lets_write = False
+    else :
+      #Keeping isolate name and allelic value together
+      alleles = zip(indv, snp.strip().split("\t"))
+      #...and counting the O and 1 based on the pop
+      for ind, allele in alleles:
+        if allele == "0" :
+          dict_snp0[dict_pop[ind]] += 1
+        elif allele == "1" :
+          dict_snp1[dict_pop[ind]] += 1
+        else :
+          print("Only biallelic please!!!!")
+          Lets_write = False
+    #If I have not found anything weird, I will write the result to the output file.
+    if Lets_write :
+      shutup = out.write(" ".join([",".join([str(dict_snp0[pop]), str(dict_snp1[pop])])  for pop in all_pops]) + "\n")
+
+out.close()
+```
+
+```{bash run treemix, eval = F, message = F}
+gzip ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix
+
+treemix \
+  -i ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.gz \
+  -o ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.out \
+  -m 10 -root V1
+
+```
+
+```{r plot treemix}
+source("/Users/feurtey/Documents/Software/treemix-1.13/src/plotting_funcs.R")
+t = plot_tree(paste0(PopStr_dir, vcf_name, ".pass_noNA.high_anc_coef_snmf.treemix.out"))
+p_cluster
+```
+
+Along with the treemix software, are distribution the software treepop and fourpop. These measure f3 and f4 statistics which test for treeness in population trees.
+
+The three-population test is of the form f3(A;B;C), where a significantly negative value of the f3 statistic implies that population A is admixed. The output is four columns: populations | f3 statistic | standard error | Z-score
+```{bash run threepop}
+threepop -i ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.gz -k 500
+```
+
+The four-population test is of the form f4(A;B;C;D), where a significantly negative value of the f4 statistic implies gene flow in the tree. The output is four columns: populations | f4 statistic | standard error | Z-score
+```{bash run fourpop}
+fourpop -i ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.gz -k 500
+```
+
+
+<br><br>
+
+
+
+# Mitochondrial genome
+
+##PCA with the mitochondrial genome
 ```{bash filter mito vcf, eval = F}
 #sed $'s/\tDP_filter\t/\tPASS\t/' \
 #  ../1_Variant_calling/4_Joint_calling/Ztritici_global_December2020.genotyped.mt.filtered.vcf > \
@@ -1082,27 +1180,20 @@ p = ggplot(pca_mito2, aes(x = PC1, y= PC2, text = for_display)) +
   labs(x = paste0("PC 1 (", round(pca_mito$eigenval[1]*100/eigen_sum, 2), "%)"),
        y = paste0("PC 2 (", round(pca_mito$eigenval[2]*100/eigen_sum, 2), "%)")) +
   Color_Continent +
-  theme_bw()
+  theme_bw() + theme(legend.position = "none")
 
-#p
-ggplotly(p)
 
 q = ggplot(pca_mito2, aes(x = PC3, y= PC4, text = for_display)) +
   geom_point(aes(color = Continent)) +
   labs(x = paste0("PC 3 (", round(pca_mito$eigenval[3]*100/eigen_sum, 2), "%)"),
        y = paste0("PC 4 (", round(pca_mito$eigenval[4]*100/eigen_sum, 2), "%)")) +
   Color_Continent +
-  theme_bw()
+  theme_bw()+ theme(legend.position = "bottom")
 
-#q
-ggplotly(q)
+cowplot::plot_grid(p, q, ncol = 1, rel_heights = c(1, 1.2))
 
 
-```
-Let's make groups of samples from the PCA.
-```{r mito PCA group def}
-p
-
+#Let's make groups of samples from the PCA.
 p +
   geom_vline(aes(xintercept = 0.03)) +
   geom_label(aes(x = 0, y = -0.03, label = "Mito_group = 1")) +
@@ -1273,7 +1364,7 @@ p + labs(title = "PCA from the mitochondrial genome of *Z.tritici*",
 
 As a note, there does not seem to be a clear relationship between the known mutation G143A in the cytb gene and these two groups.
 
-
+At first glance, it does not look like the structure is related to geography, but I want to compare the structure obtained with both types of genomes to get a clearer idea of the comparison.
 
 ```{r mito vs nuclear str}
 p = pca_mito2 %>%
@@ -1281,13 +1372,14 @@ p = pca_mito2 %>%
   full_join(., pca2) %>%
   full_join(., high_anc_coef_snmf %>% dplyr::select(-for_display)) %>%
   ggplot(aes(x = PC1, y= PC1_mito, text = for_display)) +
-  geom_point(aes(color = Continent, shape = Cluster)) +
+  geom_point(aes(color = Continent)) +
   labs(x = paste0("PC 1 nuclear genome (", round(pca$eigenval[1]*100/eigen_sum, 2), "%)"),
-       y = paste0("PC 1 mitochondrial genome (", round(pca_mito$eigenval[1]*100/eigen_sum, 2), "%)")) +
+       y = paste0("PC 1 mitochondrial genome (", round(pca_mito$eigenval[1]*100/eigen_sum, 2), "%)"),
+       title = "Comparison between the PC1 for the nuclear and mitochondrial genomes") +
   Color_Continent +
-  theme_bw()
+  theme_bw() 
 
-ggplotly(p)
+p
 
 temp = pca_mito2 %>%
   dplyr::select(Sample = sample_id, Mito_group) %>%
@@ -1312,7 +1404,7 @@ p
 
 
 ```
-The repartition of the mitochondrial haplotypes across the genetic groups defined with the nuclear genome is not random. Some groups have only one group, while some others are 50/50. Not sure what to make of it.
+The proportions of the mitochondrial haplotypes across the genetic clusters defined with the nuclear genome is not equal: some clusters have only one mitochondrial group, while some others are 50/50. Not sure what to make of it.
 
 
 I got curious about the distance from each mitochondrial haplotype to the wild species. So I picked one isolate from each group, including IPO323 as an example of the mitogroup 1. 
@@ -1401,41 +1493,47 @@ read_tsv("/Users/feurtey/Documents/Software/mummer-4.0.0rc1/IPO323_vs_SRR5194475
 
 
 
-### Structure per mito group
+### Check of the validity of the variant calling
 
-```{bash}
-##Group 0
+The whole two-group thing look very strange. So I decided to do some checks of the validity of variants around the region of interest.
+```{bash inputs per mitogroup, eval = F}
+for x in 0 1 ; 
+do 
+
+#VCF with only variants within groups
 vcftools --vcf ${VCFDIR}${VCFNAME_MITO}.vcf \
-  --keep ${MITOPOPSTR}Sample_list_mito_group0.txt \
+  --keep ${MITOPOPSTR}Sample_list_mito_group${x}.txt \
+  --non-ref-ac-any 1 \
+  --min-alleles 2 --max-alleles 2 \
+  --remove-filtered-all --recode --recode-INFO-all \
+  --out ${MITOPOPSTR}${VCFNAME_MITO}.mito_group${x}
+  
+#VCF with all positions but within group samples only
+vcftools --vcf ${VCFDIR}${VCFNAME_MITO}.vcf \
+  --keep ${MITOPOPSTR}Sample_list_mito_group${x}.txt \
   --recode --recode-INFO-all \
-  --out ${MITOPOPSTR}${VCFNAME_MITO}.ALL_POS.mito_group0
+  --out ${MITOPOPSTR}${VCFNAME_MITO}.ALL_POS.mito_group${x}
  
- vcftools --vcf ${MITOPOPSTR}${VCFNAME_MITO}.ALL_POS.mito_group0.recode.vcf \
+#Depth per group
+vcftools --vcf ${MITOPOPSTR}${VCFNAME_MITO}.ALL_POS.mito_group${x}.recode.vcf \
   --site-depth \
-  --out ${MITOPOPSTR}${VCFNAME_MITO}.ALL_POS.mito_group0
-  
-/Users/feurtey/Documents/Software/bcftools/bcftools query \
-  -f '%CHROM\t%POS[\t%AD]\n' \
-  ${MITOPOPSTR}${VCFNAME_MITO}.ALL_POS.mito_group0.recode.vcf \
-   > ${MITOPOPSTR}${VCFNAME_MITO}.ALL_POS.mito_group0.AD.tsv
-  
-##Group 1
- vcftools --vcf ${VCFDIR}${VCFNAME_MITO}.vcf \
-  --keep ${MITOPOPSTR}Sample_list_mito_group1.txt \
-  --recode --recode-INFO-all \
-  --out ${MITOPOPSTR}${VCFNAME_MITO}.ALL_POS.mito_group1
+  --out ${MITOPOPSTR}${VCFNAME_MITO}.ALL_POS.mito_group${x}
 
- vcftools --vcf ${MITOPOPSTR}${VCFNAME_MITO}.ALL_POS.mito_group1.recode.vcf \
-  --site-depth \
-  --out ${MITOPOPSTR}${VCFNAME_MITO}.ALL_POS.mito_group1
+# Allelic freq per group
+vcftools --vcf ${MITOPOPSTR}${VCFNAME_MITO}.ALL_POS.mito_group${x}.recode.vcf \
+  --freq --min-alleles 2 --max-alleles 2 \
+  --out ${MITOPOPSTR}${VCFNAME_MITO}.ALL_POS.mito_group${x}
   
+#Genotypes for all samples for each group
 /Users/feurtey/Documents/Software/bcftools/bcftools query \
   -f '%CHROM\t%POS[\t%AD]\n' \
-  ${MITOPOPSTR}${VCFNAME_MITO}.ALL_POS.mito_group1.recode.vcf \
-  > ${MITOPOPSTR}${VCFNAME_MITO}.ALL_POS.mito_group1.AD.tsv
+  ${MITOPOPSTR}${VCFNAME_MITO}.ALL_POS.mito_group${x}.recode.vcf \
+   > ${MITOPOPSTR}${VCFNAME_MITO}.ALL_POS.mito_group${x}.AD.tsv
    
-  
+ done
 ```
+
+For a start, I want to look at the depth, both for per genotype and then per allele. The first is to detect a potential duplication of the region of interest which would lead to SNPs being called in this region when in reality, the reads belongs to paralogs. The second is to check for heteroplasticity: do cells contain the two haplotypes?
 ```{r}
 #Depth in general
 temp = bind_rows(read_tsv(paste0(mito_PS_dir, vcf_name_mito, ".ALL_POS.mito_group1.ldepth")) %>%
@@ -1456,7 +1554,9 @@ p1 = ggplot(temp, aes(x = POS, y = norm_site_depth, col = Mito_group)) +
            xmin=28000, xmax=30000, ymin=0, ymax=y_lim) +
   geom_point(alpha = 0.4) +
   theme_bw() + 
-  labs(title = "Depth per mito group along the mt genome")
+  labs(title = "Depth per mito group along the mt genome",
+       x = "Position",
+       y= "Normalized read depth")
 
 
 
@@ -1483,34 +1583,218 @@ y_lim = max(temp2$ave_ratio, na.rm = T)
 p2 = ggplot(temp2, aes(x = V2, y = ave_ratio, col = Mito_group)) + 
   annotate("rect", alpha=0.3, fill=blues[[4]],
            xmin=28000, xmax=30000, ymin=0, ymax=y_lim) +
-  labs(y = "Ratio of maf/(all depth)") +
-    geom_point() +
-    theme_bw() 
+  labs(y = "Ratio of maf/(all depth)", 
+       title = "Ratio of allelic depth: heteroplasmy should lead to higher ratios", 
+       x = "Position") +
+    geom_point(alpha = 0.4) +
+    theme_bw()
 
-p1
-p2
+cowplot::plot_grid(p1, p2, ncol = 1)
 ```
 
 
-```{bash separate mito vcf, eval = F}
-#Create vcf files per mito group
-vcftools --vcf ${VCFDIR}${VCFNAME_MITO}.vcf \
-  --keep ${MITOPOPSTR}Sample_list_mito_group0.txt \
-  --non-ref-ac-any 1 \
-  --min-alleles 2 --max-alleles 2 \
-  --remove-filtered-all --recode --recode-INFO-all \
-  --out ${MITOPOPSTR}${VCFNAME_MITO}.mito_group0
+The depth looks a bit strange around of region of interest. But the ratio of allelic depth does not seem to fit with the possibility of heteroplastic mitochondria. 
+
+
+In order to check further if the variants could be erroneously called around a structural variation of some type that the mapping + SNP calling would be confused by, I want to see if I can recover the  variants in pairwise alignments between the reference mitochondria and assembled mitochondria from the resequencing. To limit problems due to low quality assemblies or alignments, I only use the mitochondrial genomes which are completely assembled, i.e. a contig which represent 95% of the length aligned to the mitochondria in the assembly and is longer than 30kb. 
+```{r find complete mito}
+#while read p ; do sh Detect_gene_blast.sh /home/alice/WW_project/WW_PopGen/Directories_new.sh /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+_only.fa ${p} Illumina /data2/alice/WW_project/2_Population_structure/1_Mitochondrial_genome/${p}.mitochondria.blast ; done < Keep_lists_samples/list_Third_batch_Dec_2018.txt
+
+
+mito_blast_results_complete = read_delim(paste0(mito_PS_dir, "Most_genomes.mitochondria.blast"), delim = " ",
+                                col_names = c("sample_id", "gene", "qseqid", "sseqid", "pident", "length",
+                                              "mismatch", "gapopen", "qstart", "qend",
+                                              "sstart", "send", "evalue", "bitscore"))
+
+mito_blast_results_per_contig = pca_mito2 %>%
+  dplyr::select(sample_id, Mito_group) %>%
+  inner_join(., mito_blast_results_complete) %>% 
+  group_by(sample_id, sseqid, Mito_group) %>%
+  summarize(Length = sum(length))  %>% ungroup()
+
+complete_mito = mito_blast_results_per_contig %>%
+  group_by(sample_id, Mito_group) %>%
+  summarize(Total_length = sum(Length)) %>% ungroup() %>%
+  full_join(mito_blast_results_per_contig, .)%>%
+  mutate(Percent = 100*Length/Total_length) %>%
+  filter(Percent > 95)  %>%
+  filter(Length > 30000)
+
+nb_complete_mito_per_group = as.data.frame(table(complete_mito$Mito_group))
+names(nb_complete_mito_per_group) = c("Mito_group", "Total_nb")
+nb_complete_mito_per_group
+
+#Writing the table out to export to the cluster
+complete_mito %>%
+  dplyr::select(sample_id, sseqid) %>%
+  write_tsv(., paste0(mito_PS_dir, "Complete_mitochondria_from_blast.txt"), col_names = F)
+
+```
+
+On the cluster, I extract these identified mitochondrial genomes from the whole assemblies and align them using dnadiff from mummer. 
+
+WARN: the frequencies calculated on the GATK dataset are not based on the same set of samples as the other other one since it includes all good quality samples and not just the ones with complete mitochondria.
+```{r comparison SNP mito}
+#while read sample contig ; do echo $contig > temp ; python ~/Scripts/Filter_fasta.py --list temp --action keep --out /data2/alice/WW_project/2_Population_structure/1_Mitochondrial_genome/${sample}.mitochondria.fasta /data2/alice/WW_project/0_Data/2_Denovo_assemblies/${sample}.fasta ; sed -i "s/>/>${sample}_/" /data2/alice/WW_project/2_Population_structure/1_Mitochondrial_genome/${sample}.mitochondria.fasta ; done < /data2/alice/WW_project/2_Population_structure/1_Mitochondrial_genome/Complete_mitochondria_from_blast.txt
+#for fasta in /data2/alice/WW_project/2_Population_structure/1_Mitochondrial_genome/*mitochondria.fasta ;  do  sample=$(echo ${fasta} | cut -f 7 -d "/") ; echo $fasta $sample ; ./dnadiff -p /data2/alice/WW_project/2_Population_structure/1_Mitochondrial_genome/Aln_vs_IPO323/IPO323_vs_${sample%.mitochondria.fasta} /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+_only.fa $fasta ; done
+
+
+#Output of dna_diff in terms of snps
+file_list = list.files(path = paste0(mito_PS_dir, "Aln_vs_IPO323"), pattern = "*snps")
+
+snps_list = list()
+for (i in c(1:length(file_list))) {
+  snps_list[[i]] = read_tsv(paste0(mito_PS_dir, "Aln_vs_IPO323/", file_list[[i]]), 
+         col_names = c("POS", "REF", "ALT", "Ref", "POS_query",
+                       "V1", "V2", "V3", "V4", "V5", "CHROM", "scaf")) 
+}
+
+snps_from_aln = do.call(rbind, snps_list) %>%
+  mutate(TEMP = gsub("_scaf", ":scaf", scaf)) %>%
+  separate(TEMP, into = c("sample_id", "scaffold"), sep = ":") %>%
+  dplyr::select(CHROM, POS, REF, ALT, sample_id) %>%
+  left_join(., pca_mito2 %>% dplyr::select(sample_id, Mito_group)) #%>%
+  #pivot_wider(names_from = sample_id, values_from = ALT)
+rm(snps_list) 
+
+snps_from_aln %>%
+  mutate(window = round(POS/100)) %>%
+  group_by(sample_id, window) %>%
+  dplyr::count() %>%
+  inner_join(pca_mito2 %>% dplyr::select(sample_id, Mito_group), .) %>%
+  group_by(Mito_group, window) %>%
+  summarize(ave_SNP_nb = mean(n)) %>%
+  ggplot(aes(x = window, y = ave_SNP_nb, col = Mito_group)) + 
+  geom_point() + theme_bw()
+
+#Looking at the frequencies in the GATK SNP calling
+Freq_mito_per_group = bind_rows(read_tsv(paste0(mito_PS_dir, vcf_name_mito, ".ALL_POS.mito_group0.frq")) %>%
+  mutate(Mito_group = 0),
+  read_tsv(paste0(mito_PS_dir, vcf_name_mito, ".ALL_POS.mito_group1.frq")) %>%
+  mutate(Mito_group = 1)) %>% 
+  separate(`{ALLELE:FREQ}`, into = c("ALLELE", "FREQ"), sep = ":") %>%
+  dplyr::select(-N_CHR, -N_ALLELES) %>%
+  pivot_wider(values_from = FREQ, names_from = Mito_group) %>%
+  mutate(Diff_freq_in_GATK = as.numeric(`0`) - as.numeric(`1`))
+
+ggplot(Freq_mito_per_group, aes(x = POS, y =Diff_freq_in_GATK)) +
+  geom_point() +theme_bw()
+
+#Comparing the presence of SNPs with high differenciation between the two groups
+check_relevant_SNPS = snps_from_aln %>% group_by(Mito_group, POS) %>% 
+  dplyr::count() %>%
+  left_join(., nb_complete_mito_per_group) %>% 
+  mutate(Freq_non_ref = n/Total_nb) %>% 
+  pivot_wider(names_from = Mito_group, values_from = Freq_non_ref) %>%
+  dplyr::select(POS, Freq_var0_aln = `0`, Freq_var1_aln = `1`) %>% 
+  mutate(Freq_var0_aln = ifelse(is.na(Freq_var0_aln), 0, Freq_var0_aln),
+         Freq_var1_aln = ifelse(is.na(Freq_var1_aln), 0, Freq_var1_aln),
+         Diff_freq_in_aln = Freq_var0_aln - Freq_var1_aln) %>%
+  left_join(Freq_mito_per_group, .) %>%
+  filter(abs(Diff_freq_in_GATK) > 0.8)
+check_relevant_SNPS
+
+#To repeat with the exact same samples!
+#snps_from_aln %>% group_by(Mito_group, POS) %>% 
+#  dplyr::count() %>%
+#  left_join(., nb_complete_mito_per_group) %>% 
+#  mutate(Freq_non_ref = n/Total_nb) %>% 
+#  pivot_wider(names_from = Mito_group, values_from = Freq_non_ref) %>%
+#  dplyr::select(POS, Freq_var0_aln = `0`, Freq_var1_aln = `1`) %>% 
+#  mutate(Freq_var0_aln = ifelse(is.na(Freq_var0_aln), 0, Freq_var0_aln),
+#         Freq_var1_aln = ifelse(is.na(Freq_var1_aln), 0, Freq_var1_aln),
+#         Diff_freq_in_aln = Freq_var0_aln - Freq_var1_aln) %>%
+#  left_join(Freq_mito_per_group, .) %>%
+#  ggplot(aes(x = Diff_freq_in_GATK, y = Diff_freq_in_aln)) +
+#  geom_point()
+```
+The SNPs we are interested in are indeed found using both methods.
+
+```{r}
+temp = read_tsv("/Users/feurtey/Documents/Software/mummer-4.0.0rc1/IPO323_vs_Zp.B02.snps", 
+         col_names = c("POS", "REF", "Zp", "Ref", "Whatever",
+                       "V1", "V2", "V3", "V4", "V5", "CHROM", "scaf"))
+
+alleles = inner_join(snps_from_aln, check_relevant_SNPS %>% dplyr::select(CHROM, POS)) %>%
+  filter(Mito_group == 0) %>%
+   group_by(POS, ALT) %>%
+  dplyr::count() %>%
+  pivot_wider(names_from = ALT, values_from = n) %>%
+  left_join(., temp %>% dplyr::select(Zp, POS))
+
+temp = read_tsv("/Users/feurtey/Documents/Software/mummer-4.0.0rc1/IPO323_vs_Zb.B01.snps", 
+         col_names = c("POS", "REF", "Zb", "Ref", "Whatever",
+                       "V1", "V2", "V3", "V4", "V5", "CHROM", "scaf"))
+
+alleles = alleles %>%
+  left_join(., temp %>% dplyr::select(Zb, POS))
+
+
+temp = read_tsv("/Users/feurtey/Documents/Software/mummer-4.0.0rc1/IPO323_vs_Za.B01.snps", 
+         col_names = c("POS", "REF", "Za", "Ref", "Whatever",
+                       "V1", "V2", "V3", "V4", "V5", "CHROM", "scaf"))
+alleles = alleles %>%
+  left_join(., temp %>% dplyr::select(Za, POS))
+
+
+```
+
+
+
+Now that the SNPs are compared and confirmed, I want to look at the structural variants and in particular break points in the alignment between the genomes and the mitochondria of the reference strain.
+
+
+
+```{r breaks mito}
+file_list = list.files(path = paste0(mito_PS_dir, "Aln_vs_IPO323"), pattern = "*mcoords")
+
+coords_list = list()
+for (i in c(1:length(file_list))) {
+  coords_list[[i]] = read_tsv(paste0(mito_PS_dir, "Aln_vs_IPO323/", file_list[[i]]), 
+         col_names = c("Ref_start", "Ref_end", "Query_start", "Query_end", 
+                       "Ref_aln_length", "Query_aln_length", "Percent_ID",  
+                       "Ref_length", "Query_length", "Ref_cov", "Query_cov", 
+                       "CHROM", "scaf")) 
+}
+
+coords_from_aln = do.call(rbind, coords_list) %>%
+  mutate(TEMP = gsub("_scaf", ":scaf", scaf)) %>%
+  separate(TEMP, into = c("sample_id", "scaffold"), sep = ":") %>%
+  left_join(., pca_mito2 %>% dplyr::select(sample_id, Mito_group)) 
+
+temp = coords_from_aln %>%
+  dplyr::select(Mito_group, Ref_start, Ref_end, sample_id) %>%
+  group_by(Mito_group, Ref_start) %>%
+  dplyr::count() %>%
+  left_join(., nb_complete_mito_per_group) %>% 
+  mutate(Freq_break = n/Total_nb) %>%
+  pivot_wider(names_from = Mito_group, values_from = Freq_break) %>%
+  dplyr::select(Ref_start, Freq_break0 = `0`, Freq_break1 = `1`) %>% 
+  mutate(Freq_break0 = ifelse(is.na(Freq_break0), 0, Freq_break0),
+         Freq_break1 = ifelse(is.na(Freq_break1), 0, Freq_break1),
+         Diff_freq_in_breaks = Freq_break0 - Freq_break1,
+         More_freq_in_0 = Diff_freq_in_breaks >= 0) 
+
+temp %>% ggplot(aes(x = Ref_start, y = Diff_freq_in_breaks, 
+                    col = More_freq_in_0, alpha = abs(Diff_freq_in_breaks) + 0.01)) +
+  geom_point() + 
+  theme_bw() +
+  scale_color_manual(values = c(unname(myColors)[3], unname(myColors)[1])) +
+  labs(title = "Difference in frequency of breakpoints between the two mito_groups",
+       subtitle = str_wrap(paste0("Two breakpoints seem to be found in",
+                                  "all genomes from group 0, including one ",
+                                  "in the region of interest.")),
+       alpha = "Difference intensity",
+       col = "Breakpoint more frequent in group 0",
+       x = "Position on the mitochondrial genome",
+       y = "Difference in frequency") +
+  theme(legend.position = "bottom")
   
-vcftools --vcf ${VCFDIR}${VCFNAME_MITO}.vcf \
-  --keep ${MITOPOPSTR}Sample_list_mito_group1.txt \
-  --non-ref-ac-any 1 \
-  --min-alleles 2 --max-alleles 2 \
-  --remove-filtered-all --recode --recode-INFO-all \
-  --out ${MITOPOPSTR}${VCFNAME_MITO}.mito_group1
-
-
 ```
 
+
+
+### Structure per mito group
 
 ```{r PCA per mito group}
 ## Mito group 0
@@ -1609,195 +1893,48 @@ p2 = pca_mito_gp1_2 %>%
 cowplot::plot_grid(p, p2, ncol = 1)
 
 ```
-
-
-```{r temp find complete mito}
-mito_blast_results_complete = read_delim(paste0(mito_PS_dir, "JGI_paired.mitochondria.blast"), delim = " ",
-                                col_names = c("sample_id", "gene", "qseqid", "sseqid", "pident", "length",
-                                              "mismatch", "gapopen", "qstart", "qend",
-                                              "sstart", "send", "evalue", "bitscore"))
-
-mito_blast_results_per_contig = pca_mito2 %>%
-  dplyr::select(sample_id, Mito_group) %>%
-  inner_join(., mito_blast_results_complete) %>% 
-  group_by(sample_id, sseqid, Mito_group) %>%
-  summarize(Length = sum(length))  %>% ungroup()
-
-temp = mito_blast_results_per_contig %>%
-  group_by(sample_id, Mito_group) %>%
-  summarize(Total_length = sum(Length)) %>% ungroup() %>%
-  full_join(mito_blast_results_per_contig, .)%>%
-  mutate(Percent = 100*Length/Total_length) %>%
-  filter(Percent > 90)
-table(temp$Mito_group)
-
-temp = mito_blast_results_per_contig %>%
-  group_by(sample_id, Mito_group) %>%
-  summarize(Total_length = sum(Length)) %>% ungroup() %>%
-  full_join(mito_blast_results_per_contig, .)%>%
-  mutate(Percent = 100*Length/Total_length) %>%
-  filter(Percent > 95)  %>%
-  filter(Length > 30000)
-table(temp$Mito_group)
-
-temp %>%
-  dplyr::select(sample_id, sseqid) %>%
-  write_tsv(., paste0(mito_PS_dir, "Complete_mitochondria_from_blast.txt"), col_names = F)
-```
+It could have been expected that the geographical structure would be very clear once we separate the two groups. Although this is not the case, we can still recover part of a geographical separation in the group with most genomes.
 
 
 
-```{r}
-temp = pca_mito2 %>% dplyr::select(sample_id, Mito_group)
+```{r mito vs pheno}
 
-#Reading phenotypes
-dir_list1 = list.files(paste0(project_dir, "Phenotypes/FannyHartmann_2017/"),
-  pattern = "*.csv", full.names = TRUE)
-dir_list2 = list.files(paste0(project_dir, "Phenotypes/FannyHartmann_2017/"),
-  pattern = "*.tsv", full.names = TRUE)
-
-phenotypes = full_join(
-  purrr::map(dir_list1, read_csv) %>% reduce(full_join), 
-  purrr::map(dir_list2, read_tsv) %>% reduce(full_join)) %>%
-  rename(sample_id = Taxa) %>%
-  mutate(sample_id = gsub("^a15", "ST90ORE_a15", sample_id )) %>%
-  mutate(sample_id = gsub("^a12", "ST90ORE_a12", sample_id )) %>%
-  mutate(sample_id = gsub("^ISY", "ST92ISR", sample_id )) %>%
-  mutate(sample_id = gsub("^STAus01", "ST01AUS", sample_id )) %>%
-  dplyr::select(-POP2) %>%
-  inner_join(temp, .) %>%
+phenotypes = read_tsv(paste0(project_dir, "Phenotypes/Anik_2020_phenotypes.tsv")) %>%
+  mutate(POP = str_sub(sample_id, 1, 6)) %>%
+  inner_join(pca_mito2 %>% dplyr::select(sample_id, Mito_group), .) %>% 
+  dplyr::select(-MSR) %>%
   pivot_longer(cols = -c(sample_id, Mito_group, POP), names_to = "Phenotype", values_to = "Measure") 
 
 table(phenotypes$POP, phenotypes$Mito_group)
 
-
-
-phenotypes %>%
-  filter(POP == "AUS") %>%
-  ggplot(aes(Mito_group, Measure, col = Mito_group)) +
-  geom_boxplot() + 
-  theme_bw() +
-  facet_wrap(vars(Phenotype), scales = "free")
-
-phenotypes %>%
-  filter(POP == "ISR") %>%
-  ggplot(aes(Mito_group, Measure, col = Mito_group)) +
-  geom_boxplot() + 
-  theme_bw() +
-  facet_wrap(vars(Phenotype), scales = "free")
-
 list_phenotypes = phenotypes %>%
   dplyr::select(Phenotype) %>% unique() %>% pull()
 
-
-for(pheno in list_phenotypes) {
-  print(pheno)
+signif_mito_phenotype <- as.data.frame(matrix(NA, length(list_phenotypes), 2))
+names(signif_mito_phenotype) <- c("Phenotype", "p-value")
+for(i in c(1:length(list_phenotypes))) {
+  pheno = list_phenotypes[i]
   temp = phenotypes %>%
   filter(Phenotype == pheno)
-res.aov3 <- aov(Measure ~ POP + Mito_group + POP:Mito_group, data = temp)
-print(summary(res.aov3))
+  res.aov3 <- aov(Measure ~ POP + Mito_group + POP:Mito_group, data = temp)
+  print(summary(res.aov3))
+  signif_mito_phenotype[i, 1] = pheno
+  signif_mito_phenotype[i, 2] = summary(res.aov3)[[1]][["Pr(>F)"]][[2]]
+  print(c(pheno, summary(res.aov3)[[1]][["Pr(>F)"]][[2]]))
 }
-```
 
-
-
-
-
-## Population trees
-In the steps before, I have learned about population history indirectly by inferring genetic populations from the genomic data. The relationship between the population and the underlying demography is not explicit in these however. It is possible however to infer splits between populations and create a population tree. Here, I use [treemix](https://journals.plos.org/plosgenetics/article?id=10.1371/journal.pgen.1002967), which takes into account the possibility of gene flow between populations and indeed test of it in the process of creating a population tree.
-
-Because the populations in the clustering were not perfectly distinct from one another, I start with "discretized" populations by choosing only the isolates with high ancestry in one of the sNMF clusters.
-```{bash discretized pop vcf, eval = F}
-vcftools --vcf ${VCFDIR}$VCFNAME.recode.vcf \
-  --keep ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.ind \
-  --remove-filtered-all --extract-FORMAT-info GT \
-  --max-missing 1.0 --min-alleles 2 --max-alleles 2 \
-  --maf 0.05 \
-  --out ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf
-
-cat  ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.GT.FORMAT | cut -f 3- \
-   >  ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.GT.FORMAT2
-```
-
-
-```{python convert genotype file to treemix}
-from collections import defaultdict
-
-#For each isolate, store its pop (as in sampling site) in a dictionary
-dict_pop = dict(zip(r.high_anc_coef_snmf["Sample"],
-    r.high_anc_coef_snmf["Cluster"]))
-
-#Keep a list of the pop names/coordinates to write in the same order later
-all_pops = sorted(list(set(r.high_anc_coef_snmf["Cluster"])))
-out_name = r.PopStr_dir + r.vcf_name + ".pass_noNA.high_anc_coef_snmf.treemix"
-
-
-out = open(out_name, "w")
-shutup = out.write(" ".join(all_pops) + "\n")
-
-with open(r.PopStr_dir + r.vcf_name + ".pass_noNA.high_anc_coef_snmf.GT.FORMAT2", "r") as input_snps :
-  for i, snp in enumerate(input_snps) :
-    #Setting two dictionaries with values at 0
-    dict_snp0 = defaultdict(int)
-    dict_snp1 = defaultdict(int)
-    Lets_write = True
-
-    #The first line is the name of the isolates
-    if i == 0 :
-      indv = snp.strip().split("\t")
-      Lets_write = False
-    else :
-      #Keeping isolate name and allelic value together
-      alleles = zip(indv, snp.strip().split("\t"))
-      #...and counting the O and 1 based on the pop
-      for ind, allele in alleles:
-        if allele == "0" :
-          dict_snp0[dict_pop[ind]] += 1
-        elif allele == "1" :
-          dict_snp1[dict_pop[ind]] += 1
-        else :
-          print("Only biallelic please!!!!")
-          Lets_write = False
-    #If I have not found anything weird, I will write the result to the output file.
-    if Lets_write :
-      shutup = out.write(" ".join([",".join([str(dict_snp0[pop]), str(dict_snp1[pop])])  for pop in all_pops]) + "\n")
-
-out.close()
-```
-
-```{bash run treemix, eval = F, message = F}
-gzip ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix
-
-treemix \
-  -i ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.gz \
-  -o ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.out \
-  -m 10 -root V1
-
-```
-
-```{r plot treemix}
-source("/Users/feurtey/Documents/Software/treemix-1.13/src/plotting_funcs.R")
-t = plot_tree(paste0(PopStr_dir, vcf_name, ".pass_noNA.high_anc_coef_snmf.treemix.out"))
-p_cluster
-```
-
-Along with the treemix software, are distribution the software treepop and fourpop. These measure f3 and f4 statistics which test for treeness in population trees.
-
-The three-population test is of the form f3(A;B;C), where a significantly negative value of the f3 statistic implies that population A is admixed. The output is four columns: populations | f3 statistic | standard error | Z-score
-```{bash run threepop}
-threepop -i ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.gz -k 500
-```
-
-The four-population test is of the form f4(A;B;C;D), where a significantly negative value of the f4 statistic implies gene flow in the tree. The output is four columns: populations | f4 statistic | standard error | Z-score
-```{bash run fourpop}
-fourpop -i ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.gz -k 500
+phenotypes %>%
+  left_join(signif_mito_phenotype, .) %>%
+  filter(`p-value` < 0.05) %>%
+  filter(POP %in% c("ST01AU", "ST92IS")) %>%
+  ggplot(aes(Mito_group, Measure, col = Mito_group)) +
+  geom_boxplot() + 
+  theme_bw() +
+  facet_grid(Phenotype ~ POP, scales = "free_y")
 ```
 
 
 <br><br>
-
-
-
 
 
 # Basic statistics: diversity and differenciation
