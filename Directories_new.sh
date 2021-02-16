@@ -32,11 +32,20 @@ var_cal_dir=${project_dir}1_Variant_calling/
 mapped_dir=${var_cal_dir}0_Mappings/0_On_IPO323_REF/
 gvcf_dir=${var_cal_dir}3_Per_sample_calling/
 vcf_dir=${var_cal_dir}4_Joint_calling/
-
 #Pangenome
 pan_mapped=${var_cal_dir}0_Mappings/1_On_Pangenome/
 pan_DP_win=${var_cal_dir}1_Depth_per_window/
 pan_DP_gene=${var_cal_dir}2_Depth_per_gene/
+
+
+#Population structure
+pop_str_dir=${project_dir}2_Population_structure/
+nuc_PS_dir=${pop_str_dir}0_Nuclear_genome/
+mito_PS_dir=${pop_str_dir}1_Mitochondrial_genome/
+
+
+#Diversity
+div_dir=${project_dir}3_Sumstats_demography/
 
 
 #TE and RIP
@@ -66,15 +75,17 @@ pseudo_fasta_dir=${sel_dir}0_Pseudo_fasta/
 # File paths
 #-----------
 adapt_file=${SOFTPATH}Trimmomatic-0.39/adapters/adapters_all.fasta
-TE_REF=${DATA_DIR}Badet_BMC_Biology_2020_TE_consensus_sequences
 PAN_REF=${DATA_DIR}all_19_pangenome
 IPO323_REF=${DATA_DIR}Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa
+IPO323_GFF=${DATA_DIR}Zymoseptoria_tritici.MG2.Grandaubert2015.no_CDS.gff3
+
+TE_REF=${DATA_DIR}Badet_BMC_Biology_2020_TE_consensus_sequences
 dim2_seq=${DATA_DIR}Zt10_dim2_from_MgDNMT_deRIP.fa
 dim2_flank1=${DATA_DIR}dim2_flank1_Zt10_unitig_006_0418.fasta
 dim2_flank2=${DATA_DIR}dim2_flank2_Zt10_unitig_006_0416.fasta
 dim2_start=${DATA_DIR}Zt10_dim2_start_from_MgDNMT_deRIP.fa
 dim2_end=${DATA_DIR}Zt10_dim2_end_from_MgDNMT_deRIP.fa
-IPO323_VCF=${var_cal_dir}Ztritici_global_March2020.filtered.vcf.gz 
+#IPO323_VCF=${var_cal_dir}Ztritici_global_March2020.filtered.vcf.gz 
 VCFBasename=Ztritici_global_December2020
 remove_ID_file=${DATA_DIR}Samples_to_filter_out.args
 low_depth_samples_file=${DATA_DIR}Sample_with_too_much_NA.args
