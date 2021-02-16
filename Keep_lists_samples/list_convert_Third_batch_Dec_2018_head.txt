@@ -1,0 +1,10 @@
+G1_L2_R1_001_YWCGmuVnliM2.fastq.gz	G1_L2_R2_001_w9WFdxtPF2Av.fastq.gz	ST16CH_1F1
+G2_L2_R1_001_dGyl04SJtoLr.fastq.gz	G2_L2_R2_001_dnnb9Rs8XOwg.fastq.gz	ST16CH_2O1
+G3_L2_R1_001_Lk865gzrfQEY.fastq.gz	G3_L2_R2_001_V0CJMbdz2TTS.fastq.gz	ST16CH_3B1
+G4_L2_R1_001_IpvPHxO3LzU4.fastq.gz	G4_L2_R2_001_j2fEAlCSHEfW.fastq.gz	ST16CH_2P1
+G5_L2_R1_001_OWQzPRrFPs5i.fastq.gz	G5_L2_R2_001_bH60VsEVfCs3.fastq.gz	ST16CH_1A1
+G6_L2_R1_001_bs1iBHisRsmv.fastq.gz	G6_L2_R2_001_esUVWh1L76td.fastq.gz	ST16CH_2P7
+G7_L2_R1_001_YJoO8b3qfXCB.fastq.gz	G7_L2_R2_001_DzI9S6uZ6xdp.fastq.gz	ST16CH_3P2
+G8_L2_R1_001_nsOr0EqfibbW.fastq.gz	G8_L2_R2_001_XOYK6UafwbWN.fastq.gz	ST16CH_2P3
+H1_L2_R1_001_rmqAW6rgfPaA.fastq.gz	H1_L2_R2_001_OWc74njRGaVQ.fastq.gz	ST16CH_1L40
+H10_L2_R1_001_ZXzAnvdxm9RK.fastq.gz	H10_L2_R2_001_NzDYGUcioEdp.fastq.gz	ST16RU_Biog_R19
