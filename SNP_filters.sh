@@ -47,7 +47,15 @@ ${GATK_PATH} VariantFiltration  \
    --filter-expression 'BaseQRankSum > $BaseQRankSum_upper' --filter-name 'BaseQRankSumH' 
 
 
-#Cleaning the file
+#Cleaning the file per pos
+${GATK_PATH} SelectVariants  \
+  -R ${IPO323_REF} \
+  -V ${VCFNAME}.filtered.vcf \
+  --exclude-filtered \
+  --exclude-non-variants --remove-unused-alternates \
+  -O ${VCFNAME}.filtered.clean.vcf
+  
+#Cleaning the file per pos and ind
 ${GATK_PATH} SelectVariants  \
   -R ${IPO323_REF} \
   -V ${VCFNAME}.filtered.vcf \
