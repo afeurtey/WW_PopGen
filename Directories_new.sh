@@ -27,15 +27,15 @@ FILTERED_READS=${DATA_DIR}1_Filtered_reads/
 DENOVO_ASSEMB=${DATA_DIR}2_Denovo_assemblies/
 PB_ASSEMB=${DATA_DIR}3_PacBio_assemblies/
 
-#Population genomics
+#Variant calling
 var_cal_dir=${project_dir}1_Variant_calling/
 mapped_dir=${var_cal_dir}0_Mappings/0_On_IPO323_REF/
 gvcf_dir=${var_cal_dir}3_Per_sample_calling/
 vcf_dir=${var_cal_dir}4_Joint_calling/
-#Pangenome
-pan_mapped=${var_cal_dir}0_Mappings/1_On_Pangenome/
-pan_DP_win=${var_cal_dir}1_Depth_per_window/
-pan_DP_gene=${var_cal_dir}2_Depth_per_gene/
+vcf_qual_check_dir=${var_cal_dir}5_Quality_checks/
+pan_mapped=${var_cal_dir}0_Mappings/1_On_Pangenome/ #On pangenome
+pan_DP_win=${var_cal_dir}1_Depth_per_window/ #No pangenome anymore
+pan_DP_gene=${var_cal_dir}2_Depth_per_gene/ #No pangenome anymore
 
 
 #Population structure

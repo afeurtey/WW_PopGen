@@ -7,7 +7,7 @@ output:
   pdf_document: default
 ---
 
-```{r setup, include=FALSE}
+```{r setup, include=TRUE}
 #Libraries needed
 library(tidyverse)
 library(ggExtra)
@@ -33,7 +33,11 @@ subset_vcf_name = paste0(dir_name,
 ref_genome = paste0(dir_name, 
                     "0_Data/",
                     "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa")
+vcf_qual_check_dir =paste0(dir_name, 
+                           "1_Variant_calling/5_Quality_checks/")
+
 soft_dir = "/home/alice/Software/"
+list_dir = "/home/alice/WW_PopGen/Keep_lists_samples/"
 gatk_path = paste0(soft_dir, "gatk-4.1.4.1/gatk")
 #java_path = "/Library/Java/JavaAppletPlugin.plugin/Contents/Home/bin/java"
 bcftools_path = paste0(soft_dir, "bcftools-1.10.2/")
@@ -246,6 +250,7 @@ related %>%
   scale_fill_gradient(high = "white", low = "#16697a")
 
 ```
+
 ```{r}
 
 #for the representation, I first filter the samples to remove all samples with only one connection 
@@ -349,4 +354,47 @@ as.data.frame(table(nodes_with_groups$Filter_based_on_ibs)) %>%
 
 ```
 
+
+# Filter checks using resequencing
+
+
+```{r diffs per pair}
+reseq_list = read_delim(paste0(list_dir, "Repeat_sequencing.txt"), delim =" ", col_names = c("Name_1", "Name_2"))
+
+
+list_diff = list()
+
+for (sample in length(reseq_list$Name_1)) {
+filtered = list.files(path = vcf_qual_check_dir, pattern = paste0("filtered.clean.", reseq_list$Name_1[sample], "*"), full.names = T) %>% 
+    map_df(~read_tsv(., skip = 1, 
+                     col_names = c("CHROM", "POS", "N_ALLELES", "N_CHR", "Allele1", "Allele2", "Allele3"))) %>%
+    mutate(Filter = "Filtered_on_position") %>%
+    select(-N_ALLELES, -N_CHR) %>% 
+    rowwise() %>%
+    dplyr::mutate(max = max(Allele1, Allele2, Allele3, na.rm = T)) %>%
+    filter(max < 2)
+
+
+unfiltered = setdiff(list.files(path = vcf_qual_check_dir, pattern = paste0(reseq_list$Name_1[1], "*"), full.names = T),
+                     list.files(path = vcf_qual_check_dir, pattern = paste0("filtered.clean.", reseq_list$Name_1[sample], "*"), 
+                                full.names = T)) %>% 
+             map_df(~read_tsv(., skip = 1, 
+                              col_names = c("CHROM", "POS", "N_ALLELES", "N_CHR", "Allele1", "Allele2", "Allele3"))) %>%
+             mutate(Filter = "Not_filtered") %>%
+             select(-N_ALLELES, -N_CHR) %>% 
+             rowwise() %>%
+             dplyr::mutate(max = max(Allele1, Allele2, Allele3, na.rm = T)) %>%
+             filter(max < 2)
+list_diff[sample] = bind_rows(filtered, unfiltered) %>% mutate(Sample = reseq_list$Name_1[sample]) }
+
+bind_rows(list_diff) %>%
+group_by(CHROM, Filter, Sample) %>%
+count() %>%
+ggplot(aes(x=CHROM, y =n, fill = Filter)) +
+ geom_bar(stat = "identity", position = "dodge") +
+ theme_bw() +
+  scale_fill_viridis_d() +
+  facet_wrap(vars(Sample))
+
+```
 
