@@ -356,45 +356,167 @@ as.data.frame(table(nodes_with_groups$Filter_based_on_ibs)) %>%
 
 
 # Filter checks using resequencing
+```{r Get variants from filter}
 
+var_list = bind_rows(paste0(vcf_qual_check_dir, "Ztritici_global_December2020.genotyped.", c(1:21), ".tab") %>%
+                         map_df(~read_tsv(., col_names = c("CHROM", "POS", "REF", "ALT"), 
+                           col_types = cols(col_character(), col_double(), col_character(), col_character()))) %>%
+                         mutate(Filter = "Not_filtered"),
+                     paste0(vcf_qual_check_dir, "Ztritici_global_December2020.genotyped.", c(1:21), ".filtered.clean.tab") %>%
+                         map_df(~read_tsv(., col_names = c("CHROM", "POS", "REF", "ALT"), 
+                           col_types = cols(col_character(), col_double(), col_character(), col_character()))) %>%
+                         mutate(Filter = "Filtered_on_position")) %>% 
+  mutate(Nb_allele = str_count(ALT, pattern = ",") + 2) %>%
+  mutate(Nb_letter = str_count(ALT, pattern = "[A-Z]") + str_count(REF, pattern = "[A-Z]")) %>%
+  mutate(Indel = ifelse((str_count(ALT, pattern = "[*]") + str_count(REF, pattern = "[*]")) > 0, "Indel", 
+                        ifelse(Nb_letter != Nb_allele, "Indel", "SNP"))) %>%
+  unite(col = "Var_type", Indel, Nb_allele, sep = "_", remove = F)
 
-```{r diffs per pair}
+var_list  %>%
+group_by(CHROM, Filter, Var_type) %>%
+count()  %>%
+ggplot(aes(x=CHROM, y =n, fill = Var_type)) +
+ geom_bar(stat = "identity", position = "stack") +
+ theme_bw() +
+  scale_fill_viridis_d() +
+  facet_wrap(vars(Filter)) +
+  coord_flip()
+
+```
+
+```{r tab per pair}
 reseq_list = read_delim(paste0(list_dir, "Repeat_sequencing.txt"), delim =" ", col_names = c("Name_1", "Name_2"))
-
 
 list_diff = list()
 
-for (sample in length(reseq_list$Name_1)) {
-filtered = list.files(path = vcf_qual_check_dir, pattern = paste0("filtered.clean.", reseq_list$Name_1[sample], "*"), full.names = T) %>% 
-    map_df(~read_tsv(., skip = 1, 
-                     col_names = c("CHROM", "POS", "N_ALLELES", "N_CHR", "Allele1", "Allele2", "Allele3"))) %>%
-    mutate(Filter = "Filtered_on_position") %>%
-    select(-N_ALLELES, -N_CHR) %>% 
-    rowwise() %>%
-    dplyr::mutate(max = max(Allele1, Allele2, Allele3, na.rm = T)) %>%
-    filter(max < 2)
+for (sample in c(1:length(reseq_list$Name_1))) {
+
+#sample = 1
+
+list_filtered = list.files(path = vcf_qual_check_dir, pattern = paste0("filtered.clean.", reseq_list$Name_1[sample], ".tab"), full.names = T) 
+list_unfiltered = setdiff(list.files(path = vcf_qual_check_dir, pattern = paste0(reseq_list$Name_1[sample], ".tab"), full.names = T),
+                     list.files(path = vcf_qual_check_dir, pattern = paste0("filtered.clean.", reseq_list$Name_1[sample], ".tab"), 
+                                full.names = T)) 
+
+filtered = list_filtered %>% 
+    map_df(~read_tsv(., col_names = c("CHROM", "POS", "REF", "ALT", "Clone1", "Clone2"), 
+                        col_types = cols(col_character(), col_double(), col_character(), col_character(), col_character(), col_character()))) %>%
+    mutate(Filter = "Filtered_on_position") 
 
 
-unfiltered = setdiff(list.files(path = vcf_qual_check_dir, pattern = paste0(reseq_list$Name_1[1], "*"), full.names = T),
-                     list.files(path = vcf_qual_check_dir, pattern = paste0("filtered.clean.", reseq_list$Name_1[sample], "*"), 
-                                full.names = T)) %>% 
-             map_df(~read_tsv(., skip = 1, 
-                              col_names = c("CHROM", "POS", "N_ALLELES", "N_CHR", "Allele1", "Allele2", "Allele3"))) %>%
-             mutate(Filter = "Not_filtered") %>%
-             select(-N_ALLELES, -N_CHR) %>% 
-             rowwise() %>%
-             dplyr::mutate(max = max(Allele1, Allele2, Allele3, na.rm = T)) %>%
-             filter(max < 2)
-list_diff[sample] = bind_rows(filtered, unfiltered) %>% mutate(Sample = reseq_list$Name_1[sample]) }
 
-bind_rows(list_diff) %>%
-group_by(CHROM, Filter, Sample) %>%
-count() %>%
-ggplot(aes(x=CHROM, y =n, fill = Filter)) +
- geom_bar(stat = "identity", position = "dodge") +
+unfiltered = list_unfiltered %>% 
+    map_df(~read_tsv(., col_names = c("CHROM", "POS", "REF", "ALT", "Clone1", "Clone2"), 
+                        col_types = cols(col_character(), col_double(), col_character(), col_character(), col_character(), col_character()))) %>%
+    mutate(Filter = "Not_filtered") 
+
+
+head(unfiltered)
+list_diff[[sample]] = bind_rows(filtered, unfiltered) %>% mutate(Sample = reseq_list$Name_1[sample]) 
+}
+
+temp2 = bind_rows(list_diff) %>% 
+  mutate(Nb_allele = str_count(ALT, pattern = ",") + 2) %>%
+  mutate(Nb_letter = str_count(ALT, pattern = "[A-Z]") + str_count(REF, pattern = "[A-Z]")) %>%
+  mutate(Indel = ifelse((str_count(ALT, pattern = "[*]") + str_count(REF, pattern = "[*]")) > 0, "Indel", 
+                        ifelse(Nb_letter != Nb_allele, "Indel", "SNP"))) %>%
+  unite(col = "Var_type", Indel, Nb_allele, sep = "_", remove = F)
+
+temp2  %>%
+group_by(Filter, Sample, Var_type) %>%
+count()  %>%
+ggplot(aes(x=Sample, y =n, fill = Var_type)) +
+ geom_bar(stat = "identity", position = "stack") +
  theme_bw() +
   scale_fill_viridis_d() +
-  facet_wrap(vars(Sample))
+  facet_wrap(vars(Filter)) +
+  coord_flip()
+
+temp2 %>%
+group_by(CHROM, Filter, Sample, Var_type) %>%
+count()  %>%
+ggplot(aes(x=as.numeric(CHROM), y =n, fill = Var_type)) +
+ geom_bar(stat = "identity", position = "stack") +
+ theme_bw() +
+  scale_fill_viridis_d() +
+  facet_grid(cols = vars(Filter), rows = vars(Sample)) 
+
+temp2  %>%
+  select(CHROM, POS, Filter, Var_type) %>%
+  distinct() %>%
+group_by(CHROM, Filter, Var_type) %>%
+count()  %>%
+ggplot(aes(x=as.numeric(CHROM), y =n, fill = Var_type)) +
+ geom_bar(stat = "identity", position = "stack") +
+ theme_bw() +
+  scale_fill_viridis_d() +
+  facet_grid(cols = vars(Filter)) 
+```
+
+```{r}
+
+bind_rows(temp2 %>%
+            unite(col = "Var_type", Indel, Nb_allele, sep = "_")%>%
+            select(CHROM, POS, Filter, Var_type) %>%
+            distinct() %>% 
+            mutate(Dataset = "Clones"),
+          var_list%>% 
+            mutate(Dataset = "All_variants")) %>%
+  group_by(Filter, Var_type, Dataset) %>%
+count()  %>%
+ggplot(aes(x=Dataset, y =n, fill = Var_type)) +
+ geom_bar(stat = "identity", position = "fill") +
+ theme_bw() +
+  scale_fill_viridis_d() +
+  facet_grid(cols = vars(Filter))
+
+```
+
+
+```{r diff per windows}
+chromosomes = read_tsv(paste0(ref_genome, ".fai"),
+                        col_names = c("CHROM", "Length", "Byte_index", "Base_per_line", "Bytes_per_line")) 
+win_size = 10000
+
+list_temp = list()
+for (chr in c(1:length(chromosomes$CHROM))) {
+  list_temp[[chr]] = bind_rows(tibble(CHROM = as.character(chr), 
+                            Window = seq(from = 0, to = chromosomes$Length[14], by = win_size), 
+                            Filter = "Not_filtered"),
+                            tibble(CHROM = as.character(chr), 
+                            Window = seq(from = 0, to = chromosomes$Length[14], by = win_size), 
+                            Filter = "Filtered_on_position"))
+
+}
+
+windows = (bind_rows(list_temp))
+
+temp = bind_rows(list_diff) %>% 
+  mutate(Window = win_size*round(POS / win_size)) %>%
+  group_by(CHROM, Filter, Sample, Window) %>%
+  count() %>%
+  pivot_wider(names_from = Sample, values_from = n) %>%
+  full_join(., windows) %>%
+  pivot_longer(-c(CHROM, Filter, Window), names_to = "Sample", values_to = "Nb_SNP") %>%
+  mutate(Nb_SNP = replace_na(Nb_SNP, 0))
+  
+temp %>%
+  filter(Filter == "Not_filtered") %>%
+  filter(as.integer(CHROM) <= 6) %>% 
+ggplot(., aes(x = Window, y = Nb_SNP, col = Sample)) +
+  geom_line(alpha = .4) +
+  geom_point(alpha = .4) + 
+  theme_minimal() + 
+  facet_grid(rows = vars(as.integer(CHROM)), cols = vars(Filter))
+
+temp %>%
+  filter(as.integer(CHROM) <= 6) %>% 
+ggplot(., aes(x = Window, y = Nb_SNP, col = Sample)) +
+  geom_line(alpha = .4) +
+  theme_minimal() + 
+  facet_grid(rows = vars(as.integer(CHROM)), cols = vars(Filter)) +
+  theme(legend.position = "none")
+
 
 ```
 
