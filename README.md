@@ -9,10 +9,14 @@ First, the scripts Trim_and_map_on_ref_Daniel (several variants). These are name
 
 Once I get the g.vcf for all the samples (using the previously generated ones for the pre-2020 data), I get on with the SNP calling, using the scripts SNP_calling_step1.sh and SNP_calling_step2.sh
 
-Filtering is then done per position and per samples. The criteria and visualization can be found in the [SNP_filtering.Rmd](./SNP_filtering.md)/[html](./SNP_filtering.html). The script itself is [SNP_filters.sh](./SNP_filters.sh)
+Filtering is then done per position and per samples. The criteria and visualization can be found in the [SNP_filtering.Rmd](./SNP_filtering.Rmd)/[html](./SNP_filtering.html). The script itself is [SNP_filters.sh](./SNP_filters.sh)
 
 
 ### Depth per gene
 
 ### Proportion TE reads and RIP
+
+### *De novo* assemblies
+
+
 
