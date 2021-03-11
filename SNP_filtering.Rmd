@@ -4,7 +4,7 @@ author: "Alice Feurtey"
 date: "01/13/2021"
 output:
   html_document: default
-  pdf_document: default
+    code_folding: hide
 ---
 
 ```{r setup, include=TRUE}
@@ -14,6 +14,8 @@ library(ggExtra)
 library(tidygraph)
 library(ggraph)
 library(cowplot)
+library(kableExtra)
+library(gridExtra)
 
 #Chromosome choice for different steps
 test_CHR = 10
@@ -155,11 +157,11 @@ I want to assess the effect of the filtering on the SNP data.
 var_list = bind_rows(paste0(vcf_qual_check_dir, "Ztritici_global_December2020.genotyped.", c(1:21), ".tab") %>%
                          map_df(~read_tsv(., col_names = c("CHROM", "POS", "REF", "ALT"), 
                            col_types = cols(col_character(), col_double(), col_character(), col_character()))) %>%
-                         mutate(Filter = "Not_filtered"),
+                         mutate(Filter = "1_Raw_variants"),
                      paste0(vcf_qual_check_dir, "Ztritici_global_December2020.genotyped.", c(1:21), ".filtered.clean.tab") %>%
                          map_df(~read_tsv(., col_names = c("CHROM", "POS", "REF", "ALT"), 
                            col_types = cols(col_character(), col_double(), col_character(), col_character()))) %>%
-                         mutate(Filter = "Filtered_on_position")) %>% 
+                         mutate(Filter = "2_Filtered")) %>% 
   mutate(Nb_allele = str_count(ALT, pattern = ",") + 2) %>%
   mutate(Nb_letter = str_count(ALT, pattern = "[A-Z]") + str_count(REF, pattern = "[A-Z]")) %>%
   mutate(Indel = ifelse((str_count(ALT, pattern = "[*]") + str_count(REF, pattern = "[*]")) > 0, "Indel", 
@@ -184,11 +186,10 @@ We have 9 isolates that were resequenced several times in different datasets. Us
 ```{r tab per pair}
 reseq_list = read_delim(paste0(list_dir, "Repeat_sequencing.txt"), delim =" ", col_names = c("Name_1", "Name_2"))
 
+
+#Read data for all chromosomes and for each pair of samples
 list_diff = list()
-
 for (sample in c(1:length(reseq_list$Name_1))) {
-
-#sample = 1
 
 list_filtered = list.files(path = vcf_qual_check_dir, pattern = paste0("filtered.clean.", reseq_list$Name_1[sample], ".tab"), full.names = T) 
 list_unfiltered = setdiff(list.files(path = vcf_qual_check_dir, pattern = paste0(reseq_list$Name_1[sample], ".tab"), full.names = T),
@@ -198,20 +199,22 @@ list_unfiltered = setdiff(list.files(path = vcf_qual_check_dir, pattern = paste0
 filtered = list_filtered %>% 
     map_df(~read_tsv(., col_names = c("CHROM", "POS", "REF", "ALT", "Clone1", "Clone2"), 
                         col_types = cols(col_character(), col_double(), col_character(), col_character(), col_character(), col_character()))) %>%
-    mutate(Filter = "Filtered_on_position") 
+    mutate(Filter = "2_Filtered") 
 
 
 
 unfiltered = list_unfiltered %>% 
     map_df(~read_tsv(., col_names = c("CHROM", "POS", "REF", "ALT", "Clone1", "Clone2"), 
                         col_types = cols(col_character(), col_double(), col_character(), col_character(), col_character(), col_character()))) %>%
-    mutate(Filter = "Not_filtered") 
+    mutate(Filter = "1_Raw_variants") 
 
 
 head(unfiltered)
 list_diff[[sample]] = bind_rows(filtered, unfiltered) %>% mutate(Sample = reseq_list$Name_1[sample]) 
 }
 
+# Gather every table previously read in one single dataframe
+# and transform to estimate the number of allele and whether the position is only SNPs or has at least one indel
 temp2 = bind_rows(list_diff) %>% 
   mutate(Nb_allele = str_count(ALT, pattern = ",") + 2) %>%
   mutate(Nb_letter = str_count(ALT, pattern = "[A-Z]") + str_count(REF, pattern = "[A-Z]")) %>%
@@ -219,7 +222,28 @@ temp2 = bind_rows(list_diff) %>%
                         ifelse(Nb_letter != Nb_allele, "Indel", "SNP"))) %>%
   unite(col = "Var_type", Indel, Nb_allele, sep = "_", remove = F)
 
-temp2  %>%
+
+t2 = as.data.frame(table(temp2 %>% 
+  group_by(CHROM, POS, Filter, Var_type) %>% 
+  count() %>%
+    ungroup() %>%
+  select(n)))
+
+nb_shared = sum(t2[as.numeric(t2$Var1) > 1,]$Freq)
+nb_all = sum(t2$Freq)
+ggplot(t2, aes(x = Var1, y = Freq, label = Freq)) +
+  geom_bar(stat = "identity") +
+  theme_bw() +
+  geom_label(nudge_y = 5000) +
+  labs(x = "Number of pairs sharing an erroneous locus",
+       y = "Number of loci",
+       title = "Some erroneous loci are shared between samples",
+       subtitle = paste0("Total number of erroneous loci: ", nb_all, "; shared loci: ", nb_shared))
+```
+I not only want to know how many loci contain genotyping erros but also what type of variants these are. So I will make some more plots to figure this out.
+```{r plot reseq pairs}
+# Bar plot of variant type per resequencing pair
+p1 = temp2  %>%
 group_by(Filter, Sample, Var_type) %>%
 count()  %>%
 ggplot(aes(x=Sample, y =n, fill = Var_type)) +
@@ -229,16 +253,8 @@ ggplot(aes(x=Sample, y =n, fill = Var_type)) +
   facet_wrap(vars(Filter)) +
   coord_flip()
 
-temp2 %>%
-group_by(CHROM, Filter, Sample, Var_type) %>%
-count()  %>%
-ggplot(aes(x=as.numeric(CHROM), y =n, fill = Var_type)) +
- geom_bar(stat = "identity", position = "stack") +
- theme_bw() +
-  scale_fill_viridis_d() +
-  facet_grid(cols = vars(Filter), rows = vars(Sample)) 
-
-temp2  %>%
+# Bar plot of variant type per chromosome
+p2 = temp2  %>%
   select(CHROM, POS, Filter, Var_type) %>%
   distinct() %>%
 group_by(CHROM, Filter, Var_type) %>%
@@ -248,13 +264,24 @@ ggplot(aes(x=as.numeric(CHROM), y =n, fill = Var_type)) +
  theme_bw() +
   scale_fill_viridis_d() +
   facet_grid(cols = vars(Filter)) 
+
+legend_b <- get_legend(
+  p1 + 
+    guides(color = guide_legend(nrow = 1)) +
+    theme(legend.position = "bottom")
+)
+
+prow = plot_grid( p1 + theme(legend.position="none", axis.title = element_blank()),
+               p2 + theme(legend.position="none", axis.title = element_blank()),
+               nrow = 1, rel_widths = c(1, 0.8))
+plot_grid(prow, legend_b, rel_heights = c(1, 0.1), ncol = 1)
 ```
 
 
-Let's visualize both datasets togethers so we can compare the proportions of all variants vs errors.
+Let's visualize both datasets together so we can compare the proportions of all variants vs errors.
 ```{r}
 #Bar plots of the comparison
-bind_rows(temp2 %>%
+p1 = bind_rows(temp2 %>%
             unite(col = "Var_type", Indel, Nb_allele, sep = "_")%>%
             select(CHROM, POS, Filter, Var_type) %>%
             distinct() %>% 
@@ -267,129 +294,43 @@ ggplot(aes(x=Dataset, y =n, fill = Var_type)) +
  geom_bar(stat = "identity", position = "fill") +
  theme_bw() +
   scale_fill_viridis_d() +
-  facet_grid(cols = vars(Filter))
+  facet_grid(cols = vars(Filter)) +
+  labs(x = "", y = "Proportion of variants")
+
+legend_b <- get_legend(
+  p1 + 
+    guides(color = guide_legend(nrow = 1)) +
+    theme(legend.position = "right")
+)
 
 
-#Let's make a pretty doughnut plot just for the fun of it.
-t1 = temp2 %>%
-  select(CHROM, POS, Filter, Var_type) %>%
-  distinct() %>% 
-  group_by(Filter) %>%
-  count()  
-
-
-p1 = tibble(Filter_status = c("Filtered out", "Kept after filtering"), 
-       Nb_variants = c((t1[2, 2] - t1[1, 2]) %>% pull(), t1[1, 2] %>% pull())) %>%
-  ggplot(aes(x=2, y=Nb_variants, fill=Filter_status)) +
-  geom_bar(stat="identity") +
-  xlim(0.5, 2.5) +
-  coord_polar(theta = "y") +
-  #scale_fill_manual(values = c("#16697a", "#ffa62b")) +
-  labs(x=NULL, y=NULL, fill="",
-       title = "Errors from resequencing") +
-  theme_bw() +
-  theme(plot.title = element_text(face="bold",family=c("sans"),size=15),
-        legend.text=element_text(size=10),
-        legend.position = "bottom",
-        axis.ticks=element_blank(),
-        axis.text=element_blank(),
-        axis.title=element_blank(),
-        panel.grid=element_blank(),
-        panel.border=element_blank())+ 
-  geom_text(aes(label = Nb_variants), 
-               position = position_stack(vjust = 0.5), size = 4) +
-  scale_fill_viridis_d()
-
+#Prep summary table
 t1 = var_list %>% 
   group_by(Filter) %>%
-  count()   
-
-p2 = tibble(Filter_status = c("Filtered out", "Kept after filtering"), 
-       Nb_variants = c((t1[2, 2] - t1[1, 2]) %>% pull(), t1[1, 2] %>% pull())) %>%
-  ggplot(aes(x=2, y=Nb_variants, fill=Filter_status)) +
-  geom_bar(stat="identity") +
-  xlim(0.5, 2.5) +
-  coord_polar(theta = "y") +
-  #scale_fill_manual(values = c("#16697a", "#ffa62b")) +
-  labs(x=NULL, y=NULL, fill="",
-       title = "General dataset") +
-  theme_bw() +
-  theme(plot.title = element_text(face="bold",family=c("sans"),size=15),
-        legend.text=element_text(size=10),
-        legend.position = "bottom",
-        axis.ticks=element_blank(),
-        axis.text=element_blank(),
-        axis.title=element_blank(),
-        panel.grid=element_blank(),
-        panel.border=element_blank()) + 
-  geom_text(aes(label = Nb_variants), 
-               position = position_stack(vjust = 0.5), size = 4) +
-  scale_fill_viridis_d()
-
-
-t1 = temp2 %>%
-  filter(Indel == "SNP") %>%
-  select(CHROM, POS, Filter, Var_type) %>%
-  distinct() %>% 
-  group_by(Filter) %>%
   count()  
-
-
-p3 = tibble(Filter_status = c("Filtered out", "Kept after filtering"), 
-       Nb_variants = c((t1[2, 2] - t1[1, 2]) %>% pull(), t1[1, 2] %>% pull())) %>%
-  ggplot(aes(x=2, y=Nb_variants, fill=Filter_status)) +
-  geom_bar(stat="identity") +
-  xlim(0.5, 2.5) +
-  coord_polar(theta = "y") +
-  #scale_fill_manual(values = c("#16697a", "#ffa62b")) +
-  labs(x=NULL, y=NULL, fill="",
-       title = "Errors from resequencing: SNPs") +
-  theme_bw() +
-  theme(plot.title = element_text(face="bold",family=c("sans"),size=15),
-        legend.text=element_text(size=10),
-        legend.position = "bottom",
-        axis.ticks=element_blank(),
-        axis.text=element_blank(),
-        axis.title=element_blank(),
-        panel.grid=element_blank(),
-        panel.border=element_blank())+ 
-  geom_text(aes(label = Nb_variants), 
-               position = position_stack(vjust = 0.5), size = 4) +
-  scale_fill_viridis_d()
-
-t1 = var_list %>% 
+t2 = var_list %>% 
   filter(Indel == "SNP") %>%
   group_by(Filter) %>%
   count()   
 
-p4 = tibble(Filter_status = c("Filtered out", "Kept after filtering"), 
-       Nb_variants = c((t1[2, 2] - t1[1, 2]) %>% pull(), t1[1, 2] %>% pull())) %>%
-  ggplot(aes(x=2, y=Nb_variants, fill=Filter_status)) +
-  geom_bar(stat="identity") +
-  xlim(0.5, 2.5) +
-  coord_polar(theta = "y") +
-  #scale_fill_manual(values = c("#16697a", "#ffa62b")) +
-  labs(x=NULL, y=NULL, fill="",
-       title = "General dataset: SNPs") +
-  theme_bw() +
-  theme(plot.title = element_text(face="bold",family=c("sans"),size=15),
-        legend.text=element_text(size=10),
-        legend.position = "bottom",
-        axis.ticks=element_blank(),
-        axis.text=element_blank(),
-        axis.title=element_blank(),
-        panel.grid=element_blank(),
-        panel.border=element_blank()) + 
-  geom_text(aes(label = Nb_variants), 
-               position = position_stack(vjust = 0.5), size = 4) +
-  scale_fill_viridis_d()
+temp = tibble(Filter_status = c("Filtered out", "Kept after filtering","Filtered out", "Kept after filtering"),
+       Variant_type = c("All", "All", "SNP", "SNP"),
+       Nb_variants = c((t1[2, 2] - t1[1, 2]) %>% pull(), t1[1, 2] %>% pull(),
+                       (t2[2, 2] - t2[1, 2]) %>% pull(), t2[1, 2] %>% pull() )) %>%
+  pivot_wider(names_from = Variant_type, values_from = Nb_variants)
 
-cowplot::plot_grid(p1, p2, p3, p4, rows =2 )
+
+# Plot everything together
+col1 = plot_grid(tableGrob(temp , rows=NULL), legend_b, ncol = 1)
+plot_grid(p1 + theme(legend.position = "none", plot.margin = margin(0.5, 1.5, 0.5, 0.5, "cm")), 
+          col1, rel_widths = c(1, 0.7))
 
 ```
 
-Once we have a general idea of the error quantity, I want to look at the variants distribution along the genomes. Are errors found in the same area of the genomes for all resequencing pairs? 
+Once we have a general idea of the error quantity, I want to look at the variants distribution along the genomes. We already know that some erroneous variants are actually found in multiple resequencing pairs. But even more generally, are errors found in the same area of the genomes for all resequencing pairs? 
 ```{r diff per windows}
+
+#Let's first create windows along the whole genome 
 chromosomes = read_tsv(paste0(ref_genome, ".fai"),
                         col_names = c("CHROM", "Length", "Byte_index", "Base_per_line", "Bytes_per_line")) 
 win_size = 10000
@@ -398,15 +339,17 @@ list_temp = list()
 for (chr in c(1:length(chromosomes$CHROM))) {
   list_temp[[chr]] = bind_rows(tibble(CHROM = as.character(chr), 
                             Window = seq(from = 0, to = chromosomes$Length[14], by = win_size), 
-                            Filter = "Not_filtered"),
+                            Filter = "1_Raw_variants"),
                             tibble(CHROM = as.character(chr), 
                             Window = seq(from = 0, to = chromosomes$Length[14], by = win_size), 
-                            Filter = "Filtered_on_position"))
+                            Filter = "2_Filtered"))
 
 }
 
 windows = (bind_rows(list_temp))
 
+
+# Transforming the tables with the differences to match the windows
 temp = bind_rows(list_diff) %>% 
   mutate(Window = win_size*round(POS / win_size)) %>%
   group_by(CHROM, Filter, Sample, Window) %>%
@@ -415,9 +358,10 @@ temp = bind_rows(list_diff) %>%
   full_join(., windows) %>%
   pivot_longer(-c(CHROM, Filter, Window), names_to = "Sample", values_to = "Nb_SNP") %>%
   mutate(Nb_SNP = replace_na(Nb_SNP, 0))
-  
+
+# And finally, plotting the results
 temp %>%
-  filter(Filter == "Not_filtered") %>%
+  filter(Filter == "1_Raw_variants") %>%
   filter(as.integer(CHROM) <= 6) %>% 
 ggplot(., aes(x = Window, y = Nb_SNP, col = Sample)) +
   geom_line(alpha = .4) +
@@ -432,7 +376,6 @@ ggplot(., aes(x = Window, y = Nb_SNP, col = Sample)) +
   theme_minimal() + 
   facet_grid(rows = vars(as.integer(CHROM)), cols = vars(Filter)) +
   theme(legend.position = "none")
-
 
 ```
 
@@ -491,6 +434,8 @@ info_per_ind %>%
   select(INDV) %>%
   write_tsv(paste0(data_dir, "Sample_with_too_much_NA.args"), col_names = F)
 ```
+
+
 The samples with too much missing data, on the right of the gold line, will be filtered out.
 
 ```{r}
