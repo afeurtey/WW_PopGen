@@ -16,6 +16,7 @@ library(ggraph)
 library(cowplot)
 library(kableExtra)
 library(gridExtra)
+library(scales)
 
 #Chromosome choice for different steps
 test_CHR = 10
@@ -128,21 +129,17 @@ temp2 = info  %>% filter(FS < FS_thr & MQ > MQ_thr & QD > QD_thr & DP < DP_thr) 
   gather(key = "info_field", value = "value", -CHROM, -POS) %>% 
   mutate (Filter = "Filtered")
 
-p = ggplot(temp, aes(value, fill = Filter)) + geom_density(alpha=0.6) 
+p = ggplot(temp, aes(value)) + geom_density(fill = "#CBF3F0") 
 p + facet_wrap(info_field~., scales="free")  + theme_classic() 
 
-p2 = ggplot(temp2, aes(value, fill = Filter)) + geom_density(alpha=0.6) 
-p2 + facet_wrap(info_field~., scales="free")  + theme_classic() 
+p2 = ggplot(temp2, aes(value)) + geom_density(fill = "#2EC4B6")
+p2 + facet_wrap(info_field~., scales="free")  + theme_classic()
 
 
 dim(temp %>% select(CHROM, POS) %>% group_by_all %>% count)
 dim(temp2 %>% select(CHROM, POS) %>% group_by_all %>% count) 
 
 
-Sys.setenv(FSTHR = sprintf("%0.2f", FS_thr))
-Sys.setenv(MQTHR = sprintf("%0.2f", MQ_thr))
-Sys.setenv(QDTHR = sprintf("%0.2f", QD_thr))
-Sys.setenv(DPTHR = sprintf("%0.2f", DP_thr))
 ```
 
 The values obtained above can be used in a script to run directly on the cluster for all chromosomes.
@@ -161,7 +158,7 @@ var_list = bind_rows(paste0(vcf_qual_check_dir, "Ztritici_global_December2020.ge
                      paste0(vcf_qual_check_dir, "Ztritici_global_December2020.genotyped.", c(1:21), ".filtered.clean.tab") %>%
                          map_df(~read_tsv(., col_names = c("CHROM", "POS", "REF", "ALT"), 
                            col_types = cols(col_character(), col_double(), col_character(), col_character()))) %>%
-                         mutate(Filter = "2_Filtered")) %>% 
+                         mutate(Filter = "2_Filtered_variants")) %>% 
   mutate(Nb_allele = str_count(ALT, pattern = ",") + 2) %>%
   mutate(Nb_letter = str_count(ALT, pattern = "[A-Z]") + str_count(REF, pattern = "[A-Z]")) %>%
   mutate(Indel = ifelse((str_count(ALT, pattern = "[*]") + str_count(REF, pattern = "[*]")) > 0, "Indel", 
@@ -171,13 +168,15 @@ var_list = bind_rows(paste0(vcf_qual_check_dir, "Ztritici_global_December2020.ge
 var_list  %>%
 group_by(CHROM, Filter, Var_type) %>%
 count()  %>%
-ggplot(aes(x=CHROM, y =n, fill = Var_type)) +
- geom_bar(stat = "identity", position = "stack") +
- theme_bw() +
-  scale_fill_viridis_d() +
+ggplot(aes(x=as.numeric(CHROM), y =n, fill = Var_type)) +
+  geom_bar(stat = "identity", position = "stack") +
   facet_wrap(vars(Filter)) +
   coord_flip() +
-  labs(title = "Variants number before and after filtering on position quality")
+  labs(title = "Variants number before and after filtering on position quality", 
+       x = "Chromosome", y = "Number of variants", 
+       fill = "Variant type") +
+  theme_minimal() +
+  scale_fill_manual(values = c("#FFD399", "#ff9f1c", "#cbf3f0", "#2ec4b6"))
 
 ```
 
@@ -199,7 +198,7 @@ list_unfiltered = setdiff(list.files(path = vcf_qual_check_dir, pattern = paste0
 filtered = list_filtered %>% 
     map_df(~read_tsv(., col_names = c("CHROM", "POS", "REF", "ALT", "Clone1", "Clone2"), 
                         col_types = cols(col_character(), col_double(), col_character(), col_character(), col_character(), col_character()))) %>%
-    mutate(Filter = "2_Filtered") 
+    mutate(Filter = "2_Filtered_variants") 
 
 
 
@@ -215,7 +214,7 @@ list_diff[[sample]] = bind_rows(filtered, unfiltered) %>% mutate(Sample = reseq_
 
 # Gather every table previously read in one single dataframe
 # and transform to estimate the number of allele and whether the position is only SNPs or has at least one indel
-temp2 = bind_rows(list_diff) %>% 
+err_var_list = bind_rows(list_diff) %>% 
   mutate(Nb_allele = str_count(ALT, pattern = ",") + 2) %>%
   mutate(Nb_letter = str_count(ALT, pattern = "[A-Z]") + str_count(REF, pattern = "[A-Z]")) %>%
   mutate(Indel = ifelse((str_count(ALT, pattern = "[*]") + str_count(REF, pattern = "[*]")) > 0, "Indel", 
@@ -223,57 +222,42 @@ temp2 = bind_rows(list_diff) %>%
   unite(col = "Var_type", Indel, Nb_allele, sep = "_", remove = F)
 
 
-t2 = as.data.frame(table(temp2 %>% 
-  group_by(CHROM, POS, Filter, Var_type) %>% 
-  count() %>%
-    ungroup() %>%
-  select(n)))
-
-nb_shared = sum(t2[as.numeric(t2$Var1) > 1,]$Freq)
-nb_all = sum(t2$Freq)
-ggplot(t2, aes(x = Var1, y = Freq, label = Freq)) +
-  geom_bar(stat = "identity") +
-  theme_bw() +
-  geom_label(nudge_y = 5000) +
-  labs(x = "Number of pairs sharing an erroneous locus",
-       y = "Number of loci",
-       title = "Some erroneous loci are shared between samples",
-       subtitle = paste0("Total number of erroneous loci: ", nb_all, "; shared loci: ", nb_shared))
 ```
-I not only want to know how many loci contain genotyping erros but also what type of variants these are. So I will make some more plots to figure this out.
+I not only want to know how many loci contain genotyping errors but also what type of variants these are. So I will make some more plots to figure this out.
 ```{r plot reseq pairs}
 # Bar plot of variant type per resequencing pair
-p1 = temp2  %>%
+p1 = err_var_list  %>%
 group_by(Filter, Sample, Var_type) %>%
 count()  %>%
 ggplot(aes(x=Sample, y =n, fill = Var_type)) +
- geom_bar(stat = "identity", position = "stack") +
- theme_bw() +
-  scale_fill_viridis_d() +
+  geom_bar(stat = "identity", position = "stack") +
   facet_wrap(vars(Filter)) +
-  coord_flip()
+  coord_flip()+
+  theme_minimal() +
+  scale_fill_manual(values = c("#FFD399", "#ff9f1c", "#cbf3f0", "#2ec4b6"))
 
 # Bar plot of variant type per chromosome
-p2 = temp2  %>%
+p2 = err_var_list  %>%
   select(CHROM, POS, Filter, Var_type) %>%
   distinct() %>%
 group_by(CHROM, Filter, Var_type) %>%
 count()  %>%
 ggplot(aes(x=as.numeric(CHROM), y =n, fill = Var_type)) +
- geom_bar(stat = "identity", position = "stack") +
- theme_bw() +
-  scale_fill_viridis_d() +
-  facet_grid(cols = vars(Filter)) 
+  geom_bar(stat = "identity", position = "stack") +
+  facet_grid(cols = vars(Filter)) +
+  theme_minimal() +
+  scale_fill_manual(values = c("#FFD399", "#ff9f1c", "#cbf3f0", "#2ec4b6"))
 
 legend_b <- get_legend(
   p1 + 
     guides(color = guide_legend(nrow = 1)) +
-    theme(legend.position = "bottom")
+    theme(legend.position = "bottom") +
+    labs(Fill = "Variant type")
 )
 
-prow = plot_grid( p1 + theme(legend.position="none", axis.title = element_blank()),
-               p2 + theme(legend.position="none", axis.title = element_blank()),
-               nrow = 1, rel_widths = c(1, 0.8))
+prow = plot_grid( p1 + theme(legend.position="none", axis.title = element_blank(), plot.margin = margin(r = 10)),
+               p2 + theme(legend.position="none", axis.title = element_blank(), plot.margin = margin(r = 10)),
+               nrow = 1, rel_widths = c(1, 0.8), labels = c("A", "B"))
 plot_grid(prow, legend_b, rel_heights = c(1, 0.1), ncol = 1)
 ```
 
@@ -281,27 +265,22 @@ plot_grid(prow, legend_b, rel_heights = c(1, 0.1), ncol = 1)
 Let's visualize both datasets together so we can compare the proportions of all variants vs errors.
 ```{r}
 #Bar plots of the comparison
-p1 = bind_rows(temp2 %>%
+p1 = bind_rows(err_var_list %>%
             unite(col = "Var_type", Indel, Nb_allele, sep = "_")%>%
             select(CHROM, POS, Filter, Var_type) %>%
             distinct() %>% 
-            mutate(Dataset = "Clones"),
+            mutate(Dataset = "Erroneous variants"),
           var_list%>% 
-            mutate(Dataset = "All_variants")) %>%
+            mutate(Dataset = "All variants")) %>%
   group_by(Filter, Var_type, Dataset) %>%
-count()  %>%
-ggplot(aes(x=Dataset, y =n, fill = Var_type)) +
- geom_bar(stat = "identity", position = "fill") +
- theme_bw() +
-  scale_fill_viridis_d() +
-  facet_grid(cols = vars(Filter)) +
-  labs(x = "", y = "Proportion of variants")
+  count()  %>%
+  ggplot(aes(x=Filter, y =n, fill = Var_type)) +
+     geom_bar(stat = "identity", position = "fill") + 
+     facet_grid(rows = vars(Dataset)) +
+     labs(x = "", y = "Proportion of variants") +
+     theme_minimal()+
+     scale_fill_manual(values = c("#FFD399", "#ff9f1c", "#cbf3f0", "#2ec4b6"))
 
-legend_b <- get_legend(
-  p1 + 
-    guides(color = guide_legend(nrow = 1)) +
-    theme(legend.position = "right")
-)
 
 
 #Prep summary table
@@ -312,18 +291,41 @@ t2 = var_list %>%
   filter(Indel == "SNP") %>%
   group_by(Filter) %>%
   count()   
+t3 = err_var_list %>% 
+  group_by(Filter) %>%
+  count()  
+t4 = err_var_list %>% 
+  filter(Indel == "SNP") %>%
+  group_by(Filter) %>%
+  count() 
 
-temp = tibble(Filter_status = c("Filtered out", "Kept after filtering","Filtered out", "Kept after filtering"),
-       Variant_type = c("All", "All", "SNP", "SNP"),
-       Nb_variants = c((t1[2, 2] - t1[1, 2]) %>% pull(), t1[1, 2] %>% pull(),
-                       (t2[2, 2] - t2[1, 2]) %>% pull(), t2[1, 2] %>% pull() )) %>%
-  pivot_wider(names_from = Variant_type, values_from = Nb_variants)
+
+temp = tibble(Filter_status = c(rep(c("Filtered out", "Kept after filtering"), 4)),
+       Variant_type = c(rep(c("All", "All", "SNP", "SNP"), 2)),
+       Dataset = c(rep("All variants", 4), rep("Erroneous variants", 4)),
+       Nb_variants = c(pull(t1[1, 2] - t1[2, 2]), pull(t1[2, 2]),
+                       pull(t2[1, 2] - t2[2, 2]), pull(t2[2, 2]), 
+                       pull(t3[1, 2] - t3[2, 2]), pull(t3[2, 2]),
+                       pull(t4[1, 2] - t4[2, 2]), pull(t4[2, 2]))) %>%
+  group_by(Dataset, Variant_type) %>%
+  mutate(Sum = sum(Nb_variants)) %>%
+  arrange(., desc(Filter_status), .by_group = T) %>%
+  mutate(label_y = cumsum(Nb_variants) - 0.5 * Nb_variants)
+
+p2 = ggplot(temp, aes(fill = Filter_status, x = Variant_type, y = Nb_variants)) +
+  geom_bar(stat = "identity") +
+  theme_bw() + 
+  facet_grid(row = vars(Dataset), scales = "free_y")+ 
+  scale_fill_manual(values = c("#CBF3F0", "#2EC4B6")) + 
+  geom_text(aes(y = label_y, label = percent(round(Nb_variants / Sum, 3)))) +
+  labs(x = "Variant type", y = "Number of variants")
 
 
+#library(scales)
 # Plot everything together
-col1 = plot_grid(tableGrob(temp , rows=NULL), legend_b, ncol = 1)
-plot_grid(p1 + theme(legend.position = "none", plot.margin = margin(0.5, 1.5, 0.5, 0.5, "cm")), 
-          col1, rel_widths = c(1, 0.7))
+plot_grid(p1 + theme(legend.position = "bottom", plot.margin = margin(l = 5, r = 10)), 
+          p2 + theme(legend.position = "bottom", plot.margin = margin(l = 10)), 
+          labels = c("A", "B"), nrow = 1)
 
 ```
 
@@ -342,7 +344,7 @@ for (chr in c(1:length(chromosomes$CHROM))) {
                             Filter = "1_Raw_variants"),
                             tibble(CHROM = as.character(chr), 
                             Window = seq(from = 0, to = chromosomes$Length[14], by = win_size), 
-                            Filter = "2_Filtered"))
+                            Filter = "2_Filtered_variants"))
 
 }
 
@@ -379,6 +381,27 @@ ggplot(., aes(x = Window, y = Nb_SNP, col = Sample)) +
 
 ```
 
+```{r}
+
+t2 = as.data.frame(table(err_var_list %>% 
+  group_by(CHROM, POS, Filter, Var_type) %>% 
+  count() %>%
+    ungroup() %>%
+  select(n)))
+
+nb_shared = sum(t2[as.numeric(t2$Var1) > 1,]$Freq)
+nb_all = sum(t2$Freq)
+ggplot(t2, aes(x = Var1, y = Freq, label = Freq)) +
+  geom_bar(aes(fill = as.numeric(Var1) > 1), stat = "identity") +
+  geom_label(nudge_y = 6000) +
+  labs(x = "Number of pairs sharing an erroneous variant locus",
+       y = "Number of loci",
+       title = "Some erroneous variant loci are shared between samples",
+       subtitle = paste0("Total number of erroneous variant loci: ", nb_all, "; shared loci: ", nb_shared), 
+       fill = str_wrap("Removed in subsequent filtering", 20)) +
+  theme_minimal() +
+  scale_fill_manual(values = c("#ff9f1c", "#FFD399"))
+```
 
 
 
