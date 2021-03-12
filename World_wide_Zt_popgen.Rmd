@@ -99,7 +99,7 @@ vcf_name_mito = "Ztritici_global_December2020.genotyped.mt.filtered.reversed_dep
 Zt_list = paste0(metadata_dir, "Ztritici_list.txt")
 gff_file = paste0(data_dir, "Zymoseptoria_tritici.MG2.Grandaubert2015.gff3")
 ref_fasta_file = paste0(data_dir, "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa")
-metadata_name = "Main_table_from_SQL"
+metadata_name = "Main_table_from_SQL_Feb_2020"
 gene_annotation = read_tsv(paste0(data_dir, "Badet_GLOBAL_PANGENOME_TABLE.txt"))
 
 Sys.setenv(PROJECTDIR=project_dir)
@@ -837,28 +837,26 @@ gsed "s/\t//g"  ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT2 | tail -n +2 \
 ```
 
 ```{r run snmf, eval =F}
-project = snmf(paste0(PopStr_dir, vcf_name, ".pass_noNA.geno"), K=1:15, entropy = TRUE,
-                        repetitions = 10, project = "new", ploidy = 1)
+#project = snmf(paste0(PopStr_dir, vcf_name, ".pass_noNA.geno"), K=1:15, entropy = TRUE,
+#                        repetitions = 10, project = "new", ploidy = 1)
 ```
 First, let's look at the cross-validation results. sNMF estimates an entropy criterion which evaluates the quality of fit of the model to the data, potentially helping to find the best number of ancestral populations.
 ```{r Cross-entropy plot}
-project = load.snmfProject(paste0(PopStr_dir, vcf_name, ".pass_noNA.snmfProject"))
-
-plot(project, col = "goldenrod", pch = 19, cex = 1.2)
-
-```
-
-
-In the case of our analysis, we do not have a very clear-cut minimum value for the cross-entropy criterion value. There is however a plateau starting from K=6. I chose to represent as barplots the best run for each value of K (as defined as the one with the lowest cross-entropy value). This seem to confirm the choice of a reasonable K value at 6 since no new major cluster seem to appear in the at higher values. It is possible again that the Oceanian samples would separate more as in the PCA at higher values of K.
-
-The results from the PCA and from the clutering analysis are coherent: Oceania separates into 3 clusters (one in New_Zealand, and two in Australia) and the North American isolates form a separate cluster. Higher K values also distinguish a Middle-Eastern/African cluster from the European cluster, representing the two extreme points of the gradient found between these populations in the PCA.
-```{r sNMF barplots}
-
+#Sample names
 indv_snmf = read_tsv(paste0(PopStr_dir, vcf_name, ".pass_noNA.ind"), col_names = F)
 names(indv_snmf) = "Sample"
 
+#Load project
+project = load.snmfProject(paste0(PopStr_dir, vcf_name, ".pass_noNA.snmfProject"))
+plot(project, col = "goldenrod", pch = 19, cex = 1.2)
+
+K_colors = c("#f9c74f", "#f9844a", "#90be6d", "#f5cac3", 
+"#83c5be", "#f28482", "#577590", "#e5e5e5", "#a09abc",  "#52796f")
+K_list = c(1:15)
+
+#Reading data in
 datalist = list()
-for (i in c(2, 3, 4, 5, 6, 7, 8, 9, 10)){
+for (i in K_list){
   best = which.min(cross.entropy(project, K = i))
   temp = as.data.frame(Q(project, i, best))
   temp= cbind(indv_snmf, temp)
@@ -868,10 +866,18 @@ for (i in c(2, 3, 4, 5, 6, 7, 8, 9, 10)){
     mutate(K=i)
    datalist[[i]] = as.tibble(temp)
 }
+
 snmf_results_per_K = bind_rows(datalist) %>%
   inner_join(., Zt_meta, by = c("Sample" = "ID_file"))  %>%
   unite(Continent, Country, col = "for_display", remove = F)  
 
+```
+
+
+In the case of our analysis, we do not have a very clear-cut minimum value for the cross-entropy criterion value. There is however a plateau starting from K=6. I chose to represent as barplots the best run for each value of K (as defined as the one with the lowest cross-entropy value). This seem to confirm the choice of a reasonable K value at 6 since no new major cluster seem to appear in the at higher values. It is possible again that the Oceanian samples would separate more as in the PCA at higher values of K.
+
+The results from the PCA and from the clutering analysis are coherent: Oceania separates into 3 clusters (one in New_Zealand, and two in Australia) and the North American isolates form a separate cluster. Higher K values also distinguish a Middle-Eastern/African cluster from the European cluster, representing the two extreme points of the gradient found between these populations in the PCA.
+```{r sNMF barplots}
 
 p = snmf_results_per_K %>% 
   dplyr::select(Sample, Admix_coef, Cluster, for_display, K, Sampling_Date) %>%
@@ -908,8 +914,7 @@ p = snmf_results_per_K %>%
 ggplotly(p)
 
 
-K_colors = c("#f9c74f", "#f9844a", "#90be6d", "#f5cac3", 
-"#83c5be", "#f28482", "#577590", "#e5e5e5", "#a09abc",  "#52796f")
+
 #names(K_colors) = levels(c("V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8", "V9", "V10"))
 p = snmf_results_per_K %>% 
   filter(Continent != "Asia") %>%
@@ -932,7 +937,7 @@ p
 
 ```{r sNMF pretty plots}
 
-K_list = c(1:15)
+
 afiles = character(length(K_list))
 for (i in K_list){
   best = which.min(cross.entropy(project, K = i))
@@ -947,6 +952,7 @@ lab_set = inner_join(indv_snmf, Zt_meta, by = c("Sample" = "ID_file")) %>%
   dplyr::select(Continent, Country) %>%
   mutate(Continent = ifelse(is.na(Continent), "Unknown", Continent),
          Country = ifelse(is.na(Country), "Unknown", Country))
+#Low numbers
 from = 2
 up_to = 5
 p1 <-   plotQ(alignK(qlist[from:up_to], type = "across"),
@@ -956,9 +962,10 @@ p1 <-   plotQ(alignK(qlist[from:up_to], type = "across"),
             splab= paste0("K=", K_list[from:up_to]),
             grplab=lab_set, ordergrp=T, grplabangle = 40, grplabheight = 2, grplabsize = 2,
             clustercol = K_colors)
-#TODO: add own colors clustercol=c("#A6CEE3", "#3F8EAA", "#79C360", "#E52829", "#FDB762",)
+
 grid.arrange(p1$plot[[1]])
 
+#Medium numbers
 from = 6
 up_to = 10
 p2 <-   plotQ(alignK(qlist[from:up_to], type = "across"),
@@ -970,6 +977,7 @@ p2 <-   plotQ(alignK(qlist[from:up_to], type = "across"),
             clustercol = K_colors)
 grid.arrange(p2$plot[[1]])
 
+#High numbers
 from = 11
 up_to = 15
 p2 <-   plotQ(alignK(qlist[from:up_to], type = "across"),
@@ -980,18 +988,70 @@ p2 <-   plotQ(alignK(qlist[from:up_to], type = "across"),
             grplab=lab_set, ordergrp=T, grplabangle = 40, grplabheight = 2, grplabsize = 2,
             clustercol = c("#f9c74f", "#f9844a", "#90be6d", "#f5cac3", 
 "#83c5be", "#f28482", "#577590", "#e5e5e5", "#a09abc",  "#52796f",
-"red", "blue", "grey", "black", "white"))
+"#219ebc", "#003049", "grey", "#283618", "white"))
 grid.arrange(p2$plot[[1]])
 ```
 
 
 __Note__: I am not entirely sure about whether the high density of isolates from specific fields could bias the results. I remember it was the case with STRUCTURE, not sure if it is also the case of sNMF. To be checked.
 
+```{r}
+
+chosen_threshold = 0.7
+chosen_threshold2 = 0.8
+
+
+temp = bind_rows(snmf_results_per_K %>%
+    filter(Admix_coef > 0.7) %>% 
+    mutate(Threshold = "> 0.7"), 
+  snmf_results_per_K %>%
+    filter(Admix_coef > 0.8) %>%
+    mutate(Threshold = "> 0.8"))
+
+
+temp %>%
+    dplyr::group_by(K, Threshold) %>%
+    dplyr::count() %>%
+    ggplot(aes(x = K, y = n, fill = Threshold)) +
+       geom_bar(stat = "identity") +
+       theme_bw() + scale_fill_manual(values = c(blues[5], blues[3], blues[1]))
+
+
+
+temp2 = temp %>%
+  dplyr::group_by(Continent, for_display, Cluster, K, Threshold) %>%
+  dplyr::count() 
+
+
+temp2 %>%
+  filter(K > 6 & K < 13) %>%
+  ggplot(aes(x = Cluster, y = for_display,
+             size = n, color = Continent)) +
+  geom_point(alpha = 0.3) + Color_Continent+ theme_bw() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+  facet_grid(rows = vars(Threshold), cols = vars(K), scales = "free_x") + 
+    labs(x = "", title = "Number of genotypes with admix coef > 0.8") 
+
+
+```
+
+
 
 ```{r sNMF bubbles}
+#These values are chosen based on the plot above
+chosen_threshold = 0.8
 chosen_K = 10
-chosen_threshold = 0.7
 
+#Table
+temp %>%
+  filter(K == chosen_K) %>%
+  filter(Admix_coef > 0.8) %>%
+  dplyr::group_by(Continent, Cluster) %>%
+  dplyr::count() %>%
+  pivot_wider(names_from = Continent, values_from =n, values_fill = 0)
+
+
+#Bubble plot
 snmf_results_per_K %>%
   filter(K == chosen_K) %>%
   dplyr::group_by(Continent, for_display, Cluster) %>%
@@ -1106,7 +1166,7 @@ gzip ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix
 treemix \
   -i ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.gz \
   -o ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.out \
-  -m 10 -root V1
+  -m 2 -root V10
 
 ```
 
@@ -1127,6 +1187,86 @@ The four-population test is of the form f4(A;B;C;D), where a significantly negat
 ```{bash run fourpop}
 fourpop -i ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.gz -k 500
 ```
+
+
+
+#Split tree
+```{r subset even sampling}
+#Subsample
+temp = Zt_meta %>%
+  filter(!(ID_file %in% filtered_samples$ID_file)) %>% 
+  unite(Country, Region, col = "Country2", remove = F) %>%
+  mutate(Country_for_filter = ifelse(Country == "USA", Country2, Country)) %>%
+  mutate(x = round(Latitude, 1), y = round(Longitude, 1)) %>%
+  unite(Coord_for_filter, x, y, sep = ";", remove = F) %>%
+  group_by(Coord_for_filter) %>% 
+  mutate(Nb_per_coord = n()) %>% 
+  group_by(Country_for_filter) %>% 
+  mutate(Nb_per_country= n())
+  
+small_pop = temp %>%
+  filter(Nb_per_coord <= 15) %>%
+  filter(Nb_per_country <= 60)
+
+temp2 = bind_rows(temp %>%
+                    filter(!(ID_file %in% small_pop$ID_file))%>%
+                    filter(Nb_per_coord > 15) %>% 
+                    group_by(Coord_for_filter) %>%
+                    dplyr::sample_n(15),
+                  temp %>%
+                    filter(!(ID_file %in% small_pop$ID_file))%>%
+                    filter(Nb_per_coord <= 15)) %>% 
+        ungroup() %>%
+        group_by(Country_for_filter) %>% 
+        dplyr::mutate(Nb_per_country= n())
+
+Zt_meta_even_sampling = bind_rows(temp2 %>% 
+                    filter(Nb_per_country > 60) %>%
+                    dplyr::sample_n(60),
+                  temp2 %>% 
+                    filter(Nb_per_country <= 60)) %>%
+  bind_rows(., small_pop) %>%
+  ungroup()
+
+
+write_tsv(Zt_meta_even_sampling %>% dplyr::select(ID_file), 
+          paste0(PopStr_dir, "List_samples_even_sampling.txt"),
+          col_names = F)
+
+
+ggplot() +
+  geom_bar(data = temp %>% group_by(Continent, Country_for_filter) %>% dplyr::count(),
+           aes(x= Country_for_filter, y = n, fill = Continent), alpha = 0.4, stat = "identity") +
+  geom_bar(data = Zt_meta_even_sampling %>% group_by(Continent, Country_for_filter) %>% dplyr::count(),
+           aes(x= Country_for_filter, y = n, fill = Continent), alpha = 0.4, stat = "identity") +
+  Fill_Continent + theme_bw() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+  
+```
+```{bash vcftools even sampling}
+head ${POPSTR}List_samples_even_sampling.txt
+
+vcftools --vcf ${VCFDIR}$VCFNAME.recode.vcf \
+  --keep ${POPSTR}List_samples_even_sampling.txt \
+  --remove-filtered-all --extract-FORMAT-info GT \
+  --max-missing 1.0 --min-alleles 2 --max-alleles 2 \
+  --maf 0.05 \
+  --out ${POPSTR}$VCFNAME.pass_noNA.even_sampling
+
+
+cat  ${POPSTR}$VCFNAME.pass_noNA.even_sampling.GT.FORMAT | cut -f 3- \
+    > ${POPSTR}$VCFNAME.pass_noNA.even_sampling.GT.FORMAT2
+cat  ${POPSTR}$VCFNAME.pass_noNA.even_sampling.GT.FORMAT | cut -f 1,2 \
+    > ${POPSTR}$VCFNAME.pass_noNA.even_sampling.GT.FORMAT.pos
+head -n1 ${POPSTR}$VCFNAME.pass_noNA.even_sampling.GT.FORMAT2 | gsed "s/\t/\n/g"  \
+    > ${POPSTR}$VCFNAME.pass_noNA.even_sampling.ind
+gsed "s/\t//g"  ${POPSTR}$VCFNAME.pass_noNA.even_sampling.GT.FORMAT2 | tail -n +2 \
+    > ${POPSTR}$VCFNAME.pass_noNA.even_sampling.geno
+    
+    
+```
+
 
 
 <br><br>
@@ -1941,6 +2081,13 @@ phenotypes %>%
 ***
 
 ## Summary statistics
+
+```{bash}
+/Users/feurtey/Documents/Software/vcftools_jydu/src/cpp/vcftools \
+  --vcf 
+```
+
+
 As of July 2020, this is done on the thinned vcf file. The part for the SFS is fine in this way. But the statistics should be run on the whole filtered vcf file instead. At least the code is ready.
 
 ```{bash prep for PopGenome, eval = F}
@@ -3928,7 +4075,10 @@ __Geographic/environmental data__: For this, I will use the sampling site of eac
 
 ```{r Get Bioclim data}
 
-temp = Zt_meta_for_shiny %>% mutate(X = as.numeric(unlist(Longitude)),
+temp = Zt_meta %>%
+  filter(!(ID_file %in% filtered_samples$ID_file)) %>%
+  filter(!is.na(Longitude)) %>%
+  mutate(X = as.numeric(unlist(Longitude)),
                             Y = as.numeric(unlist(Latitude))) %>%
   dplyr::select(X, Y) %>%
   distinct()
@@ -3974,22 +4124,24 @@ climate_per_coordinates = cbind(temp, do.call(cbind, bio_list)) %>%
 
 ```{r Plot distrib bioclim}
 
-dat = Zt_meta_for_shiny %>% dplyr::select(ID_file, Latitude, Longitude, Sampling_collection) %>%
+dat = Zt_meta %>%
+  filter(!(ID_file %in% filtered_samples$ID_file)) %>% 
+  dplyr::select(ID_file, Latitude, Longitude, Continent) %>%
   full_join(., climate_per_coordinates,
                 by= c("Longitude" = "X", "Latitude" = "Y")) %>%
   dplyr::select(-ID_file) %>%
-  gather(key = "Bioclim_var", value = "Estimate", -c(Longitude, Latitude, Sampling_collection))
+  gather(key = "Bioclim_var", value = "Estimate", -c(Longitude, Latitude, Continent))
 
 #Define stable colors
-myColors = c("#ec9a29", "#0f8b8d", "#143642")
-names(myColors) = levels(factor(dat$Sampling_collection))
-colScale = scale_colour_manual(name = "Sampling_collection", values = myColors)
-colScaleFill = scale_fill_manual(name = "Sampling_collection", values = myColors)
+#myColors = c("#ec9a29", "#0f8b8d", "#143642")
+#names(myColors) = levels(factor(dat$Continent))
+#colScale = scale_colour_manual(name = "Continent", values = myColors)
+#colScaleFill = scale_fill_manual(name = "Continent", values = myColors)
 
-ggplot(dat, aes(Estimate, fill =Sampling_collection, color =Sampling_collection)) +
+ggplot(dat, aes(Estimate, fill =Continent, color =Continent)) +
   geom_histogram(position = "stack") +
   facet_wrap(.~Bioclim_var, scales = "free") +
-  theme_classic() + colScale + colScaleFill
+  theme_classic() + Color_Continent + Fill_Continent
 
 
 ```
@@ -4017,13 +4169,17 @@ __How to choose the best variables?__
 
 ```{r PCA bioclim var}
 
-country_climate = Zt_meta_for_shiny %>% dplyr::select(Latitude, Longitude, Continent) %>% unique()
+country_climate = Zt_meta %>%
+  filter(!(ID_file %in% filtered_samples$ID_file)) %>% 
+  filter(!is.na(Longitude)) %>%
+  dplyr::select(Latitude, Longitude, Continent) %>% 
+  unique()
 bioclim.pca <- prcomp(climate_per_coordinates[,c(2:ncol(climate_per_coordinates))], scale. = TRUE)
 ggbiplot(bioclim.pca, obs.scale = 1, var.scale = 1,
          group = country_climate$Continent, ellipse = TRUE) +
   Color_Continent +
   theme(legend.direction = 'horizontal', legend.position = 'top') +
-  xlim(-10, 20) + ylim(-5, 20)
+  xlim(-25, 10) + ylim(-15, 25)
 ```
 
 
@@ -4063,16 +4219,120 @@ datamash transpose \
     > ${GEADIR}$VCFNAME.pass_noNA.GT.FORMAT2.transposed
 ```
 
+```{bash format lfmm, eval = F}
+
+vcftools --vcf ${VCFDIR}$VCFNAME.recode.vcf \
+  --keep $ZTLIST \
+  --remove-filtered-all --extract-FORMAT-info GT \
+  --max-missing 1.0 --min-alleles 2 --max-alleles 2 \
+  --maf 0.05 \
+  --out ${POPSTR}$VCFNAME.pass_noNA
+
+
+cat  ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT | cut -f 3- \
+    > ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT2
+cat  ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT | cut -f 1,2 \
+    > ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT.pos
+head -n1 ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT2 | gsed "s/\t/\n/g"  \
+    > ${POPSTR}$VCFNAME.pass_noNA.ind
+gsed "s/\t//g"  ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT2 | tail -n +2 \
+    > ${POPSTR}$VCFNAME.pass_noNA.geno
+
+```
+
 ```{r standard Bioclim var}
 
 #Create standardized values for the environment variables
 climate_per_coord_standard = climate_per_coordinates %>%
+  left_join(., Zt_meta_even_sampling) %>%
   mutate(Temp = scale(`Annual Mean Temperature`),
          Rain = scale(`Annual Precipitation`)) %>%
   dplyr::select(X, Y, Temp, Rain)
 
 ```
 
+
+First, let's look at the cross-validation results. sNMF estimates an entropy criterion which evaluates the quality of fit of the model to the data, potentially helping to find the best number of ancestral populations.
+```{r run lfmm2, eval = F}
+
+#Sample names
+indv_snmf = read_tsv(paste0(PopStr_dir, vcf_name, ".pass_noNA.even_sampling.ind"), col_names = F)
+names(indv_snmf) = "Sample"
+
+
+#Get environmental data
+temp_Zt_meta = left_join(Zt_meta, climate_per_coord_standard, 
+                         by = c("Latitude" = "Y", "Longitude" = "X")) %>%
+               dplyr::select(ID_file, Temp, Rain) %>%
+               right_join(., indv_snmf,
+               tibble(name = target), by = c("ID_file" = "Sample")) %>%
+  dplyr::select(-ID_file)
+  
+write_tsv(temp_Zt_meta, path = "gradient.env", col_names = F)
+
+
+#Convert genotype data
+geno2lfmm(paste0(PopStr_dir, vcf_name, ".pass_noNA.even_sampling.geno"),
+          "genotypes.lfmm")
+
+obj.lfmm = LEA::lfmm("genotypes.lfmm", "gradient.env", 
+                     K = 10, rep = 1, project = "new")
+
+
+```
+```{r}
+
+project_lfmm = load.lfmmProject("genotypes_gradient.lfmmProject")
+
+
+# From one tutorial 
+# ---------------
+# compute adjusted p-values
+p = lfmm.pvalues(project_lfmm, K = 10, d =1)
+pvalues = p$pvalues
+
+# GWAS significance test
+par(mfrow = c(2,1))
+hist(pvalues, col = "lightblue")
+plot(-log10(pvalues), pch = 19, col = "blue", cex = .7)
+
+
+qqplot(rexp(length(pvalues), rate = log(10)),
+       -log10(pvalues), xlab = "Expected quantile",
+       pch = 19, cex = .4, col = "#82C0CC")
+abline(0,1)
+
+
+# From the other tutorial 
+# ----------------------
+#Record z-scores from the 5 runs in the zs matrix
+zs = z.scores(obj.lfmm, K = 10, d =1)
+
+#Combine z-scores using the median
+zs.median = apply(zs, MARGIN = 1, median)
+
+#Compute the GIF
+lambda = median(zs.median^2)/qchisq(0.5, df = 1)
+lambda
+
+
+#The value of the genomic inflation factor is close 1, which is a good thing. But, the key point is to check the histogram of p-values. Ideally, this histogram should look flat with a peak close to zero. This ideal shape indicates that the p-values are correct (i.e., are drawn from a uniform distribution under the null-hypothesis)
+# compute adjusted p-values from the combined z-scores
+adj.p.values = pchisq(zs.median^2/lambda, df = 1, lower = FALSE)
+
+#histogram of p-values
+hist(adj.p.values, col = "red")
+
+#The genomic inflation factor is acknowledged to be overly conservative. So, it might be better to calibrate the p-values manually, using a lower value. Here, we try λ = .55.
+# compute adjusted p-values from the combined z-scores
+adj.p.values = pchisq(zs.median^2/.55, df = 1, lower = FALSE)
+
+#histogram of p-values
+hist(adj.p.values, col = "green")
+```
+
+***
+###OLD
 ```{r run lfmm}
 #Get genotypes
 genotypes = read_tsv(paste0(GEA_dir, vcf_name, ".pass_noNA.GT.FORMAT2.transposed"),
@@ -4081,20 +4341,17 @@ genotypes = read_tsv(paste0(GEA_dir, vcf_name, ".pass_noNA.GT.FORMAT2.transposed
 ind_list = read_tsv(paste0(PopStr_dir, vcf_name, ".pass_noNA.ind"), col_names = "ID_file")
 genotypes_temp = bind_cols(genotypes, ind_list)
 
-#Get environmental data
-temp_Zt_meta = left_join(Zt_meta, climate_per_coord_standard, by = c("Latitude" = "Y", "Longitude" = "X"))
-temp_Zt_meta = left_join(ind_list, temp_Zt_meta %>%
-                           dplyr::select(ID_file, Temp, Rain),
-                         tibble(name = target), by = "ID_file") %>%
-  dplyr::select(-ID_file)  #removes ind_names
+  #removes ind_names
+
+temp_row = as.data.frame(rowSums(genotypes))
+
+mod.lfmm <- lfmm_lasso(Y = genotypes[temp_row != 0, ], 
+                       X = temp_Zt_meta[temp_row != 0, ], 
+                       K=10, nozero.prop = 0.02)
 
 
-mod.lfmm <- lfmm_lasso(Y = genotypes, X = temp_Zt_meta, K=6,
-                        nozero.prop = 0.02)
-pv <- lfmm::lfmm_test(Y = genotypes,
-                 X = temp_Zt_meta,
-                 lfmm = mod.lfmm,
-                 calibrate = "gif")
+pv <- lfmm::lfmm_test(Y = genotypes, X = temp_Zt_meta,
+                 lfmm = mod.lfmm, calibrate = "gif")
 pvalues <- pv$calibrated.pvalue
 ```
 
@@ -4141,6 +4398,7 @@ bind_cols(positions %>% dplyr::select(-POS), as_tibble(as.data.frame(pvalues))) 
 
 ```
 
+***
 
  * Bayenv 2: https://gcbias.org/bayenv/
 
