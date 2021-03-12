@@ -2,34 +2,13 @@
 
 source $1
 
-FSTHR=10.0
-MQTHR=20.0
-QDTHR=20.0
-DPTHR=60000.0
-ReadPosRankSum_lower=-2.0
-ReadPosRankSum_upper=2.0
-MQRankSum_lower=-2.0
-MQRankSum_upper=2.0
-BaseQRankSum_lower=-2.0
-BaseQRankSum_upper=2.0
-
-if [ "${SLURM_ARRAY_TASK_ID}" -eq 0 ] ; 
-then 
-  CHR="mt";
-else
-  CHR=${SLURM_ARRAY_TASK_ID} ;
-fi
-
-echo "Working on chromosome" $CHR ;
-
 #VCFNAME=${DIRNAME}1_Variant_calling/4_Joint_calling/Ztritici_global_December2020.genotyped.${CHR}
-VCFNAME=${vcf_dir}${VCFBasename}.genotyped.${CHR}
-echo $VCFNAME
+VCFNAME=${vcf_dir}${VCFBasename}.genotyped.ALL
 
 #Cleaning the file per pos and ind
 ${GATK_PATH} SelectVariants  \
   -R ${IPO323_REF} \
-  -V ${VCFNAME}.filtered.vcf \
+  -V ${VCFNAME}.filtered.clean.vcf \
   --exclude-sample-name ${remove_ID_file} \
   --exclude-sample-name ${low_depth_samples_file} \
   --exclude-sample-name ${clones_file}  \
@@ -38,9 +17,13 @@ ${GATK_PATH} SelectVariants  \
   -O ${VCFNAME}.filtered.clean.good_samples.vcf
   
 
-gzip -f ${VCFNAME}.filtered.vcf
 gzip -f ${VCFNAME}.filtered.clean.good_samples.vcf
 
+# Transform in tab file without genotypes to get stats
+${BCFTOOLS_PATH} query \
+  -f '%CHROM\t%POS\t%REF\t%ALT\n' \
+  ${vcf_dir}${VCFNAME}.filtered.clean.good_samples.vcf.gz \
+  > ${vcf_qual_check_dir}${VCFNAME}.filtered.clean.good_samples.tab
 
 #Create additional, subset VCF files
 
