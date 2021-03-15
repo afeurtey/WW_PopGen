@@ -17,28 +17,23 @@ library(cowplot)
 library(kableExtra)
 library(gridExtra)
 library(scales)
+library(GenomicRanges)
 
 #Chromosome choice for different steps
-test_CHR = 10
+test_CHR = 6
 subset_CHR = 1
 
 #Files and directories 
 dir_name = "/data2/alice/WW_project/"
 data_dir = "/data2/alice/WW_project/0_Data/"
-test_vcf_name = paste0(dir_name, 
-                  "1_Variant_calling/4_Joint_calling/",
-                  "Ztritici_global_December2020.genotyped.", 
-                  test_CHR)
-subset_vcf_name = paste0(dir_name, 
-                  "1_Variant_calling/4_Joint_calling/",
-                  "Ztritici_global_December2020.genotyped.", 
-                  subset_CHR,
-                  ".filtered.clean")
-ref_genome = paste0(dir_name, 
-                    "0_Data/",
-                    "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa")
-vcf_qual_check_dir =paste0(dir_name, 
-                           "1_Variant_calling/5_Quality_checks/")
+vcf_core_name = "Ztritici_global_March2021.genotyped."
+test_vcf_name = paste0(dir_name, "1_Variant_calling/4_Joint_calling/",
+                  vcf_core_name, test_CHR)
+subset_vcf_name = paste0(dir_name, "1_Variant_calling/4_Joint_calling/",
+                  vcf_core_name, subset_CHR, ".filtered.clean")
+ref_genome = paste0(dir_name, "0_Data/", "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa")
+vcf_qual_check_dir = paste0(dir_name, "1_Variant_calling/5_Quality_checks/")
+TE_annot = paste0(dir_name, "4_TE_RIP/Cecile_IPO323_TE_merged.bed")
 
 soft_dir = "/home/alice/Software/"
 list_dir = "/home/alice/WW_PopGen/Keep_lists_samples/"
@@ -61,7 +56,7 @@ Sys.setenv(BCFTOOLSPATH=bcftools_path)
 ```
 
 
-# Filtering based on site: identifying the proper values
+# Filtering based on site: identifying the proper values for step 1
 Below I first extract the snps and in a second time, I remove all genotypes with a depth that I consider too low for the data to be reliable. This threshold can and should be adapted depending on the dataset.
 Finally, I use bcftools to extract the values of the different estimates we can filter on.
 ```{bash, eval = F}
@@ -72,11 +67,14 @@ ${GATKPATH} SelectVariants  \
   -V ${TESTVCFNAME}.vcf.gz \
  --select-type-to-include SNP \
  -O ${TESTVCFNAME}.snps.vcf
+```
 
+```{bash}
 #Filtering on low depth per genotype
+#### REMOVED SNPS in input!!
 ${GATKPATH} VariantFiltration \
  -R ${REF} \
- -V ${TESTVCFNAME}.snps.vcf \
+ -V ${TESTVCFNAME}.vcf.gz \
 --genotype-filter-expression "DP < 3"  \
 --set-filtered-genotype-to-no-call   \
 --genotype-filter-name "Low_depth"   \
@@ -90,7 +88,8 @@ ${GATKPATH} SelectVariants  \
   -V ${TESTVCFNAME}.snps.low_depth.vcf \
  --exclude-non-variants --remove-unused-alternates \
  -O ${TESTVCFNAME}.snps.low_depth.variants.vcf
- 
+
+rm ${TESTVCFNAME}.snps.low_depth.vcf 
 ```
 
 ```{bash, eval = F}
@@ -101,11 +100,11 @@ ${BCFTOOLSPATH}bcftools query -f '%CHROM %POS %MQ %QD %FS %DP %MQRankSum %QUAL %
 
 Now that we have the data extracted, I can make figures and test values for the filtering.
 
-```{r}
+```{r set pos thresholds}
 FS_thr = 10
 MQ_thr = 20
 QD_thr = 20
-DP_thr = 60000
+#DP_thr = 100000
 ReadPosRankSum_thr_high = 2
 ReadPosRankSum_thr_low = -2
 MQRankSum_thr_high = 2
@@ -121,7 +120,7 @@ temp = info %>%
   gather(key = "info_field", value = "value", -CHROM, -POS) %>% 
   mutate (Filter = "Unfiltered")
 
-temp2 = info  %>% filter(FS < FS_thr & MQ > MQ_thr & QD > QD_thr & DP < DP_thr) %>% 
+temp2 = info  %>% filter(FS < FS_thr & MQ > MQ_thr & QD > QD_thr) %>% 
   filter(between(MQRankSum, MQRankSum_thr_low, MQRankSum_thr_high) | is.na(MQRankSum)) %>% 
   filter(between(BaseQRankSum, BaseQRankSum_thr_low, BaseQRankSum_thr_high) | is.na(BaseQRankSum)) %>% 
   filter(between(ReadPosRankSum, ReadPosRankSum_thr_low, ReadPosRankSum_thr_high) | is.na(ReadPosRankSum)) %>% 
@@ -142,28 +141,36 @@ dim(temp2 %>% select(CHROM, POS) %>% group_by_all %>% count)
 
 ```
 
-The values obtained above can be used in a script to run directly on the cluster for all chromosomes.
+The values obtained above can be used in a [script](./SNP_filter_step1.sh) to run directly on the cluster for all chromosomes. In a [second step](./SNP_filter_step2.sh), each raw vcf file has been filtered and cleaned (removing the filtered positions), all the files are merged together into one file for all chromosomes. Both scripts include the creation of a 
 
 
 
-# Filter checks using resequencing
+# Filter checks using resequencing and added layer of position filtering
 
-I want to assess the effect of the filtering on the SNP data. 
+I want to assess the effect of the filtering on the SNP data. For this, I use four columns from the filtered and unfiltered vcf: chromosome, position, reference allele and alternative allele. This allows me to count the variants, find where they are, and what type of variants they are, in terms of both number of alleles and whether we are looking at SNPs or indels.
 ```{r Get variants from filter}
 
-var_list = bind_rows(paste0(vcf_qual_check_dir, "Ztritici_global_December2020.genotyped.", c(1:21), ".tab") %>%
+var_list = bind_rows(paste0(vcf_qual_check_dir, vcf_core_name, c(1:21), ".tab") %>%
                          map_df(~read_tsv(., col_names = c("CHROM", "POS", "REF", "ALT"), 
                            col_types = cols(col_character(), col_double(), col_character(), col_character()))) %>%
                          mutate(Filter = "1_Raw_variants"),
-                     paste0(vcf_qual_check_dir, "Ztritici_global_December2020.genotyped.", c(1:21), ".filtered.clean.tab") %>%
+                     paste0(vcf_qual_check_dir, vcf_core_name, c(1:21), ".filtered.clean.tab") %>%
                          map_df(~read_tsv(., col_names = c("CHROM", "POS", "REF", "ALT"), 
                            col_types = cols(col_character(), col_double(), col_character(), col_character()))) %>%
-                         mutate(Filter = "2_Filtered_variants")) %>% 
+                         mutate(Filter = "2_Filtered_variants") ) %>% 
   mutate(Nb_allele = str_count(ALT, pattern = ",") + 2) %>%
   mutate(Nb_letter = str_count(ALT, pattern = "[A-Z]") + str_count(REF, pattern = "[A-Z]")) %>%
   mutate(Indel = ifelse((str_count(ALT, pattern = "[*]") + str_count(REF, pattern = "[*]")) > 0, "Indel", 
                         ifelse(Nb_letter != Nb_allele, "Indel", "SNP"))) %>%
   unite(col = "Var_type", Indel, Nb_allele, sep = "_", remove = F)
+
+kable(var_list  %>%
+  group_by(Filter, Var_type) %>%
+  count() %>% 
+  pivot_wider(names_from = Var_type, values_from = n) %>%
+    mutate(Total = sum(Indel_2, Indel_3, SNP_2, SNP_3)) %>%
+    t())
+ 
 
 var_list  %>%
 group_by(CHROM, Filter, Var_type) %>%
@@ -299,7 +306,6 @@ t4 = err_var_list %>%
   group_by(Filter) %>%
   count() 
 
-
 temp = tibble(Filter_status = c(rep(c("Filtered out", "Kept after filtering"), 4)),
        Variant_type = c(rep(c("All", "All", "SNP", "SNP"), 2)),
        Dataset = c(rep("All variants", 4), rep("Erroneous variants", 4)),
@@ -312,6 +318,8 @@ temp = tibble(Filter_status = c(rep(c("Filtered out", "Kept after filtering"), 4
   arrange(., desc(Filter_status), .by_group = T) %>%
   mutate(label_y = cumsum(Nb_variants) - 0.5 * Nb_variants)
 
+
+#Bar plots of filtered variants/SNPs amongst all and erroneous variants
 p2 = ggplot(temp, aes(fill = Filter_status, x = Variant_type, y = Nb_variants)) +
   geom_bar(stat = "identity") +
   theme_bw() + 
@@ -321,7 +329,7 @@ p2 = ggplot(temp, aes(fill = Filter_status, x = Variant_type, y = Nb_variants)) 
   labs(x = "Variant type", y = "Number of variants")
 
 
-#library(scales)
+
 # Plot everything together
 plot_grid(p1 + theme(legend.position = "bottom", plot.margin = margin(l = 5, r = 10)), 
           p2 + theme(legend.position = "bottom", plot.margin = margin(l = 10)), 
@@ -329,7 +337,88 @@ plot_grid(p1 + theme(legend.position = "bottom", plot.margin = margin(l = 5, r =
 
 ```
 
-Once we have a general idea of the error quantity, I want to look at the variants distribution along the genomes. We already know that some erroneous variants are actually found in multiple resequencing pairs. But even more generally, are errors found in the same area of the genomes for all resequencing pairs? 
+Once we have a general idea of the error quantity, I want to look at the variants distribution along the genomes. 
+
+```{r shared errors}
+
+t2 = as.data.frame(table(err_var_list %>% 
+  filter(Filter == "1_Raw_variants") %>%
+  group_by(CHROM, POS, Filter, Var_type) %>% 
+  count() %>%
+    ungroup() %>%
+  select(n)))
+
+t3 = as.data.frame(table(err_var_list %>% 
+  filter(Filter == "2_Filtered_variants") %>%
+  group_by(CHROM, POS, Filter, Var_type) %>% 
+  count() %>%
+    ungroup() %>%
+  select(n)))
+
+nb_shared = sum(t2[as.numeric(t2$Var1) > 1,]$Freq)
+nb_all = sum(t2$Freq)
+p1 = ggplot(t2, aes(x = Var1, y = Freq, label = Freq)) +
+  geom_bar(aes(fill = as.numeric(Var1) > 1), stat = "identity") +
+  geom_label(nudge_y = 6000) +
+  labs(x = "Number of pairs sharing an erroneous variant locus",
+       y = "Number of loci",
+       title = "Some erroneous variant loci are shared between samples",
+       subtitle = paste0("Total number of erroneous variant loci: ", nb_all, "; shared loci: ", nb_shared), 
+       fill = str_wrap("To remove in subsequent filtering", 20)) +
+  theme_minimal() +
+  scale_fill_manual(values = c("#ff9f1c", "#FFD399")) 
+
+
+
+nb_shared = sum(t3[as.numeric(t3$Var1) > 1,]$Freq)
+nb_all = sum(t3$Freq)
+p2 = ggplot(t3, aes(x = Var1, y = Freq, label = Freq)) +
+  geom_bar(aes(fill = as.numeric(Var1) > 1), stat = "identity") +
+  geom_label(nudge_y = 3000) +
+  labs(x = "Number of pairs sharing an erroneous variant locus",
+       y = "Number of loci",
+       subtitle = paste0("Total number of erroneous variant loci: ", nb_all, "; shared loci: ", nb_shared), 
+       fill = str_wrap("To remove in subsequent filtering", 20)) +
+  theme_minimal() +
+  scale_fill_manual(values = c("#ff9f1c", "#FFD399")) 
+
+legend_b <- get_legend(
+  p1 + 
+    guides(color = guide_legend(nrow = 1)) +
+    theme(legend.position = "bottom") +
+    labs(Fill = "Variant type")
+)
+
+plot_grid(p1 + theme(legend.position = "none"), 
+          p2 + theme(legend.position = "none"), 
+          ncol = 1, rel_widths = c(1, 1.1, 0.1))
+
+
+# Barplot with layering of all and filtered only variants
+ggplot(t3, aes(x = Var1, y = Freq, label = Freq, fill = as.numeric(Var1) > 1)) +
+  geom_bar(data = t2, aes(x = Var1, y = Freq, label = Freq, fill = as.numeric(Var1) > 1), stat = "identity", alpha = 0.7) +
+  geom_bar(stat = "identity", alpha = 1) +
+  geom_label(nudge_y = 6000, fill = "white") +
+  labs(x = "Number of pairs sharing an erroneous variant locus",
+       y = "Number of loci",
+       title = "Some erroneous variant loci are shared between samples",
+       subtitle = paste0("Post-filtering number of erroneous variant loci: ", nb_all), 
+       fill = str_wrap("Filtered out", 20)) +
+  theme_minimal() +
+  scale_fill_manual(values = c("#FF9F1C", "#FF9F1C")) 
+
+# Printing of the erroneous variant table shared by at least 2 samples 
+err_var_list %>% 
+  filter(Filter == "2_Filtered_variants") %>%
+  group_by(CHROM, POS, Filter, Var_type) %>% 
+  count() %>% ungroup %>% 
+  filter(n > 1) %>%
+  select(CHROM, POS) %>%
+  write_tsv(paste0(vcf_qual_check_dir, "Erroneous_positions_from_resequencing.tsv"), col_names = F)
+
+```
+
+We already know that some erroneous variants are actually found in multiple resequencing pairs. But even more generally, are errors found in the same area of the genomes for all resequencing pairs? 
 ```{r diff per windows}
 
 #Let's first create windows along the whole genome 
@@ -379,29 +468,43 @@ ggplot(., aes(x = Window, y = Nb_SNP, col = Sample)) +
   facet_grid(rows = vars(as.integer(CHROM)), cols = vars(Filter)) +
   theme(legend.position = "none")
 
+
+
+TE_annot_t = read_tsv(TE_annot, col_names = c("temp", "Start", "Stop")) %>% 
+                separate(temp, into = c("whatever", "CHROM"), sep = "_") %>%
+                select(-whatever) 
+
+temp %>%
+  filter(Filter == "2_Filtered_variants") %>%
+  filter(as.integer(CHROM) == 4) %>% 
+ggplot(data = .)  + 
+  geom_rect(data=TE_annot_t %>% filter(as.integer(CHROM) == 4), 
+            aes(xmin=Start, xmax=Stop, ymin=0, ymax=200), 
+            color = "#FFEDD6", fill = "#FFEDD6", alpha=0.5)+
+  geom_line(aes(x = Window, y = Nb_SNP, col = Sample), alpha = .4) +
+  theme_minimal() + 
+  facet_grid(rows = vars(as.integer(CHROM)), cols = vars(Filter), scales = "free_x") +
+  theme(legend.position = "none") 
+
+
+```
+```{r overlap TE_errors, results='asis'}
+
+
+TEGR = makeGRangesFromDataFrame(TE_annot_t %>% 
+                                  #mutate(Start = Start - 100, Stop = Stop + 100) %>%
+                                  select(chr = CHROM, start = Start, end = Stop))  
+errorsGR = makeGRangesFromDataFrame(err_var_list %>% 
+                                      #filter(Filter == "2_Filtered_variants") %>%
+                                      select(chr = CHROM, start = POS, end = POS) %>% 
+                                      unique())  
+cat("Total number of errors:", length(errorsGR), "\n")
+cat("Error number in TEs:", length(intersect(errorsGR, TEGR)), "\n")
+cat("Error number outside of TEs:", length(setdiff(errorsGR, TEGR)), "\n")
+
+temp =as.data.frame(setdiff(errorsGR, TEGR))
 ```
 
-```{r}
-
-t2 = as.data.frame(table(err_var_list %>% 
-  group_by(CHROM, POS, Filter, Var_type) %>% 
-  count() %>%
-    ungroup() %>%
-  select(n)))
-
-nb_shared = sum(t2[as.numeric(t2$Var1) > 1,]$Freq)
-nb_all = sum(t2$Freq)
-ggplot(t2, aes(x = Var1, y = Freq, label = Freq)) +
-  geom_bar(aes(fill = as.numeric(Var1) > 1), stat = "identity") +
-  geom_label(nudge_y = 6000) +
-  labs(x = "Number of pairs sharing an erroneous variant locus",
-       y = "Number of loci",
-       title = "Some erroneous variant loci are shared between samples",
-       subtitle = paste0("Total number of erroneous variant loci: ", nb_all, "; shared loci: ", nb_shared), 
-       fill = str_wrap("Removed in subsequent filtering", 20)) +
-  theme_minimal() +
-  scale_fill_manual(values = c("#ff9f1c", "#FFD399"))
-```
 
 
 
