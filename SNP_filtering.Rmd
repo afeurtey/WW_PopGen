@@ -4,7 +4,6 @@ author: "Alice Feurtey"
 date: "01/13/2021"
 output:
   html_document: default
-    code_folding: hide
 ---
 
 ```{r setup, include=TRUE}
@@ -21,7 +20,7 @@ library(GenomicRanges)
 
 #Chromosome choice for different steps
 test_CHR = 6
-subset_CHR = 1
+subset_CHR = "ALL"
 
 #Files and directories 
 dir_name = "/data2/alice/WW_project/"
@@ -33,7 +32,7 @@ subset_vcf_name = paste0(dir_name, "1_Variant_calling/4_Joint_calling/",
                   vcf_core_name, subset_CHR, ".filtered.clean")
 ref_genome = paste0(dir_name, "0_Data/", "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa")
 vcf_qual_check_dir = paste0(dir_name, "1_Variant_calling/5_Quality_checks/")
-TE_annot = paste0(dir_name, "4_TE_RIP/Cecile_IPO323_TE_merged.bed")
+TE_annot = paste0(dir_name, "4_TE_RIP/Ursula_IPO323_TE_merged.bed")
 
 soft_dir = "/home/alice/Software/"
 list_dir = "/home/alice/WW_PopGen/Keep_lists_samples/"
@@ -67,9 +66,7 @@ ${GATKPATH} SelectVariants  \
   -V ${TESTVCFNAME}.vcf.gz \
  --select-type-to-include SNP \
  -O ${TESTVCFNAME}.snps.vcf
-```
 
-```{bash}
 #Filtering on low depth per genotype
 #### REMOVED SNPS in input!!
 ${GATKPATH} VariantFiltration \
@@ -207,8 +204,6 @@ filtered = list_filtered %>%
                         col_types = cols(col_character(), col_double(), col_character(), col_character(), col_character(), col_character()))) %>%
     mutate(Filter = "2_Filtered_variants") 
 
-
-
 unfiltered = list_unfiltered %>% 
     map_df(~read_tsv(., col_names = c("CHROM", "POS", "REF", "ALT", "Clone1", "Clone2"), 
                         col_types = cols(col_character(), col_double(), col_character(), col_character(), col_character(), col_character()))) %>%
@@ -226,9 +221,10 @@ err_var_list = bind_rows(list_diff) %>%
   mutate(Nb_letter = str_count(ALT, pattern = "[A-Z]") + str_count(REF, pattern = "[A-Z]")) %>%
   mutate(Indel = ifelse((str_count(ALT, pattern = "[*]") + str_count(REF, pattern = "[*]")) > 0, "Indel", 
                         ifelse(Nb_letter != Nb_allele, "Indel", "SNP"))) %>%
-  unite(col = "Var_type", Indel, Nb_allele, sep = "_", remove = F)
+  unite(col = "Var_type", Indel, Nb_allele, sep = "_", remove = F) %>%
+  distinct()
 
-
+#TODO: find out why the distinct function is necessary here, it should not but I got repeated rows anyway...
 ```
 I not only want to know how many loci contain genotyping errors but also what type of variants these are. So I will make some more plots to figure this out.
 ```{r plot reseq pairs}
@@ -470,9 +466,9 @@ ggplot(., aes(x = Window, y = Nb_SNP, col = Sample)) +
 
 
 
-TE_annot_t = read_tsv(TE_annot, col_names = c("temp", "Start", "Stop")) %>% 
-                separate(temp, into = c("whatever", "CHROM"), sep = "_") %>%
-                select(-whatever) 
+TE_annot_t = read_tsv(TE_annot, col_names = c("CHROM", "Start", "Stop")) #%>% 
+#                separate(temp, into = c("whatever", "CHROM"), sep = "_") %>%
+#                select(-whatever) 
 
 temp %>%
   filter(Filter == "2_Filtered_variants") %>%
@@ -498,37 +494,65 @@ errorsGR = makeGRangesFromDataFrame(err_var_list %>%
                                       #filter(Filter == "2_Filtered_variants") %>%
                                       select(chr = CHROM, start = POS, end = POS) %>% 
                                       unique())  
-cat("Total number of errors:", length(errorsGR), "\n")
-cat("Error number in TEs:", length(intersect(errorsGR, TEGR)), "\n")
-cat("Error number outside of TEs:", length(setdiff(errorsGR, TEGR)), "\n")
+cat("Total number of errors:", sum(width(errorsGR)), "\n")
+cat("Total length of TEs:", sum(width(TEGR)), "\n")
+cat("Error number in TEs:", sum(width(intersect(errorsGR, TEGR))) , "\n")
+cat("Error number outside of TEs:", sum(width(setdiff(errorsGR, TEGR))), "\n")
 
-temp =as.data.frame(setdiff(errorsGR, TEGR))
+
 ```
 
 
 
 
 # Filtering based on individuals
+#TODO: base this on the latest filters
 ```{bash, eval = F}
+echo ${SUBVCFNAME}.vcf.gz 
+```
+
+```{bash, eval = F}
+#Depth
 ~/Software/vcftools_jydu/src/cpp/vcftools \
   --gzvcf ${SUBVCFNAME}.vcf.gz \
   --out ${SUBVCFNAME} \
-  --depth 
-  
+  --depth \
+  --not-chr 14 \
+  --not-chr 15 \
+  --not-chr 16 \
+  --not-chr 17 \
+  --not-chr 18 \
+  --not-chr 19 \
+  --not-chr 20 \
+  --not-chr 21 \
+  --not-chr mt
+```
+
+```{bash, eval = F}
+#Missing data
 ~/Software/vcftools_jydu/src/cpp/vcftools \
   --gzvcf ${SUBVCFNAME}.vcf.gz  \
   --out ${SUBVCFNAME} \
-  --missing-indv  
+  --missing-indv  \
+  --not-chr 14 \
+  --not-chr 15 \
+  --not-chr 16 \
+  --not-chr 17 \
+  --not-chr 18 \
+  --not-chr 19 \
+  --not-chr 20 \
+  --not-chr 21 \
+  --not-chr mt
 ```
 
-
 ```{bash, eval = F}
-gunzip ${SUBVCFNAME}.vcf.gz
+#ibs
 ~/Software/plink \
   --distance square ibs \
-  --vcf ${SUBVCFNAME}.vcf \
+  --vcf ${SUBVCFNAME}.vcf.gz \
   --out ${SUBVCFNAME} \
-  --const-fid
+  --const-fid \
+  --not-chr 14-21 mt
 ```
 
 First, let's look at missing data and depth. Samples with a large amount of missing data are increasing the amount of positions with missing data (which will be filtered out in some instances) for nothing. So I would rather remove some samples completely rather than a higher number of positions for all samples.
@@ -565,37 +589,44 @@ info_per_ind %>%
 The samples with too much missing data, on the right of the gold line, will be filtered out.
 
 ```{r}
-ids = read_tsv(paste0(subset_vcf_name, ".mibs.id"), col_names = c("Whatever", "ID")) %>% select(ID) %>% pull()
-related = read_tsv(paste0(subset_vcf_name, ".mibs"), col_names = ids) %>%
-  mutate(ID1 = ids) %>%
-  pivot_longer(names_to = "ID2", values_to = "Relatedness", cols = -ID1) %>%
-  filter(!(ID1 %in% unwanted_samples)) %>%
-  filter(!(ID2 %in% unwanted_samples))
+ibs = read_tsv(paste0(subset_vcf_name, ".mibs.id"), col_names = c("Whatever", "ID")) %>% select(ID) %>% pull()
+related = read_tsv(paste0(subset_vcf_name, ".mibs"), col_names = ibs) %>%
+  mutate(ID1 = ibs) %>%
+  pivot_longer(names_to = "ID2", values_to = "Relatedness", cols = -ID1) 
 
-related %>%
+p1 = related %>%
   filter(ID1 != ID2) %>%
   ggplot(aes(x = Relatedness)) +
   geom_density() + 
-  geom_vline(aes(xintercept = 0.9))
+  geom_vline(aes(xintercept = 0.9)) +
+  theme_minimal()
+
+
 
 related = related %>% mutate(Bounded_relatedness = ifelse(Relatedness < 0.9, 0.9, Relatedness))
 
-related %>%
+p2 = related %>%
   filter(ID1 != ID2) %>%
   ggplot(aes(x = Bounded_relatedness)) +
   geom_density() + 
-  geom_vline(aes(xintercept = 0.9)) + 
-  geom_vline(aes(xintercept = 0.99))
+  geom_vline(aes(xintercept = 0.9), col = "#ffa62b") + 
+  geom_vline(aes(xintercept = 0.99), col = "grey") +
+  theme_minimal()
 
-ggplot(related, aes(x = ID1, y = ID2, fill = Bounded_relatedness)) +
-  geom_tile() +
-  scale_fill_gradient(high = "white", low = "#16697a") +
-  labs(title = "Pairwise IBS across all samples")
+plot_grid(p1, p2)
 ```
 
-Now, I want to represent the same measure but including only the sample which have an IBS of at least 0.99 with any other sample.
+Now, I want to represent the relatedness measure: once with all samples (heatmap A), and another including only the sample which have an IBS of at least 0.99 with any other sample (heatmap B). I am only plotting the bounded relatedness as defined by the yellow line in the graph above. 
 ```{r}
+# All samples
+p1 = ggplot(related, aes(x = ID1, y = ID2, fill = Bounded_relatedness)) +
+  geom_tile() +
+  scale_fill_gradient(high = "white", low = "#16697a") +
+  #labs(title = "Pairwise IBS across all samples") +
+  theme(axis.text = element_blank())
 
+
+# Only highly related samples
 temp = related %>% 
   filter(Relatedness >= 0.99) %>%
   filter(ID1 != ID2) %>%
@@ -606,19 +637,26 @@ vector_temp = c(temp %>% select(ID1) %>% pull(),
 table_temp = as.data.frame(table(vector_temp))
 length(unique(vector_temp))
 
-related %>% 
+p2 = related %>% 
   filter(!(ID1 %in% samples_to_filter)) %>%
   filter(!(ID2 %in% samples_to_filter)) %>%
   filter(ID1 %in% vector_temp) %>%
   filter(ID2 %in% vector_temp) %>%
   ggplot(aes(x = ID1, y = ID2, fill = Relatedness)) +
   geom_tile() +
-  scale_fill_gradient(high = "white", low = "#16697a")
+  scale_fill_gradient(high = "white", low = "#16697a")+
+  theme(axis.text = element_blank())
+
+
+plot_grid(p1 + theme(legend.position = "none"), p2, 
+          rel_widths = c(1, 1.3), labels = c("A", "B"))
 
 ```
 
-```{r}
+From the heatmaps, we can already tell that there are some samples which are clones or quasi-clones from one another. Some seem to go only two by two (mistaken resequencing of the same clone or isolation of two isolates from the same lesion, for example). But there also seem to be larger groups of samples, particularly visible in the heatmap B.
 
+It is not trivial to get groups of clones by looking at the heatmaps or a simple table. Instead, I choose here to use networks and find "communities" with a simplistic cut-off approach. 
+```{r network plot}
 #for the representation, I first filter the samples to remove all samples with only one connection 
 # (so they appear twice in the table)
 nodes <- table_temp %>% 
@@ -632,11 +670,11 @@ edges <- temp %>%
   filter(ID2 %in% nodes$label) %>%
   select(-Bounded_relatedness) %>%
   left_join(nodes, by = c("ID1" = "label")) %>% 
-  rename(from = id)
+  mutate(from = id) %>% select(-id)
 
 edges <- edges %>% 
   left_join(nodes, by = c("ID2" = "label")) %>% 
-  rename(to = id) %>%
+  mutate(to = id) %>%
   select(from, to, weight = Relatedness )
 
 #I can then transform the data in a tbl_graph
@@ -646,12 +684,11 @@ routes_tidy <- tbl_graph(nodes = nodes, edges = edges, directed = F)
 
 ggraph(routes_tidy) + 
   geom_edge_link(color = "gray20", alpha = 0.3) + 
-  geom_node_point(aes(color = as.character(group_components())),show.legend = F) +
+  geom_node_point(aes(color = as.character(group_components())), show.legend = F, size = 3) +
   theme_graph() #+ facet_nodes(~ group_components())
 ```
-
-This graphs shows that the components (subgraphs?) are accurately identified, as shown by the colors. This is the information I need since I would like to filter keeping only one sample per group. Now, I want to do this for all samples, not just the ones with more than one edge.
-```{r}
+The colors in the figure above is representing the "components" (or communities/subgraphs?) automatically detected after using a threshold value. We can see that the components are indeed identified as expected. This is the information I need since I would like to filter keeping only one sample per group. Now, I want to do this for all samples, not just the ones with more than one edge.
+```{r subgraphs filtering}
 nodes <- table_temp %>%
   select(label = vector_temp) %>% 
   rowid_to_column("id") 
@@ -662,11 +699,11 @@ edges <- temp %>%
   filter(ID2 %in% nodes$label) %>%
   select(-Bounded_relatedness) %>%
   left_join(nodes, by = c("ID1" = "label")) %>% 
-  rename(from = id)
+  mutate(from = id) %>% select(-id)
 
 edges <- edges %>% 
   left_join(nodes, by = c("ID2" = "label")) %>% 
-  rename(to = id) %>%
+  mutate(to = id) %>%
   select(from, to, weight = Relatedness )
 
 #I can then transform the data in a tbl_graph
@@ -720,6 +757,52 @@ as.data.frame(table(nodes_with_groups$Filter_based_on_ibs)) %>%
 
 ```
 
+```{r}
+temp = related %>%
+  #sample_n(size = 500) %>% 
+  filter(Relatedness >= 0.925) %>%
+  filter(ID1 != ID2) %>%
+  filter(!(ID1 %in% samples_to_filter)) %>%
+  filter(!(ID2 %in% samples_to_filter))
 
+vector_temp = c(temp %>% select(ID1) %>% pull(),
+        temp %>% select(ID2) %>% pull())
+
+table_temp = as.data.frame(table(vector_temp))
+length(unique(vector_temp))
+
+#for the representation, I first filter the samples to remove all samples with only one connection 
+# (so they appear twice in the table)
+nodes <- table_temp %>% 
+  filter(Freq > 2) %>%
+  select(label = vector_temp) %>% 
+  rowid_to_column("id") 
+
+#Here I'm renaming the samples with the node number and filtering
+edges <- temp %>% 
+  filter(ID1 %in% nodes$label) %>%
+  filter(ID2 %in% nodes$label) %>%
+  select(-Bounded_relatedness) %>%
+  left_join(nodes, by = c("ID1" = "label")) %>% 
+  mutate(from = id) %>% select(-id)
+
+edges <- edges %>% 
+  left_join(nodes, by = c("ID2" = "label")) %>% 
+  mutate(to = id) %>%
+  select(from, to, weight = Relatedness )
+
+#I can then transform the data in a tbl_graph
+#I also want to color the nodes based on the component
+
+routes_tidy <- tbl_graph(nodes = nodes, edges = edges, directed = F)%>%
+  mutate(group = group_components())
+
+nodes_with_groups <- routes_tidy %>%
+  activate(nodes) %>%
+  data.frame() %>%
+  left_join(., info_per_ind, by = c("label" = "INDV"))
+
+
+```
 
 

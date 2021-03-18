@@ -5,11 +5,18 @@ source $1
 #VCFNAME=${DIRNAME}1_Variant_calling/4_Joint_calling/Ztritici_global_December2020.genotyped.${CHR}
 VCFNAME=${vcf_dir}${VCFBasename}.genotyped.ALL
 
+#${BCFTOOLS_PATH}  sort \
+# -O z -o ${VCFNAME}.filtered.clean.sorted.vcf.gz \
+# --temp-dir ${vcf_dir} \
+# ${VCFNAME}.filtered.clean.vcf.gz 
+
 #Cleaning the file per pos and ind
+${GATK_PATH} IndexFeatureFile \
+ -I ${VCFNAME}.filtered.clean.vcf.gz
+
 ${GATK_PATH} SelectVariants  \
   -R ${IPO323_REF} \
-  -V ${VCFNAME}.filtered.clean.vcf \
-  --exclude-sample-name ${remove_ID_file} \
+  -V ${VCFNAME}.filtered.clean.vcf.gz \
   --exclude-sample-name ${low_depth_samples_file} \
   --exclude-sample-name ${clones_file}  \
   --exclude-filtered \
