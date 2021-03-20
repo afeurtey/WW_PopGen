@@ -1,0 +1,251 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r setup}
+#Packages
+library(tidyverse)
+
+#Files and directories 
+dir_name = "/data2/alice/WW_project/"
+data_dir = "/data2/alice/WW_project/0_Data/"
+data_dir=paste0(dir_name, "0_Data/")
+metadata_dir=paste0(dir_name, "Metadata/")
+
+#Analysis directories
+#--------------------
+VAR_dir = paste0(dir_name, "1_Variant_calling/")
+  depth_per_window_dir = paste0(VAR_dir, "1_Depth_per_window/")
+  depth_per_gene_dir = paste0(VAR_dir, "2_Depth_per_gene/")
+  vcf_dir = paste0(VAR_dir, "4_Joint_calling/")
+
+Zt_list = read_tsv("/home/alice/WW_PopGen/Keep_lists_samples/In_filtered_vcf.txt", col_names = "ID_file")
+metadata_cols = read_tsv("/home/alice/WW_PopGen/Keep_lists_samples/Main_table_from_SQL_Feb_2020_Description.tab", 
+                         col_names = F) %>% pull()
+metadata_file= read_tsv("/home/alice/WW_PopGen/Keep_lists_samples/Main_table_from_SQL_Feb_2020_with_collection.tab",
+                        col_names = metadata_cols) %>%
+  inner_join(., Zt_list)
+
+
+Sys.setenv(WINDEPTH=depth_per_window_dir)
+```
+
+#Depth per chromosome
+```{bash}
+list_file=$(ls -1 ${WINDEPTH}*.depth_per_window.q30.txt )
+
+#Per sample per chromosome
+echo -e "Sample\tCHROM\tMedian\tMean" > ${WINDEPTH}Depth_per_chromosome_summary.q30.txt
+for p in $list_file ; 
+do 
+  sed "s/:/\t/g" $p | ~/Software/bedtools groupby -g 1,2 -o median,mean -c 5; 
+done >> ${WINDEPTH}Depth_per_chromosome_summary.q30.txt
+
+#Per sample
+echo -e "Sample\tMedian\tMean" > ${WINDEPTH}Depth_per_sample_summary.q30.txt
+for p in $list_file ; 
+do 
+  sed "s/:/\t/g" $p | ~/Software/bedtools groupby -g 1 -o median,mean -c 5; 
+done >> ${WINDEPTH}Depth_per_sample_summary.q30.txt
+
+#Per sample on core chromosomes
+echo -e "Sample\tMedian\tMean" > ${WINDEPTH}Depth_per_sample_core_chr_summary.q30.txt
+for p in $list_file ; 
+do 
+  sed "s/:/\t/g" $p | \
+    awk 'BEGIN {FS = "\t"; OFS = "\t"} $2 < 14 {print}' | \
+    ~/Software/bedtools groupby -g 1 -o median,mean -c 5 
+
+done >>  ${WINDEPTH}Depth_per_sample_core_chr_summary.q30.txt
+
+```
+
+```{r}
+core_depth = read_tsv(paste0(depth_per_window_dir, "Depth_per_sample_core_chr_summary.q30.txt")) %>%
+  mutate(Median_core = Median) %>%
+  inner_join(., Zt_list)
+  
+
+chrom_depth = read_tsv(paste0(depth_per_window_dir, "Depth_per_chromosome_summary.q30.txt")) %>%
+  left_join(., core_depth %>% select(Sample, Median_core)) %>%
+  mutate(Relative_depth = Median/Median_core) %>%
+  inner_join(., Zt_list)
+
+```
+```{r}
+heatmap_depth = chrom_depth %>%
+  filter(CHROM != "mt") %>%
+  ggplot(aes(x = as.numeric(CHROM), y=Sample, fill=Relative_depth)) +
+  geom_tile() + scale_fill_gradient2(low="white", high = "#479DAE") +
+  geom_vline(xintercept = 13.5, linetype = "longdash", colour = "gray20") +
+  theme(axis.text.y = element_blank(),
+        axis.title.y = element_blank(), axis.ticks.y=element_blank()) +
+  labs(fill = "Depth", x= "Chromosome") + xlim(c(0.5, 21.5))
+
+heatmap_depth
+
+Lthres = 0.50
+Hthres = 1.50
+depth = chrom_depth %>%
+  filter(CHROM != "mt") %>%
+  dplyr::mutate(Depth_is = ifelse(Relative_depth > Hthres, "High",ifelse(Relative_depth < Lthres, "Low", "Normal")))
+
+bar_Ndepth_per_CHR =ggplot(depth, aes(x = as.numeric(CHROM), fill = Depth_is)) +
+  geom_bar(stat = "count") +
+  scale_fill_manual(values =c("#EDE7E3", "#82c0cc")) +
+    theme_light()+
+    labs(x= "Chromosome", y = "Number of isolates")
+
+# Lollipop plots
+##For low normalized depth values
+temp = depth %>%
+  filter(Depth_is == "Low") %>%
+  dplyr::group_by(CHROM) %>%
+  dplyr::count()
+
+lollow = ggplot(temp, aes(x = as.character(CHROM), y = n)) +
+    geom_segment( aes(x=as.character(CHROM), xend=as.character(CHROM), y=0, yend=max(temp$n)),
+                  color="grey80", size = 1) +
+    geom_segment( aes(x=as.character(CHROM), xend=as.character(CHROM), y=0, yend=n),
+                  color="grey20", size = 1) +
+    geom_point( color="#82c0cc", size=4)  +
+    geom_text(aes( label = n,
+                     y= n), stat= "identity",
+              hjust = -0.5, vjust = -0.2) +
+    theme_light() +
+    theme(
+    panel.grid.major.y = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.text.x = element_text(size = 10),
+    axis.text.y = element_text(size = 10)
+    ) +
+    ylim(c(0,max(temp$n)+ max(temp$n)*0.1)) +
+    labs( x= "Chromosome", y = "Number of isolates without chromosome") +
+    coord_flip()
+
+bottom_row <- cowplot::plot_grid(bar_Ndepth_per_CHR + theme(legend.position = "bottom"), lollow, 
+                                 labels = c('B', 'C'), label_size = 12, ncol = 2)
+
+plot_grid(heatmap_depth, bottom_row, labels = c('A', ''), label_size = 12, ncol = 1)
+
+
+```
+
+
+
+
+# Depth per window
+
+```{r}
+GC_per_window = read_tsv(paste0(data_dir, "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.1kb_windows.nuc_GC.tab")) %>%
+  mutate(GC = round(`5_pct_gc`, 2)) %>%
+  filter( !is.na(`#1_usercol`))
+
+temp = GC_per_window %>%
+  filter(`#1_usercol` < 14)  %>%
+  dplyr::select(CHROM = `#1_usercol`, Win_start = `2_usercol`, Win_stop = `3_usercol`, GC) %>%
+  group_by(GC) %>%
+  count() 
+
+temp %>%
+  ggplot(aes(x = GC, y = n, fill = n > 40)) +
+    geom_bar(stat = "identity") +
+    theme_light() +
+  scale_fill_manual(values =c( "#82c0cc", "#EDE7E3"))
+
+GC_avail = temp %>% filter(n > 40) %>% dplyr::select(GC) %>% pull()
+
+random_GC_windows = GC_per_window %>%
+  dplyr::select(CHROM = `#1_usercol`, Win_start = `2_usercol`, Win_stop = `3_usercol`, GC) %>%
+  filter(GC %in% GC_avail)%>%
+  group_by(GC) %>%
+  sample_n(40) %>%
+  mutate(CHROM = as.character(CHROM), 
+         Win_start = as.character(Win_start), 
+         Win_stop = as.character(Win_stop))
+  
+```
+
+```{r Depth per locus on pangenome}
+
+files <- list.files(depth_per_window_dir, pattern = "depth_per_window.q30.txt$", full.names = T)
+
+depth_per_win = files %>%
+  map_dfr(~read_tsv(., col_names = c("temp", "Depth")) %>%
+                                            separate(col = temp, into = c("ID_file", "CHROM", "Win_start", "Win_stop"),
+                                                     sep = ":") %>%
+                                             inner_join(., random_GC_windows)) %>%
+  inner_join(., Zt_list)
+
+write_tsv(depth_per_win, paste0(depth_per_window_dir, "Depth_for_GC_bias.txt"))
+```
+
+```{r}
+scale_this <- function(x){
+  (x - mean(x, na.rm=TRUE)) / sd(x, na.rm=TRUE)
+}
+
+
+GC_coverage = depth_per_win %>%
+  filter(Depth > 0) %>%
+  group_by(ID_file) %>%
+  dplyr::mutate(scaled_depth = scale_this(Depth))
+
+
+
+
+#GC bias estimation
+getAlpha<-function(i){
+  #print(i)
+  temp = GC_coverage %>%
+    filter(ID_file == i) %>%
+    mutate(log_depth = log(Depth))
+
+  linearMod <- lm(scaled_depth ~ GC, data=temp)  # build linear regression model on full data
+  alpha = linearMod$coefficients["GC"]
+  return (alpha)}
+v_getAlpha <- Vectorize(getAlpha)
+
+GC_bias = GC_coverage %>%
+  dplyr::select(ID_file) %>%
+  distinct() %>%
+  dplyr::mutate(GC_bias_slope = v_getAlpha(ID_file)) %>%
+  inner_join(.,metadata_file)
+
+write_tsv(GC_bias, paste0(depth_per_window_dir, "GC_bias_per_sample.txt"))
+
+ggplot(GC_bias, aes(GC_bias_slope)) +
+  geom_density() +
+  theme_bw()
+
+temp = GC_bias %>%
+  filter(Collection != "\\N") %>%
+  group_by(Collection) %>%
+  count() %>%
+  filter(n >= 20) 
+
+inner_join(temp, GC_bias) %>%
+ ggplot(., aes(GC_bias_slope, fill = Collection)) +
+  geom_density(alpha = .7) +
+  theme_bw()                      
+
+
+
+GC_coverage %>%
+  filter(ID_file %in% sample(GC_coverage$ID_file, 15)) %>%
+  ggplot(aes(GC, Depth)) +
+    geom_point(col = "grey", alpha = 0.4) + 
+    scale_fill_continuous(type = "viridis") +
+    theme_bw() + facet_wrap(~ID_file, scale = "free") +
+    geom_smooth(method = "lm", se = FALSE,
+                color = "goldenrod", size= 0.7) +
+    labs(x = "GC percent per window",
+         y = "Depth per window",
+         title = "Illustration of the GC bias",
+         subtitle = "I use the slope of a linear model to infer the GC bias.")
+
+```
+
