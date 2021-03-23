@@ -21,7 +21,8 @@ VAR_dir = paste0(dir_name, "1_Variant_calling/")
   depth_per_gene_dir = paste0(VAR_dir, "2_Depth_per_gene/")
   vcf_dir = paste0(VAR_dir, "4_Joint_calling/")
 
-Zt_list = read_tsv("/home/alice/WW_PopGen/Keep_lists_samples/In_filtered_vcf.txt", col_names = "ID_file")
+Zt_list = read_tsv("/home/alice/WW_PopGen/Keep_lists_samples/Ztritici_global_March2021.genotyped.sample_list.args", 
+                   col_names = "ID_file")
 metadata_cols = read_tsv("/home/alice/WW_PopGen/Keep_lists_samples/Main_table_from_SQL_Feb_2020_Description.tab", 
                          col_names = F) %>% pull()
 metadata_file= read_tsv("/home/alice/WW_PopGen/Keep_lists_samples/Main_table_from_SQL_Feb_2020_with_collection.tab",
@@ -33,7 +34,8 @@ Sys.setenv(WINDEPTH=depth_per_window_dir)
 ```
 
 #Depth per chromosome
-```{bash}
+I have run the depth per window for all chromosomes. From this data, I can extract summaries per chromosome per sample, per sample over the whole genome or per sample for the core chromosomes only.
+```{bash summary depth, eval = F}
 list_file=$(ls -1 ${WINDEPTH}*.depth_per_window.q30.txt )
 
 #Per sample per chromosome
@@ -62,18 +64,21 @@ done >>  ${WINDEPTH}Depth_per_sample_core_chr_summary.q30.txt
 
 ```
 
-```{r}
+
+
+```{r read depth summaries}
 core_depth = read_tsv(paste0(depth_per_window_dir, "Depth_per_sample_core_chr_summary.q30.txt")) %>%
   mutate(Median_core = Median) %>%
-  inner_join(., Zt_list)
+  inner_join(., Zt_list, by = c("Sample" = "ID_file"))
   
 
 chrom_depth = read_tsv(paste0(depth_per_window_dir, "Depth_per_chromosome_summary.q30.txt")) %>%
   left_join(., core_depth %>% select(Sample, Median_core)) %>%
   mutate(Relative_depth = Median/Median_core) %>%
-  inner_join(., Zt_list)
+  inner_join(., Zt_list,  by = c("Sample" = "ID_file"))
 
 ```
+
 ```{r}
 heatmap_depth = chrom_depth %>%
   filter(CHROM != "mt") %>%
@@ -169,7 +174,7 @@ random_GC_windows = GC_per_window %>%
   
 ```
 
-```{r Depth per locus on pangenome}
+```{r Depth per locus on pangenome,  eval = F}
 
 files <- list.files(depth_per_window_dir, pattern = "depth_per_window.q30.txt$", full.names = T)
 
@@ -193,8 +198,6 @@ GC_coverage = depth_per_win %>%
   filter(Depth > 0) %>%
   group_by(ID_file) %>%
   dplyr::mutate(scaled_depth = scale_this(Depth))
-
-
 
 
 #GC bias estimation
@@ -248,4 +251,66 @@ GC_coverage %>%
          subtitle = "I use the slope of a linear model to infer the GC bias.")
 
 ```
+
+
+
+
+# Depth per gene
+
+```{r visual sample}
+files <- list.files(depth_per_gene_dir, pattern = "depth_per_gene.q30.txt$", full.names = T)
+
+depth_per_gene = sample(files, size = 4)  %>%
+  map_dfr(~read_tsv(., col_names = c("temp", "Depth")) %>%
+               separate(col = temp, into = c("Sample", "CHROM", "Gene"), sep = ":")) %>%
+  left_join(., metadata_file, c("Sample" = "ID_file"))
+
+temp = depth_per_gene %>%
+  filter(str_detect(Gene, "_TU_"))  %>% 
+  filter( !str_detect(Gene, "Parent")) %>%
+  filter(as.numeric(CHROM) < 14) %>%
+  group_by(Sample) %>%
+  summarize(Median_core = median(Depth))
+
+depth_per_gene %>%
+  inner_join(., temp) %>%
+  mutate(Norm_median_depth = Depth / Median_core) %>% 
+  filter(str_detect(Gene, "_TU_"))  %>% 
+  filter( !str_detect(Gene, "Parent")) %>%
+  ggplot(aes(x = Norm_median_depth, fill = Sample, col = Sample)) +
+  geom_density(alpha = 0.4) +
+  geom_vline(xintercept = 1, col = "black", linetype = "dashed") +
+  facet_wrap(vars(as.numeric(CHROM)), scales ="free") +
+  theme_bw()+ 
+  labs(title = "Normalized with the depth of the core chromosomes genes",
+       x = "Normalized depth of coverage per gene")
+```
+
+```{r norm gene depth}
+files <- list.files(depth_per_gene_dir, pattern = "depth_per_gene.q30.txt$", full.names = T)
+
+depth_per_gene = files %>%
+  map_dfr(~read_tsv(., col_names = c("temp", "Depth")) %>%
+               separate(col = temp, into = c("Sample", "CHROM", "Gene"), sep = ":")) %>%
+  left_join(., metadata_file, c("Sample" = "ID_file"))
+
+temp = depth_per_gene %>%
+  filter(str_detect(Gene, "_TU_"))  %>% 
+  filter( !str_detect(Gene, "Parent")) %>%
+  filter(as.numeric(CHROM) < 14) %>%
+  group_by(Sample) %>%
+  summarize(Median_core = median(Depth))
+
+depth_per_gene = depth_per_gene %>%
+  inner_join(., temp) %>%
+  mutate(Norm_median_depth = Depth / Median_core)
+
+write_tsv(depth_per_win, paste0(depth_per_gene_dir, "Depth_per_genes_normalized.txt"))
+```
+
+```{r}
+
+```
+
+
 
