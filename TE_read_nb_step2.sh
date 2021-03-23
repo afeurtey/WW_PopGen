@@ -1,9 +1,20 @@
 #!/bin/sh
 source $1
 
+# Inputs:
+# ------
+#  - List of paths to genome alignments: bam_path | sample_name. ${list_dir}list_bam_paths.txt
+#  - List of samples of interest. Here, it's the genotyped samples. ${list_dir}Ztritici_global_March2021.genotyped.sample_list.args
+#  - Bam files from the genome alignments
+#  - Bam files from the TE consensus alignments
 
-echo "ID_file Te_aligned_reads Genome_aligned_reads Total_reads" > \
-   ${RIP_DIR}Nb_reads.txt
+# Outputs:
+# -------
+# Two files are given as outputs.
+#  - A tab-delimited table without headers containing the nb of reads per sample per TE consensus
+#  - A space-delimited table with a heade (see below for header and thus content description)
+
+echo "ID_file Te_aligned_reads Genome_aligned_reads Total_reads" > ${RIP_DIR}Nb_reads.txt
 rm ${RIP_DIR}Nb_reads_per_TE.txt
 
 
@@ -32,15 +43,3 @@ do
     awk -v var="$name"  '{OFS="\t"} {print var, $1, $2, $3, $4}' temp.txt >> ${RIP_DIR}Nb_reads_per_TE.txt ;
   fi
 done < ${list_dir}Ztritici_global_March2021.genotyped.sample_list.args
-
-
-#Get read number per sample per TE
-rm /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/Nb_reads_per_TE.txt
-for bamF in /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/*bam ;
-do
-  echo $bamF ;
-  name=$(echo $bamF | sed 's|/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/2_Aln_TE_consensus/||' | sed 's/.bam//' ) ;
-  /home/alice/Software/samtools-1.10/samtools idxstats $bamF > temp.txt ;
-  awk -v var="$name"  '{OFS="\t"} {print var, $1, $2, $3, $4}' temp.txt >> \
-    /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/Nb_reads_per_TE.txt ;
-done
