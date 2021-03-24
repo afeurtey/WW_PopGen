@@ -1,6 +1,8 @@
 ---
 title: "R Notebook"
-output: html_notebook
+output:
+  html_document:
+    df_print: paged
 ---
 
 
@@ -64,22 +66,21 @@ done >>  ${WINDEPTH}Depth_per_sample_core_chr_summary.q30.txt
 
 ```
 
+Such summaries per chromosomes are very useful to visualize if some samples have multiple copies of a chromosomes or the presence/absence of chromosomes in particular for the accessory chromosomes.
+```{r CHR depth }
 
-
-```{r read depth summaries}
+# Reading in the summarized data
 core_depth = read_tsv(paste0(depth_per_window_dir, "Depth_per_sample_core_chr_summary.q30.txt")) %>%
   mutate(Median_core = Median) %>%
   inner_join(., Zt_list, by = c("Sample" = "ID_file"))
   
-
 chrom_depth = read_tsv(paste0(depth_per_window_dir, "Depth_per_chromosome_summary.q30.txt")) %>%
   left_join(., core_depth %>% select(Sample, Median_core)) %>%
-  mutate(Relative_depth = Median/Median_core) %>%
+  mutate(Relative_depth = as.numeric(Median)/as.numeric(Median_core)) %>%
   inner_join(., Zt_list,  by = c("Sample" = "ID_file"))
 
-```
 
-```{r}
+# Heatmap of the depth per chromosome
 heatmap_depth = chrom_depth %>%
   filter(CHROM != "mt") %>%
   ggplot(aes(x = as.numeric(CHROM), y=Sample, fill=Relative_depth)) +
@@ -89,17 +90,19 @@ heatmap_depth = chrom_depth %>%
         axis.title.y = element_blank(), axis.ticks.y=element_blank()) +
   labs(fill = "Depth", x= "Chromosome") + xlim(c(0.5, 21.5))
 
-heatmap_depth
 
+# Estimation of low and high depth chromosomes
+# (as proxy for present in 0 or multiple copies)
 Lthres = 0.50
 Hthres = 1.50
 depth = chrom_depth %>%
   filter(CHROM != "mt") %>%
   dplyr::mutate(Depth_is = ifelse(Relative_depth > Hthres, "High",ifelse(Relative_depth < Lthres, "Low", "Normal")))
 
+# Barplot
 bar_Ndepth_per_CHR =ggplot(depth, aes(x = as.numeric(CHROM), fill = Depth_is)) +
   geom_bar(stat = "count") +
-  scale_fill_manual(values =c("#EDE7E3", "#82c0cc")) +
+  scale_fill_manual(values = c("#16697a", "#82c0cc", "#EDE7E3")) +
     theme_light()+
     labs(x= "Chromosome", y = "Number of isolates")
 
@@ -131,19 +134,20 @@ lollow = ggplot(temp, aes(x = as.character(CHROM), y = n)) +
     labs( x= "Chromosome", y = "Number of isolates without chromosome") +
     coord_flip()
 
+
+# Gathering all 3 plots into a single figure
 bottom_row <- cowplot::plot_grid(bar_Ndepth_per_CHR + theme(legend.position = "bottom"), lollow, 
                                  labels = c('B', 'C'), label_size = 12, ncol = 2)
 
-plot_grid(heatmap_depth, bottom_row, labels = c('A', ''), label_size = 12, ncol = 1)
-
+cowplot::plot_grid(heatmap_depth, bottom_row, labels = c('A', ''), label_size = 12, ncol = 1)
 
 ```
 
 
 
 
-# Depth per window
-
+# Depth per window and GC bias
+I have used the bedtools nuc option to estimate the GC content per 1kb-window for the whole reference IPO323 genome 
 ```{r}
 GC_per_window = read_tsv(paste0(data_dir, "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.1kb_windows.nuc_GC.tab")) %>%
   mutate(GC = round(`5_pct_gc`, 2)) %>%
@@ -155,11 +159,17 @@ temp = GC_per_window %>%
   group_by(GC) %>%
   count() 
 
+# Histogram of GC values
+xint = median(GC_per_window$GC)
 temp %>%
   ggplot(aes(x = GC, y = n, fill = n > 40)) +
     geom_bar(stat = "identity") +
     theme_light() +
-  scale_fill_manual(values =c( "#82c0cc", "#EDE7E3"))
+  scale_fill_manual(values =c( "#82c0cc", "#EDE7E3"))+
+  geom_vline(xintercept = xint, col = "#82c0cc") +
+  annotate("text", label = paste0("Median GC is ", xint), 
+           x = xint - xint*0.2, y = 5200, 
+           size = 4, colour = "#82c0cc", fontface = "bold")
 
 GC_avail = temp %>% filter(n > 40) %>% dplyr::select(GC) %>% pull()
 
@@ -173,8 +183,10 @@ random_GC_windows = GC_per_window %>%
          Win_stop = as.character(Win_stop))
   
 ```
+The distribution of GC is slightly skewed in the GC-rich side, with a median above 0.5. However, there is an AT-rich fat tail, or even a bimodal distribution. These windows are most probably containing RIP-affected repeated regions.
 
-```{r Depth per locus on pangenome,  eval = F}
+From there, we need to know if the different collections present GC bias in their sequencing. We expect a batch effect in the sequencing here since we have data coming from a lot of different years and labs (and because batch effect happens in general).
+```{r Depth per win,  eval = F}
 
 files <- list.files(depth_per_window_dir, pattern = "depth_per_window.q30.txt$", full.names = T)
 
@@ -188,7 +200,10 @@ depth_per_win = files %>%
 write_tsv(depth_per_win, paste0(depth_per_window_dir, "Depth_for_GC_bias.txt"))
 ```
 
-```{r}
+
+```{r GC bias}
+depth_per_win = read_tsv(paste0(depth_per_window_dir, "Depth_for_GC_bias.txt"))
+
 scale_this <- function(x){
   (x - mean(x, na.rm=TRUE)) / sd(x, na.rm=TRUE)
 }
@@ -204,8 +219,8 @@ GC_coverage = depth_per_win %>%
 getAlpha<-function(i){
   #print(i)
   temp = GC_coverage %>%
-    filter(ID_file == i) %>%
-    mutate(log_depth = log(Depth))
+    filter(ID_file == i) #%>%
+    #mutate(log_depth = log(Depth))
 
   linearMod <- lm(scaled_depth ~ GC, data=temp)  # build linear regression model on full data
   alpha = linearMod$coefficients["GC"]
@@ -216,7 +231,9 @@ GC_bias = GC_coverage %>%
   dplyr::select(ID_file) %>%
   distinct() %>%
   dplyr::mutate(GC_bias_slope = v_getAlpha(ID_file)) %>%
-  inner_join(.,metadata_file)
+  left_join(., metadata_file %>% select(ID_file, Collection, Continent, Country, Region, 
+                                        Sampling_Date, Latitude, Longitude))
+
 
 write_tsv(GC_bias, paste0(depth_per_window_dir, "GC_bias_per_sample.txt"))
 
@@ -230,13 +247,7 @@ temp = GC_bias %>%
   count() %>%
   filter(n >= 20) 
 
-inner_join(temp, GC_bias) %>%
- ggplot(., aes(GC_bias_slope, fill = Collection)) +
-  geom_density(alpha = .7) +
-  theme_bw()                      
-
-
-
+#GC bias illustration
 GC_coverage %>%
   filter(ID_file %in% sample(GC_coverage$ID_file, 15)) %>%
   ggplot(aes(GC, Depth)) +
@@ -250,13 +261,27 @@ GC_coverage %>%
          title = "Illustration of the GC bias",
          subtitle = "I use the slope of a linear model to infer the GC bias.")
 
-```
+#GC bias per collection
+inner_join(temp, GC_bias) %>%
+  group_by(Collection) %>%
+  mutate(Median = median(GC_bias_slope)) %>%
+ ggplot(., aes(x = reorder(Collection, Median), y = GC_bias_slope, fill = reorder(Collection, Median))) +
+  geom_violin(alpha = .7) +
+  theme_bw()  +
+  theme(axis.text.x = element_text(angle = 30, vjust = 1, hjust = 1),
+        plot.margin = unit(c(0.5, 0.5, 0.5, 1), "cm")) +
+  labs(x = "Collection", y = "GC bias estimate")
 
+
+```
+It is very clear that we do have a batch effect but also that some datasets are very, very biased. The older Hartmann data (also called Qst population) in particular is strongly biased.
 
 
 
 # Depth per gene
+Aside from the depth per window, I have also estimated the depth of coverage per gene. I want to infer some gene presence/absence based on the depth so I need to normalize the depth. I have tried to normalize simply based on the depth over the core chromosomes in general, but this resulted in a median normalized depth per gene at 1.1 instead of 1 as expected. This is probably due to lower coverage in intergenic regions (in particular repeated regions that might be more suspectible to being deleted in some strains). The overall coverage for the chromosome would thus be lower than the coverage for the genes of the same chromosome. 
 
+I have chosen to normalize using the median depth of genes for the core chromosomes. This resulted in a normalized depth with a median around one as shown with a sample of 4 isolates. 
 ```{r visual sample}
 files <- list.files(depth_per_gene_dir, pattern = "depth_per_gene.q30.txt$", full.names = T)
 
@@ -285,14 +310,13 @@ depth_per_gene %>%
   labs(title = "Normalized with the depth of the core chromosomes genes",
        x = "Normalized depth of coverage per gene")
 ```
-
-```{r norm gene depth}
+Once I am confident that the normalization I am using is appropriate, I do this for all genes.
+```{r norm gene depth, results = F, warning=F}
 files <- list.files(depth_per_gene_dir, pattern = "depth_per_gene.q30.txt$", full.names = T)
 
 depth_per_gene = files %>%
   map_dfr(~read_tsv(., col_names = c("temp", "Depth")) %>%
-               separate(col = temp, into = c("Sample", "CHROM", "Gene"), sep = ":")) %>%
-  left_join(., metadata_file, c("Sample" = "ID_file"))
+               separate(col = temp, into = c("Sample", "CHROM", "Gene"), sep = ":")) 
 
 temp = depth_per_gene %>%
   filter(str_detect(Gene, "_TU_"))  %>% 
@@ -303,14 +327,15 @@ temp = depth_per_gene %>%
 
 depth_per_gene = depth_per_gene %>%
   inner_join(., temp) %>%
-  mutate(Norm_median_depth = Depth / Median_core)
+  mutate(Norm_median_depth = round(Depth / Median_core, 2)) %>%
+  filter(str_detect(Gene, "_TU_"))  %>% 
+  filter( !str_detect(Gene, "Parent")) %>%
+  separate(col = Gene, into = c("ID", "Name"), sep = ";") %>%
+  select(-ID) %>%
+  mutate(Name = str_replace(Name, "Name=", ""))
 
-write_tsv(depth_per_win, paste0(depth_per_gene_dir, "Depth_per_genes_normalized.txt"))
+write_tsv(depth_per_gene, paste0(depth_per_gene_dir, "Depth_per_genes_normalized.txt"))
+
 ```
-
-```{r}
-
-```
-
 
 

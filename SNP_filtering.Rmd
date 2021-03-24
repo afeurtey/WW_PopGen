@@ -3,7 +3,8 @@ title: "SNP filtering"
 author: "Alice Feurtey"
 date: "01/13/2021"
 output:
-  html_document: default
+  html_document: 
+    code_folding: hide
 ---
 
 ```{r setup, include=TRUE}
@@ -52,10 +53,15 @@ Sys.setenv(GATKPATH=gatk_path)
 #Sys.setenv(JAVAPATH=java_path)
 Sys.setenv(BCFTOOLSPATH=bcftools_path)
 
+
+knitr::opts_chunk$set(message = F)
+knitr::opts_chunk$set(warning = F)
+knitr::opts_chunk$set(results = T)
+
 ```
 
 
-# Filtering based on site: identifying the proper values for step 1
+# Pre-step 1 - Filtering based on site: identifying the proper thresholds
 Below I first extract the snps and in a second time, I remove all genotypes with a depth that I consider too low for the data to be reliable. This threshold can and should be adapted depending on the dataset.
 Finally, I use bcftools to extract the values of the different estimates we can filter on.
 ```{bash, eval = F}
@@ -138,11 +144,11 @@ dim(temp2 %>% select(CHROM, POS) %>% group_by_all %>% count)
 
 ```
 
-The values obtained above can be used in a [script](./SNP_filter_step1.sh) to run directly on the cluster for all chromosomes. In a [second step](./SNP_filter_step2.sh), each raw vcf file has been filtered and cleaned (removing the filtered positions), all the files are merged together into one file for all chromosomes. Both scripts include the creation of a 
+The values obtained above can be used in a [script](./SNP_filter_step1.sh) to run directly on the cluster for all chromosomes. 
 
 
 
-# Filter checks using resequencing and added layer of position filtering
+# Pre-step 2 - Filter checks using resequencing and added layer of position filtering
 
 I want to assess the effect of the filtering on the SNP data. For this, I use four columns from the filtered and unfiltered vcf: chromosome, position, reference allele and alternative allele. This allows me to count the variants, find where they are, and what type of variants they are, in terms of both number of alleles and whether we are looking at SNPs or indels.
 ```{r Get variants from filter}
@@ -221,10 +227,7 @@ err_var_list = bind_rows(list_diff) %>%
   mutate(Nb_letter = str_count(ALT, pattern = "[A-Z]") + str_count(REF, pattern = "[A-Z]")) %>%
   mutate(Indel = ifelse((str_count(ALT, pattern = "[*]") + str_count(REF, pattern = "[*]")) > 0, "Indel", 
                         ifelse(Nb_letter != Nb_allele, "Indel", "SNP"))) %>%
-  unite(col = "Var_type", Indel, Nb_allele, sep = "_", remove = F) %>%
-  distinct()
-
-#TODO: find out why the distinct function is necessary here, it should not but I got repeated rows anyway...
+  unite(col = "Var_type", Indel, Nb_allele, sep = "_", remove = F) 
 ```
 I not only want to know how many loci contain genotyping errors but also what type of variants these are. So I will make some more plots to figure this out.
 ```{r plot reseq pairs}
@@ -273,7 +276,7 @@ p1 = bind_rows(err_var_list %>%
             select(CHROM, POS, Filter, Var_type) %>%
             distinct() %>% 
             mutate(Dataset = "Erroneous variants"),
-          var_list%>% 
+          var_list %>% 
             mutate(Dataset = "All variants")) %>%
   group_by(Filter, Var_type, Dataset) %>%
   count()  %>%
@@ -359,7 +362,7 @@ p1 = ggplot(t2, aes(x = Var1, y = Freq, label = Freq)) +
   labs(x = "Number of pairs sharing an erroneous variant locus",
        y = "Number of loci",
        title = "Some erroneous variant loci are shared between samples",
-       subtitle = paste0("Total number of erroneous variant loci: ", nb_all, "; shared loci: ", nb_shared), 
+       subtitle = paste0("Pre-filtering number of erroneous variant loci: ", nb_all, "; shared loci: ", nb_shared), 
        fill = str_wrap("To remove in subsequent filtering", 20)) +
   theme_minimal() +
   scale_fill_manual(values = c("#ff9f1c", "#FFD399")) 
@@ -373,7 +376,7 @@ p2 = ggplot(t3, aes(x = Var1, y = Freq, label = Freq)) +
   geom_label(nudge_y = 3000) +
   labs(x = "Number of pairs sharing an erroneous variant locus",
        y = "Number of loci",
-       subtitle = paste0("Total number of erroneous variant loci: ", nb_all, "; shared loci: ", nb_shared), 
+       subtitle = paste0("Post-filtering number of erroneous variant loci: ", nb_all, "; shared loci: ", nb_shared), 
        fill = str_wrap("To remove in subsequent filtering", 20)) +
   theme_minimal() +
   scale_fill_manual(values = c("#ff9f1c", "#FFD399")) 
@@ -484,6 +487,7 @@ ggplot(data = .)  +
 
 
 ```
+From the graph, it does look like there is
 ```{r overlap TE_errors, results='asis'}
 
 
@@ -491,7 +495,7 @@ TEGR = makeGRangesFromDataFrame(TE_annot_t %>%
                                   #mutate(Start = Start - 100, Stop = Stop + 100) %>%
                                   select(chr = CHROM, start = Start, end = Stop))  
 errorsGR = makeGRangesFromDataFrame(err_var_list %>% 
-                                      #filter(Filter == "2_Filtered_variants") %>%
+                                      filter(Filter == "2_Filtered_variants") %>%
                                       select(chr = CHROM, start = POS, end = POS) %>% 
                                       unique())  
 cat("Total number of errors:", sum(width(errorsGR)), "\n")
@@ -505,8 +509,8 @@ cat("Error number outside of TEs:", sum(width(setdiff(errorsGR, TEGR))), "\n")
 
 
 
-# Filtering based on individuals
-#TODO: base this on the latest filters
+# # Pre-step 3 - Filtering based on individuals
+
 ```{bash, eval = F}
 echo ${SUBVCFNAME}.vcf.gz 
 ```
@@ -727,13 +731,6 @@ nodes_with_groups = nodes_with_groups %>%
   mutate(rank  = rank(F_MISS, ties.method = "random")) %>%
   mutate(Filter_based_on_ibs = ifelse(rank == 1, "Keep", "Filter_out"))
 
-#Writing a file to indicate which samples to remove
-nodes_with_groups %>%
-  filter(Filter_based_on_ibs == "Filter_out") %>%
-  ungroup() %>%
-  select(label) %>%
-  write_tsv(paste0(data_dir, "Sample_removed_based_on_IBS.args"), col_names = F)
-
 #Let's make a pretty doughnut plot just for the fun of it.
 as.data.frame(table(nodes_with_groups$Filter_based_on_ibs)) %>%
   ggplot(aes(x=2, y=Freq, fill=Var1)) +
@@ -755,53 +752,12 @@ as.data.frame(table(nodes_with_groups$Filter_based_on_ibs)) %>%
   geom_text(aes(label = Freq), 
                position = position_stack(vjust = 0.5), size = 4)
 
-```
-
-```{r}
-temp = related %>%
-  #sample_n(size = 500) %>% 
-  filter(Relatedness >= 0.925) %>%
-  filter(ID1 != ID2) %>%
-  filter(!(ID1 %in% samples_to_filter)) %>%
-  filter(!(ID2 %in% samples_to_filter))
-
-vector_temp = c(temp %>% select(ID1) %>% pull(),
-        temp %>% select(ID2) %>% pull())
-
-table_temp = as.data.frame(table(vector_temp))
-length(unique(vector_temp))
-
-#for the representation, I first filter the samples to remove all samples with only one connection 
-# (so they appear twice in the table)
-nodes <- table_temp %>% 
-  filter(Freq > 2) %>%
-  select(label = vector_temp) %>% 
-  rowid_to_column("id") 
-
-#Here I'm renaming the samples with the node number and filtering
-edges <- temp %>% 
-  filter(ID1 %in% nodes$label) %>%
-  filter(ID2 %in% nodes$label) %>%
-  select(-Bounded_relatedness) %>%
-  left_join(nodes, by = c("ID1" = "label")) %>% 
-  mutate(from = id) %>% select(-id)
-
-edges <- edges %>% 
-  left_join(nodes, by = c("ID2" = "label")) %>% 
-  mutate(to = id) %>%
-  select(from, to, weight = Relatedness )
-
-#I can then transform the data in a tbl_graph
-#I also want to color the nodes based on the component
-
-routes_tidy <- tbl_graph(nodes = nodes, edges = edges, directed = F)%>%
-  mutate(group = group_components())
-
-nodes_with_groups <- routes_tidy %>%
-  activate(nodes) %>%
-  data.frame() %>%
-  left_join(., info_per_ind, by = c("label" = "INDV"))
-
+#Writing a file to indicate which samples to remove
+nodes_with_groups %>%
+  filter(Filter_based_on_ibs == "Filter_out") %>%
+  ungroup() %>%
+  select(label) %>%
+  write_tsv(paste0(data_dir, "Sample_removed_based_on_IBS.args"), col_names = F)
 
 ```
 

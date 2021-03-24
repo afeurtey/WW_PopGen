@@ -20,13 +20,14 @@ rm ${RIP_DIR}Nb_reads_per_TE.txt
 
 while read sample ;
 do
-  bam_path=$(grep ${sample} ${list_dir}list_bam_paths.txt | cut -f 1)
+  echo $sample
+  genome_bam_path=$(grep ${sample} ${list_dir}list_bam_paths.txt | cut -f 1)
   if [ -f ${RIP_aln}${sample}.bam ] ; then
     # Get read number per sample
     # --------------------------
 
     # Results from genome aln
-    ${SAMTOOLS_PATH} flagstat $bam_paths > temp
+    ${SAMTOOLS_PATH} flagstat ${genome_bam_path} > temp
     total_reads=$(cat temp | grep "total" | cut -f1 -d " ");
     genome_reads=$(cat temp | grep "mapped" | grep "with" -v | cut -f1 -d " ");
 
@@ -34,12 +35,12 @@ do
     TE_reads=$(${SAMTOOLS_PATH} flagstat ${RIP_aln}${sample}.bam | grep "mapped" | grep "with" -v | cut -f1 -d " ");
 
     # Saving results
-    echo $name $TE_reads $genome_reads $total_reads >> ${RIP_DIR}Nb_reads.txt;
+    echo $sample $TE_reads $genome_reads $total_reads >> ${RIP_DIR}Nb_reads.txt;
 
 
     # Get read number per sample per TE
     # ----------------------------------
-    ${SAMTOOLS_PATH} idxstats ${RIP_aln}${sample}.bam temp.txt ;
-    awk -v var="$name"  '{OFS="\t"} {print var, $1, $2, $3, $4}' temp.txt >> ${RIP_DIR}Nb_reads_per_TE.txt ;
+    ${SAMTOOLS_PATH} idxstats ${RIP_aln}${sample}.bam > temp ;
+    awk -v var="$sample"  '{OFS="\t"} {print var, $1, $2, $3, $4}' temp >> ${RIP_DIR}Nb_reads_per_TE.txt ;
   fi
 done < ${list_dir}Ztritici_global_March2021.genotyped.sample_list.args

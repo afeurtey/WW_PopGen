@@ -18,8 +18,10 @@ TABIX_PATH=${SOFTPATH}htslib-1.10.2/tabix
 
 # Files directories
 #------------------
-project_dir=/data2/alice/WW_project/
+git_dir=/home/alice/WW_PopGen/
+list_dir=${git_dir}Keep_lists_samples/
 
+project_dir=/data2/alice/WW_project/
 #Data
 DATA_DIR=${project_dir}0_Data/
 RAW_READS=${DATA_DIR}0_Raw_reads/
