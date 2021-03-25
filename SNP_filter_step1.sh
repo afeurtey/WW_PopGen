@@ -63,3 +63,13 @@ ${BCFTOOLS_PATH} query \
   ${VCFNAME}.vcf.gz \
   > ${vcf_qual_check_dir}${VCFBasename}.genotyped.${CHR}.tab
 
+${BCFTOOLS_PATH} query \
+  -f '%CHROM\t%POS\t%REF\t%ALT\n' \
+  ${VCFNAME}.filtered.clean.vcf.gz \
+  > ${vcf_qual_check_dir}${VCFBasename}.genotyped.${CHR}.filtered.clean.tab
+
+# Allele counts
+${VCFTOOLS_PATH} \
+   --gzvcf ${vcf_dir}${VCFBasename}.genotyped.${CHR}.filtered.clean.vcf.gz \
+   --counts2 \
+   --out ${vcf_qual_check_dir}${VCFBasename}.genotyped.${CHR}.filtered.clean

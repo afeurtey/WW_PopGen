@@ -69,3 +69,11 @@ ${SOFTPATH}plink \
   --vcf ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean.vcf.gz \
   --out ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean \
   --const-fid \
+  --not-chr 14-21 mt
+
+#Transform to tab for stats
+${BCFTOOLS_PATH} query \
+  -f '%CHROM\t%POS\t%REF\t%ALT\n' \
+  ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean.vcf.gz \
+  > ${vcf_qual_check_dir}${VCFBasename}.genotyped.ALL.filtered.clean.tab
+

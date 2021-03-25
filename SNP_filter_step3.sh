@@ -32,6 +32,14 @@ ${BCFTOOLS_PATH} query \
   ${vcf_dir}${VCFNAME}.filtered.clean.good_samples.vcf.gz \
   > ${vcf_qual_check_dir}${VCFNAME}.filtered.clean.good_samples.tab
 
+# Allele counts
+${VCFTOOLS_PATH} \
+   --gzvcf ${vcf_dir}${VCFBasename}.genotyped.${CHR}.filtered.clean.good_samples.vcf.gz \
+   --counts2 \
+   --out ${vcf_qual_check_dir}${VCFBasename}.genotyped.${CHR}.filtered.clean.good_samples
+
+
+
 #Create additional, subset VCF files
 
 # for diversity analyses: SNPs only, max-missing 80%
@@ -48,3 +56,4 @@ ${VCFTOOLS_PATH} --gzvcf ${VCFNAME}.filtered.clean.good_samples.vcf.gz \
         --maf 0.05 \
         --out ${VCFNAME}.filtered.clean.good_samples.SNP.max-m-0.8.maf-0.05.thin-1000bp
   
+
