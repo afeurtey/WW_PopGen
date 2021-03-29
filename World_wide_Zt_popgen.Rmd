@@ -567,7 +567,7 @@ temp = GC_per_window %>%
   filter(`#1_usercol` < 14)  %>%
   dplyr::select(CHROM = `#1_usercol`, Win_start = `2_usercol`, Win_stop = `3_usercol`, GC) %>%
   group_by(GC) %>%
-  count() 
+  dplyr::count() 
 
 # Histogram of GC values
 xint = median(GC_per_window$GC)
@@ -1122,11 +1122,10 @@ gsed "s/\t//g"  ${POPSTR}$VCFNAME.pass_noNA.even_sampling.GT.FORMAT2 | tail -n +
 # ../1_Variant_calling/4_Joint_calling/Ztritici_global_December2020.genotyped.mt.filtered.reversed_depth_filter.vcf
 
 vcftools --vcf ${VCFDIR}${VCFNAME_MITO}.vcf \
-  --keep $ZTLIST \
   --non-ref-ac-any 1 \
   --min-alleles 2 --max-alleles 2 \
   --remove-filtered-all --recode --recode-INFO-all \
-  --out ${VCFDIR}${VCFNAME_MITO}.clean.good_samples
+  --out ${VCFDIR}${VCFNAME_MITO}.biall
 
 ```
 
@@ -1134,9 +1133,9 @@ vcftools --vcf ${VCFDIR}${VCFNAME_MITO}.vcf \
 
 
 ```{r PCA mito run and plot, results = F}
-snpgdsVCF2GDS(paste0(vcf_dir, vcf_name_mito, ".clean.good_samples.recode.vcf"),
-              paste0(PopStr_dir, vcf_name, ".clean.good_samples.recode.gds"), method="biallelic.only")
-genofile_mito <- snpgdsOpen(paste0(PopStr_dir, vcf_name, ".clean.good_samples.recode.gds"))
+snpgdsVCF2GDS(paste0(vcf_dir, vcf_name_mito, ".biall.recode.vcf"),
+              paste0(PopStr_dir, vcf_name, ".biall.recode.gds"), method="biallelic.only")
+genofile_mito <- snpgdsOpen(paste0(PopStr_dir, vcf_name, ".biall.recode.gds"))
 pca_mito <-snpgdsPCA(genofile_mito, autosome.only=FALSE)
 snpgdsClose(genofile_mito)
 
@@ -1208,20 +1207,20 @@ There are around 10 percent of the samples belong to group 0. I would thus expec
 ```{bash MAF mito run, eval = F}
 ~/Documents/Software/bcftools/bcftools query \
   -f '%CHROM\t%POS\n' \
-  ${VCFDIR}${VCFNAME_MITO}.clean.good_samples.recode.vcf > \
-  ${VCFDIR}${VCFNAME_MITO}.clean.good_samples.positions
+  ${VCFDIR}${VCFNAME_MITO}.biall.recode.vcf > \
+  ${VCFDIR}${VCFNAME_MITO}.biall.positions
 
-tail ${VCFDIR}${VCFNAME_MITO}.clean.good_samples.positions
+tail ${VCFDIR}${VCFNAME_MITO}.biall.positions
 
 ~/Documents/Software/bcftools/bcftools query \
   -f '%CHROM\t%POS\t%REF[\t%SAMPLE=%GT]\n' \
-  ${VCFDIR}${VCFNAME_MITO}.clean.good_samples.recode.vcf > \
-  ${VCFDIR}${VCFNAME_MITO}.clean.good_samples.genotypes
+  ${VCFDIR}${VCFNAME_MITO}.biall.recode.vcf > \
+  ${VCFDIR}${VCFNAME_MITO}.biall.genotypes
   
 vcftools \
---vcf ${VCFDIR}${VCFNAME_MITO}.clean.good_samples.recode.vcf \
+--vcf ${VCFDIR}${VCFNAME_MITO}.biall.recode.vcf \
 --freq --min-alleles 2 --max-alleles 2 \
---out ${VCFDIR}${VCFNAME_MITO}.clean.good_samples
+--out ${VCFDIR}${VCFNAME_MITO}.biall
 ```
 
 ```{r MAF mito}
@@ -2408,6 +2407,22 @@ CLD$.group=gsub(" ", "", CLD$.group)
 ### Plot
 TE_prop +
   geom_text(data = CLD, aes(x = Continent, label = .group, y = 34), color   = "black")
+
+TE_qty %>%
+  filter(!is.na(Continent)) %>%
+  filter(Collection != "Hartmann_FstQst_2015") %>%
+  ggplot(aes(x = Continent, y = Percent_TE_Reads, fill = Continent)) +
+  geom_hline(aes(yintercept = world_avg),
+             color = "gray30", size = 0.6, linetype = "dashed") +
+    geom_violin(alpha = .8) +
+  stat_summary(fun = mean, geom = "point", size = 2, color = "grey30") +
+    theme_classic() + Fill_Continent + Color_Continent +
+  theme_cowplot()  +
+    theme(axis.text.x = element_text(angle = 40, hjust = 1)) +
+  labs (x = "", y = str_wrap("Percentage of reads", width = 30),
+        title = "Amount of reads mapping on TE consensus per continent",
+        subtitle = str_wrap(paste(""), width = 70))
+
 ```
 The statistics used here are a one-way [ANOVA with block](https://rcompanion.org/handbook/I_06.html). Blocks are used in an analysis of variance or similar models in order to account for suspected variation from factors other than the treatments or main independent variables being investigated. Here I considered the collection as the confounging factor. It definitely has an effect and was thus accounted for in the statistics related to TE content and to RIP level.
 
