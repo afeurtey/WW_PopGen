@@ -175,7 +175,7 @@ kable(var_list  %>%
     t())
  
 
-var_list  %>%
+variants_per_step1 = var_list  %>%
 group_by(CHROM, Filter, Var_type) %>%
 count()  %>%
 ggplot(aes(x=as.numeric(CHROM), y =n, fill = Var_type)) +
@@ -187,11 +187,11 @@ ggplot(aes(x=as.numeric(CHROM), y =n, fill = Var_type)) +
        fill = "Variant type") +
   theme_minimal() +
   scale_fill_manual(values = c("#FFD399", "#ff9f1c", "#cbf3f0", "#2ec4b6"))
-
+variants_per_step1
 ```
 
 
-We have 9 isolates that were resequenced several times in different datasets. Using these, we can estimate the amount of false positive that happen and the type of variants that are more susceptible to be affected by such errors.
+We have 8 isolates that were resequenced several times in different datasets. Using these, we can estimate the amount of false positive that happen and the type of variants that are more susceptible to be affected by such errors.
 ```{r tab per pair}
 reseq_list = read_delim(paste0(list_dir, "Repeat_sequencing.txt"), delim =" ", col_names = c("Name_1", "Name_2"))
 
@@ -505,59 +505,41 @@ cat("Error number outside of TEs:", sum(width(setdiff(errorsGR, TEGR))), "\n")
 
 
 ```
+```{r allele counts}
+counts = list.files(path = vcf_qual_check_dir, pattern = "filtered.clean.frq.count", full.names = T)  %>% 
+    map_df(~read_tsv(., skip = 1, 
+                     col_names = c("CHROM", "POS", "N_ALLELES", "N_CHR", "Count1", "Count2", "Count3"), 
+                     col_types = cols(col_character(), col_double(), col_double(), col_double(), 
+                                      col_double(), col_double(), col_double()))) %>%
+  rowwise() %>%
+  mutate(minorAC = min(Count1, Count2, Count3, na.rm = T), 
+         majorAC = max(Count1, Count2, Count3, na.rm = T),
+         freq = minorAC/N_CHR)
 
 
+temp = err_var_list %>% 
+ # filter(Filter == "2_Filtered_variants") %>%
+  select(CHROM, POS) %>% 
+  unique() %>% 
+  left_join(., counts) %>%
+  mutate(Variant_type = "Erroneous")
 
+bind_rows(temp, counts %>% mutate(Variant_type = "All_variants"))  %>%
+ggplot(aes(x = freq, fill = Variant_type, col = Variant_type)) +
+  geom_density(alpha =.4) +
+  scale_fill_manual(values = c("#FF9F1C", "#2EC4B6")) +
+  scale_color_manual(values = c("#FF9F1C", "#2EC4B6"))+
+  theme_minimal()
 
-# # Pre-step 3 - Filtering based on individuals
-
-```{bash, eval = F}
-echo ${SUBVCFNAME}.vcf.gz 
+ggplot(temp, aes(x = freq)) +
+  geom_density(fill ="#2EC4B6", col = "#2EC4B6") +
+  theme_minimal()
+           
 ```
 
-```{bash, eval = F}
-#Depth
-~/Software/vcftools_jydu/src/cpp/vcftools \
-  --gzvcf ${SUBVCFNAME}.vcf.gz \
-  --out ${SUBVCFNAME} \
-  --depth \
-  --not-chr 14 \
-  --not-chr 15 \
-  --not-chr 16 \
-  --not-chr 17 \
-  --not-chr 18 \
-  --not-chr 19 \
-  --not-chr 20 \
-  --not-chr 21 \
-  --not-chr mt
-```
 
-```{bash, eval = F}
-#Missing data
-~/Software/vcftools_jydu/src/cpp/vcftools \
-  --gzvcf ${SUBVCFNAME}.vcf.gz  \
-  --out ${SUBVCFNAME} \
-  --missing-indv  \
-  --not-chr 14 \
-  --not-chr 15 \
-  --not-chr 16 \
-  --not-chr 17 \
-  --not-chr 18 \
-  --not-chr 19 \
-  --not-chr 20 \
-  --not-chr 21 \
-  --not-chr mt
-```
 
-```{bash, eval = F}
-#ibs
-~/Software/plink \
-  --distance square ibs \
-  --vcf ${SUBVCFNAME}.vcf.gz \
-  --out ${SUBVCFNAME} \
-  --const-fid \
-  --not-chr 14-21 mt
-```
+# Pre-step 3 - Filtering based on individuals
 
 First, let's look at missing data and depth. Samples with a large amount of missing data are increasing the amount of positions with missing data (which will be filtered out in some instances) for nothing. So I would rather remove some samples completely rather than a higher number of positions for all samples.
 ```{r}
@@ -613,8 +595,8 @@ p2 = related %>%
   filter(ID1 != ID2) %>%
   ggplot(aes(x = Bounded_relatedness)) +
   geom_density() + 
-  geom_vline(aes(xintercept = 0.9), col = "#ffa62b") + 
-  geom_vline(aes(xintercept = 0.99), col = "grey") +
+  geom_vline(aes(xintercept = 0.9), col = "grey") + 
+  geom_vline(aes(xintercept = 0.99), col = "#ffa62b") +
   theme_minimal()
 
 plot_grid(p1, p2)
@@ -759,6 +741,87 @@ nodes_with_groups %>%
   select(label) %>%
   write_tsv(paste0(data_dir, "Sample_removed_based_on_IBS.args"), col_names = F)
 
+
+nodes_with_groups %>%
+  write_tsv(paste0(data_dir, "Groups_based_on_IBS.tab"), col_names = F)
+
 ```
 
 
+
+# Number of variants per step
+```{r}
+#Reading the variants stats for the next steps
+next_steps = bind_rows(read_tsv(paste0(vcf_qual_check_dir, vcf_core_name, "ALL.filtered.clean.tab"), 
+                   col_names = c("CHROM", "POS", "REF", "ALT")) %>%
+            mutate(Filter = "3_Filtered_errors"), 
+                   read_tsv(paste0(vcf_qual_check_dir, vcf_core_name, "ALL.filtered.clean.good_samples.tab"), 
+                            col_names = c("CHROM", "POS", "REF", "ALT")) %>%
+            mutate(Filter = "4_Filtered_samples")) %>% 
+  mutate(Nb_allele = str_count(ALT, pattern = ",") + 2) %>%
+  mutate(Nb_letter = str_count(ALT, pattern = "[A-Z]") + str_count(REF, pattern = "[A-Z]")) %>%
+  mutate(Indel = ifelse((str_count(ALT, pattern = "[*]") + str_count(REF, pattern = "[*]")) > 0, "Indel", 
+                        ifelse(Nb_letter != Nb_allele, "Indel", "SNP"))) %>%
+  unite(col = "Var_type", Indel, Nb_allele, sep = "_", remove = F)
+```
+
+```{r All filters stats}
+
+#Tables
+t1 = var_list  %>%
+  group_by(Filter, Var_type) %>%
+  count() %>% 
+  pivot_wider(names_from = Var_type, values_from = n) %>%
+    mutate(Total = sum(Indel_2, Indel_3, SNP_2, SNP_3)) 
+
+t2 = next_steps  %>%
+  group_by(Filter, Var_type) %>%
+  count() %>% 
+  pivot_wider(names_from = Var_type, values_from = n) %>%
+    mutate(Total = sum(Indel_2, Indel_3, SNP_2, SNP_3)) 
+
+bind_rows(t1, t2) %>% kable() 
+
+bind_rows(t1, t2) %>%
+  pivot_longer(-Filter, names_to = "Var_type", values_to = "Var_count") %>%
+  filter(Var_type != "Total") %>%
+  ggplot(aes(x=Filter, y =Var_count, fill = Var_type)) +
+  geom_bar(stat = "identity", position = "stack") +
+  scale_fill_manual(values = c("#FFD399", "#ff9f1c", "#cbf3f0", "#2ec4b6")) +
+  theme_minimal() +
+  labs(title = "Variants number along the filtering steps", 
+       x = "", y = "Number of variants", 
+       fill = "Variant type")
+
+#Bar plots
+variants_per_step1
+next_steps  %>%
+group_by(CHROM, Filter, Var_type) %>%
+count()  %>%
+ggplot(aes(x=as.numeric(CHROM), y =n, fill = Var_type)) +
+  geom_bar(stat = "identity", position = "stack") +
+  facet_wrap(vars(Filter)) +
+  coord_flip() +
+  labs(title = "Variants number after filtering on errors and samples", 
+       x = "Chromosome", y = "Number of variants", 
+       fill = "Variant type") +
+  theme_minimal() +
+  scale_fill_manual(values = c("#FFD399", "#ff9f1c", "#cbf3f0", "#2ec4b6"))
+
+```
+
+```{r allele counts filtered}
+counts = list.files(path = vcf_qual_check_dir, pattern = "filtered.clean.good_samples.frq.count", full.names = T)  %>% 
+    map_df(~read_tsv(., skip = 1, 
+                     col_names = c("CHROM", "POS", "N_ALLELES", "N_CHR", "Count1", "Count2", "Count3"), 
+                     col_types = cols(col_character(), col_double(), col_double(), col_double(), 
+                                      col_double(), col_double(), col_double()))) %>%
+  rowwise() %>%
+  mutate(minorAC = min(Count1, Count2, Count3, na.rm = T), 
+         majorAC = max(Count1, Count2, Count3, na.rm = T),
+         freq = minorAC/N_CHR)
+
+dim(counts %>% filter(mac == 1))
+dim(counts %>% filter(mac > 1))
+
+```
