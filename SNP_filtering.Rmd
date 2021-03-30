@@ -149,7 +149,7 @@ The values obtained above can be used in a [script](./SNP_filter_step1.sh) to ru
 
 
 # Pre-step 2 - Filter checks using resequencing and added layer of position filtering
-
+## Types of variants, types of errors and effect of step 1 filtering on errors
 I want to assess the effect of the filtering on the SNP data. For this, I use four columns from the filtered and unfiltered vcf: chromosome, position, reference allele and alternative allele. This allows me to count the variants, find where they are, and what type of variants they are, in terms of both number of alleles and whether we are looking at SNPs or indels.
 ```{r Get variants from filter}
 
@@ -160,7 +160,7 @@ var_list = bind_rows(paste0(vcf_qual_check_dir, vcf_core_name, c(1:21), ".tab") 
                      paste0(vcf_qual_check_dir, vcf_core_name, c(1:21), ".filtered.clean.tab") %>%
                          map_df(~read_tsv(., col_names = c("CHROM", "POS", "REF", "ALT"), 
                            col_types = cols(col_character(), col_double(), col_character(), col_character()))) %>%
-                         mutate(Filter = "2_Filtered_variants") ) %>% 
+                         mutate(Filter = "2_Filtered_on_quality") ) %>% 
   mutate(Nb_allele = str_count(ALT, pattern = ",") + 2) %>%
   mutate(Nb_letter = str_count(ALT, pattern = "[A-Z]") + str_count(REF, pattern = "[A-Z]")) %>%
   mutate(Indel = ifelse((str_count(ALT, pattern = "[*]") + str_count(REF, pattern = "[*]")) > 0, "Indel", 
@@ -208,7 +208,7 @@ list_unfiltered = setdiff(list.files(path = vcf_qual_check_dir, pattern = paste0
 filtered = list_filtered %>% 
     map_df(~read_tsv(., col_names = c("CHROM", "POS", "REF", "ALT", "Clone1", "Clone2"), 
                         col_types = cols(col_character(), col_double(), col_character(), col_character(), col_character(), col_character()))) %>%
-    mutate(Filter = "2_Filtered_variants") 
+    mutate(Filter = "2_Filtered_on_quality") 
 
 unfiltered = list_unfiltered %>% 
     map_df(~read_tsv(., col_names = c("CHROM", "POS", "REF", "ALT", "Clone1", "Clone2"), 
@@ -348,7 +348,7 @@ t2 = as.data.frame(table(err_var_list %>%
   select(n)))
 
 t3 = as.data.frame(table(err_var_list %>% 
-  filter(Filter == "2_Filtered_variants") %>%
+  filter(Filter == "2_Filtered_on_quality") %>%
   group_by(CHROM, POS, Filter, Var_type) %>% 
   count() %>%
     ungroup() %>%
@@ -405,10 +405,12 @@ ggplot(t3, aes(x = Var1, y = Freq, label = Freq, fill = as.numeric(Var1) > 1)) +
        fill = str_wrap("Filtered out", 20)) +
   theme_minimal() +
   scale_fill_manual(values = c("#FF9F1C", "#FF9F1C")) 
+```
 
+```{r, eval = F}
 # Printing of the erroneous variant table shared by at least 2 samples 
 err_var_list %>% 
-  filter(Filter == "2_Filtered_variants") %>%
+  filter(Filter == "2_Filtered_on_quality") %>%
   group_by(CHROM, POS, Filter, Var_type) %>% 
   count() %>% ungroup %>% 
   filter(n > 1) %>%
@@ -432,7 +434,7 @@ for (chr in c(1:length(chromosomes$CHROM))) {
                             Filter = "1_Raw_variants"),
                             tibble(CHROM = as.character(chr), 
                             Window = seq(from = 0, to = chromosomes$Length[14], by = win_size), 
-                            Filter = "2_Filtered_variants"))
+                            Filter = "2_Filtered_on_quality"))
 
 }
 
@@ -474,7 +476,7 @@ TE_annot_t = read_tsv(TE_annot, col_names = c("CHROM", "Start", "Stop")) #%>%
 #                select(-whatever) 
 
 temp %>%
-  filter(Filter == "2_Filtered_variants") %>%
+  filter(Filter == "2_Filtered_on_quality") %>%
   filter(as.integer(CHROM) == 4) %>% 
 ggplot(data = .)  + 
   geom_rect(data=TE_annot_t %>% filter(as.integer(CHROM) == 4), 
@@ -490,18 +492,23 @@ ggplot(data = .)  +
 From the graph, it does look like there is
 ```{r overlap TE_errors, results='asis'}
 
-
+unfilterrorsGR = makeGRangesFromDataFrame(err_var_list %>% 
+                                      filter(Filter == "1_Raw_variants") %>%
+                                      select(chr = CHROM, start = POS, end = POS) %>% 
+                                      unique())  
 TEGR = makeGRangesFromDataFrame(TE_annot_t %>% 
                                   #mutate(Start = Start - 100, Stop = Stop + 100) %>%
                                   select(chr = CHROM, start = Start, end = Stop))  
 errorsGR = makeGRangesFromDataFrame(err_var_list %>% 
-                                      filter(Filter == "2_Filtered_variants") %>%
+                                      filter(Filter == "2_Filtered_on_quality") %>%
                                       select(chr = CHROM, start = POS, end = POS) %>% 
                                       unique())  
-cat("Total number of errors:", sum(width(errorsGR)), "\n")
+
+cat("Total number of unfiltered errors:", sum(width(unfilterrorsGR)), "\n")
+cat("Total number of errors post-filtering:", sum(width(errorsGR)), "\n")
 cat("Total length of TEs:", sum(width(TEGR)), "\n")
-cat("Error number in TEs:", sum(width(intersect(errorsGR, TEGR))) , "\n")
-cat("Error number outside of TEs:", sum(width(setdiff(errorsGR, TEGR))), "\n")
+cat("Error number of errors post-filtering in TEs:", sum(width(intersect(errorsGR, TEGR))) , "\n")
+cat("Error number of errors post-filtering outside of TEs:", sum(width(setdiff(errorsGR, TEGR))), "\n")
 
 
 ```
@@ -518,7 +525,7 @@ counts = list.files(path = vcf_qual_check_dir, pattern = "filtered.clean.frq.cou
 
 
 temp = err_var_list %>% 
- # filter(Filter == "2_Filtered_variants") %>%
+ # filter(Filter == "2_Filtered_on_quality") %>%
   select(CHROM, POS) %>% 
   unique() %>% 
   left_join(., counts) %>%
@@ -535,6 +542,116 @@ ggplot(temp, aes(x = freq)) +
   geom_density(fill ="#2EC4B6", col = "#2EC4B6") +
   theme_minimal()
            
+```
+
+## Set up allelic balance filter
+We clearly have way too many errors after the first round of filtering. Another possible cause of errors could be that the intrinsic machinery of GATK is made for diploids and not for haploids. How does it treat the positions with reads giving conflicting information that would be called heterozygous positions in a diploid?
+```{r Get AD }
+#Read data for all chromosomes and for each pair of samples
+list_AD = list()
+for (sample in c(1:length(reseq_list$Name_1))) {
+
+list_AD[[sample]] = list.files(path = vcf_qual_check_dir, pattern = paste0("filtered.clean.", reseq_list$Name_1[sample], ".AD.tab"), 
+                               full.names = T) %>% 
+    map_df(~read_tsv(., col_names = c("CHROM", "POS", "REF", "ALT", "GT1", "AD1", "GT2", "AD2"), 
+                        col_types = cols(col_character(), col_double(), col_character(), col_character(), 
+                                         col_character(), col_character(), col_character(), col_character()))) %>%
+    mutate(Filter = "2_Filtered_on_quality")  %>% 
+    mutate(Sample = reseq_list$Name_1[sample]) 
+}
+
+# Gather every table previously read in one single dataframe
+# and transform to estimate the number of allele and whether the position is only SNPs or has at least one indel
+err_AD_list = bind_rows(list_AD) %>%
+  separate(AD1, into = c("AD1_0", "AD1_1", "AD1_2"), sep = ",", remove = F, convert = T) %>%
+  separate(AD2, into = c("AD2_0", "AD2_1", "AD2_2"), sep = ",", remove = F, convert = T) %>%
+  rowwise() %>%
+  mutate(AB1 = max(AD1_0, AD1_1, AD1_2, na.rm = T)/sum(AD1_0, AD1_1, AD1_2, na.rm = T),
+         AB2 = max(AD2_0, AD2_1, AD2_2, na.rm = T)/sum(AD2_0, AD2_1, AD2_2, na.rm = T),
+         min_AD = min(max(AD1_0, AD1_1, AD1_2, na.rm = T), max(AD2_0, AD2_1, AD2_2, na.rm = T))) %>%
+  mutate(Allelic_balance = ifelse(AB1 > 0.99 && AB2 > 0.99, "Expected AB", "Unbalanced AB")) %>% 
+  mutate(Nb_allele = str_count(ALT, pattern = ",") + 2) %>%
+  mutate(Nb_letter = str_count(ALT, pattern = "[A-Z]") + str_count(REF, pattern = "[A-Z]")) %>%
+  mutate(Indel = ifelse((str_count(ALT, pattern = "[*]") + str_count(REF, pattern = "[*]")) > 0, "Indel", 
+                        ifelse(Nb_letter != Nb_allele, "Indel", "SNP"))) %>%
+  unite(col = "Var_type", Indel, Nb_allele, sep = "_", remove = F) 
+
+
+
+
+err_AD_list %>%
+  group_by(Var_type, Allelic_balance) %>%
+  dplyr::count() %>%
+  pivot_wider(names_from = Allelic_balance, values_from = n)
+  
+err_AD_list %>%
+  group_by(Filter, Var_type, Allelic_balance) %>%
+  count() %>%
+  ggplot(aes(x=Allelic_balance, y =n, fill = Var_type)) +
+     geom_bar(stat = "identity") +
+     labs(x = "Allelic balance", y = "Proportion of variants") +
+     theme_minimal()+
+     scale_fill_manual(values = c("#FFD399", "#ff9f1c", "#cbf3f0", "#2ec4b6", "grey"))
+
+```
+
+```{r AD rest errors}
+# 
+err_AD_list %>%
+  filter(Allelic_balance == "Expected AB") %>%
+  filter(min_AD < 20) %>%
+  ggplot(aes(x=min_AD)) +
+  geom_histogram(bins = 20)
+
+```
+
+```{r summary filtering}
+
+#Numbers
+errorsAB = makeGRangesFromDataFrame(err_AD_list %>% 
+                                      filter(Allelic_balance == "Expected AB")  %>%
+                                      select(chr = CHROM, start = POS, end = POS) %>% 
+                                      unique())  
+
+cat("Total number of unfiltered errors:", sum(width(unfilterrorsGR)), "\n",
+    "Total number of errors post-quality filtering:", sum(width(errorsGR)), "\n",
+    "Total number of errors post-AB filtering :", sum(width(errorsAB)), "\n",
+    "----\n",
+    "Total length of TEs:", sum(width(TEGR)), "\n",
+    "Error number of errors post-quality filtering in TEs:", sum(width(intersect(errorsGR, TEGR))) , "\n",
+    "Error number of errors post-quality filtering outside of TEs:", sum(width(setdiff(errorsGR, TEGR))), "\n",
+    "Error number of errors post-AB filtering in TEs:", sum(width(intersect(errorsAB, TEGR))) , "\n",
+    "Error number post-AB filtering outside of TEs:", sum(width(setdiff(errorsAB, TEGR))), "\n")
+
+
+
+#Figure
+All_P = bind_rows(err_var_list, 
+          err_AD_list %>% 
+            filter(Allelic_balance == "Expected AB") %>%
+            mutate(Filter = "3_Filtered_on_AB")) %>%
+  ggplot(aes(x=Filter, fill = Var_type)) +
+     geom_bar(position = "dodge") + 
+     labs(x = element_blank(), y = "Number of variants") +
+     theme_minimal()+
+     scale_fill_manual(values = c("#FFD399", "#ff9f1c", "#cbf3f0", "#2ec4b6", "grey"))
+
+
+SNP_P = bind_rows(err_var_list, 
+          err_AD_list %>% 
+            filter(Allelic_balance == "Expected AB") %>%
+            mutate(Filter = "3_Filtered_on_AB")) %>%
+  filter(Var_type == "SNP_2") %>%
+  ggplot(aes(x=Filter, fill = Var_type)) +
+     geom_bar(position = "dodge") + 
+stat_count(geom = "text", colour = "black", size = 3.5,
+aes(label = ..count..),position=position_stack(vjust=0.5)) + 
+     labs(x = element_blank(), y = "Number of variants") +
+     theme_minimal()+
+     scale_fill_manual(values = c("#cbf3f0", "#2ec4b6", "grey")) +
+  theme(legend.position = "none")
+
+cowplot::plot_grid(All_P +coord_flip() +theme(legend.position = "left"), SNP_P+coord_flip(), rel_widths = c(1, 0.8))
 ```
 
 
@@ -564,7 +681,9 @@ samples_to_filter = info_per_ind %>%
   filter(F_MISS > NA_thr) %>%
   select(INDV) %>% 
   pull()
+```
 
+```{r, eval = F}
 info_per_ind %>% 
   filter(F_MISS > NA_thr) %>%
   select(INDV) %>%
@@ -733,7 +852,9 @@ as.data.frame(table(nodes_with_groups$Filter_based_on_ibs)) %>%
         panel.border=element_blank()) + 
   geom_text(aes(label = Freq), 
                position = position_stack(vjust = 0.5), size = 4)
+```
 
+```{r, eval = F}
 #Writing a file to indicate which samples to remove
 nodes_with_groups %>%
   filter(Filter_based_on_ibs == "Filter_out") %>%
@@ -817,7 +938,7 @@ counts = list.files(path = vcf_qual_check_dir, pattern = "filtered.clean.good_sa
                      col_types = cols(col_character(), col_double(), col_double(), col_double(), 
                                       col_double(), col_double(), col_double()))) %>%
   rowwise() %>%
-  mutate(minorAC = min(Count1, Count2, Count3, na.rm = T), 
+  dplyr::mutate(minorAC = min(Count1, Count2, Count3, na.rm = T), 
          majorAC = max(Count1, Count2, Count3, na.rm = T),
          freq = minorAC/N_CHR)
 

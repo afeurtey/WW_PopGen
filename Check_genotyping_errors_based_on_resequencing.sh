@@ -40,5 +40,5 @@ ${BCFTOOLS_PATH}  view  \
  awk '$5 != $6 && $5 != "." && $6 != "." {print}' \
   > ${vcf_qual_check_dir}${VCFNAME}.filtered.clean.${clone1}.tab
 
-done < /home/alice/WW_PopGen/Keep_lists_samples/Repeat_sequencing.txt 
+done < /home/alice/WW_PopGen/Repeat_sequencing.txt 
 

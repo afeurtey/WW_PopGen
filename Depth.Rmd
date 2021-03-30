@@ -15,6 +15,8 @@ dir_name = "/data2/alice/WW_project/"
 data_dir = "/data2/alice/WW_project/0_Data/"
 data_dir=paste0(dir_name, "0_Data/")
 metadata_dir=paste0(dir_name, "Metadata/")
+list_dir="/home/alice/WW_PopGen/Keep_lists_samples/"
+
 
 #Analysis directories
 #--------------------
@@ -28,11 +30,15 @@ Zt_list = read_tsv("/home/alice/WW_PopGen/Keep_lists_samples/Ztritici_global_Mar
 metadata_cols = read_tsv("/home/alice/WW_PopGen/Keep_lists_samples/Main_table_from_SQL_Feb_2020_Description.tab", 
                          col_names = F) %>% pull()
 metadata_file= read_tsv("/home/alice/WW_PopGen/Keep_lists_samples/Main_table_from_SQL_Feb_2020_with_collection.tab",
-                        col_names = metadata_cols) %>%
-  inner_join(., Zt_list)
+                        col_names = metadata_cols) 
 
 
 Sys.setenv(WINDEPTH=depth_per_window_dir)
+
+
+knitr::opts_chunk$set(message = F)
+knitr::opts_chunk$set(warning = F)
+knitr::opts_chunk$set(results = T)
 ```
 
 #Depth per chromosome
@@ -195,7 +201,7 @@ depth_per_win = files %>%
                                             separate(col = temp, into = c("ID_file", "CHROM", "Win_start", "Win_stop"),
                                                      sep = ":") %>%
                                              inner_join(., random_GC_windows)) %>%
-  inner_join(., Zt_list)
+  left_join(., Zt_list)
 
 write_tsv(depth_per_win, paste0(depth_per_window_dir, "Depth_for_GC_bias.txt"))
 ```
@@ -212,7 +218,8 @@ scale_this <- function(x){
 GC_coverage = depth_per_win %>%
   filter(Depth > 0) %>%
   group_by(ID_file) %>%
-  dplyr::mutate(scaled_depth = scale_this(Depth))
+  dplyr::mutate(scaled_depth = scale_this(Depth)) %>%
+  filter(!is.na(scaled_depth)) 
 
 
 #GC bias estimation
@@ -221,11 +228,14 @@ getAlpha<-function(i){
   temp = GC_coverage %>%
     filter(ID_file == i) #%>%
     #mutate(log_depth = log(Depth))
-
+  
+  if (nrow(temp) < 10) {
+    return(NA)} else {
   linearMod <- lm(scaled_depth ~ GC, data=temp)  # build linear regression model on full data
   alpha = linearMod$coefficients["GC"]
-  return (alpha)}
+  return (alpha)}}
 v_getAlpha <- Vectorize(getAlpha)
+
 
 GC_bias = GC_coverage %>%
   dplyr::select(ID_file) %>%
@@ -262,7 +272,7 @@ GC_coverage %>%
          subtitle = "I use the slope of a linear model to infer the GC bias.")
 
 #GC bias per collection
-inner_join(temp, GC_bias) %>%
+GC_bias_violins = inner_join(temp, GC_bias) %>%
   group_by(Collection) %>%
   mutate(Median = median(GC_bias_slope)) %>%
  ggplot(., aes(x = reorder(Collection, Median), y = GC_bias_slope, fill = reorder(Collection, Median))) +
@@ -271,7 +281,7 @@ inner_join(temp, GC_bias) %>%
   theme(axis.text.x = element_text(angle = 30, vjust = 1, hjust = 1),
         plot.margin = unit(c(0.5, 0.5, 0.5, 1), "cm")) +
   labs(x = "Collection", y = "GC bias estimate")
-
+GC_bias_violins
 
 ```
 It is very clear that we do have a batch effect but also that some datasets are very, very biased. The older Hartmann data (also called Qst population) in particular is strongly biased.
@@ -339,3 +349,128 @@ write_tsv(depth_per_gene, paste0(depth_per_gene_dir, "Depth_per_genes_normalized
 ```
 
 
+# Depth for resequencing pairs
+
+```{r GC bias per pair}
+repeat_seq = read_delim(paste0(list_dir, "Repeat_sequencing.txt"), col_names = c("Seq1", "Seq2"), delim = " ") %>%
+  mutate(Pair = paste0("Pair_", c(1:length(Seq1)))) %>% 
+  pivot_longer(-Pair, names_to = "temp", values_to = "ID_file") %>% 
+  #dplyr::select(-temp) %>%
+  left_join(., GC_bias) %>%
+  mutate(Collection = ifelse(is.na(Collection), "ETHZ_2020", Collection))
+
+repeat_collec = unique(repeat_seq$Collection)
+
+inner_join(temp, GC_bias) %>%
+  filter(Collection %in% repeat_collec) %>%
+  group_by(Collection) %>%
+  mutate(Median = median(GC_bias_slope)) %>%
+ ggplot(.) +
+  geom_violin(aes(x = reorder(Collection, Median), y = GC_bias_slope), alpha = .7) +
+  theme_bw()  +
+  theme(axis.text.x = element_text(angle = 30, vjust = 1, hjust = 1),
+        plot.margin = unit(c(0.5, 0.5, 0.5, 1), "cm")) +
+  labs(x = "Collection", y = "GC bias estimate") +
+  geom_point(data = repeat_seq, aes(col = Pair, x = Collection, y = GC_bias_slope))
+
+
+temp2 = repeat_seq %>% dplyr::select(Pair, temp, GC_bias_slope) %>% pivot_wider(names_from = temp, values_from = GC_bias_slope)
+pair_GC_plot = ggplot(data = repeat_seq, aes(y = Pair, x = GC_bias_slope)) + 
+  geom_point(aes(col = Collection)) + 
+  geom_segment(data = temp2, aes(y = Pair, yend = Pair, x = Seq1, xend = Seq2)) + 
+  theme_bw() +
+  labs(x = "GC bias estimation", y = element_blank())
+  
+```
+
+```{r TE vs GCbias}
+TE = read_delim("/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/Nb_reads_repeat_sequencing.txt", delim = " ") %>%
+  mutate(Percent_TE_reads = 100*Te_aligned_reads/Genome_aligned_reads) %>%
+  inner_join(repeat_seq)
+
+#Plot TE content
+seg_TE = TE %>% dplyr::select(Pair, temp, Percent_TE_reads) %>% pivot_wider(names_from = temp, values_from = Percent_TE_reads)
+pair_TE_plot = ggplot(data = TE, aes(y = Pair, x = Percent_TE_reads)) + 
+  geom_point(aes(col = Collection)) + 
+  geom_segment(data = seg_TE, aes(y = Pair, yend = Pair, x = Seq1, xend = Seq2)) + 
+  theme_bw() +
+  labs(x = "TE content estimation", y = element_blank())
+
+#Get legend and put plots together
+legend = get_legend(pair_GC_plot + theme(legend.position = "bottom"))
+
+row_plot = cowplot::plot_grid(pair_GC_plot + theme(legend.position = "none"),
+                              pair_TE_plot + theme(legend.position = "none"),
+                              ncol = 2, labels = c("A", "B"))
+
+cowplot::plot_grid(row_plot, legend, rel_heights = c(10, 1), ncol = 1)
+```
+
+
+```{r CNV comparison}
+
+genes_pairs = paste0(depth_per_gene_dir, unique(repeat_seq$ID_file), ".depth_per_gene.q30.txt") %>%
+  map_dfr(~read_tsv(., col_names = c("temp", "Depth")) %>%
+               separate(col = temp, into = c("ID_file", "CHROM", "Gene"), sep = ":")) 
+
+
+temp = genes_pairs %>%
+  filter(str_detect(Gene, "_TU_"))  %>% 
+  filter( !str_detect(Gene, "Parent")) %>%
+  filter(as.numeric(CHROM) < 14) %>%
+  group_by(ID_file) %>%
+  summarize(Median_core = median(Depth))
+
+genes_pairs = genes_pairs %>%
+  inner_join(., temp) %>%
+  mutate(Norm_median_depth = round(Depth / Median_core)) %>%
+  filter(str_detect(Gene, "_TU_"))  %>% 
+  filter( !str_detect(Gene, "Parent")) %>%
+  separate(col = Gene, into = c("ID", "Name"), sep = ";") %>%
+  select(-ID) %>%
+  mutate(Name = str_replace(Name, "Name=", "")) %>% 
+  full_join(., repeat_seq)
+
+temp = genes_pairs %>%
+  dplyr::select(Pair, temp, Name, Norm_median_depth) %>%
+  pivot_wider(names_from = temp, values_from = Norm_median_depth) %>%
+  mutate(diff = abs(Seq1 - Seq2))
+
+p1 = temp %>% 
+  group_by(Pair) %>%
+  count(diff) %>%
+  pivot_wider(names_from = diff, values_from = n) %>% 
+   ggplot(aes(x = Pair, y = `1`, fill = Pair)) + 
+   geom_bar(stat = "identity") + 
+   theme_bw() +
+   labs(y = "Number of genes", x = "",
+        subtitle = "Genes with a different CNV value per pair") 
+
+
+p2 = temp %>% 
+   filter(diff > 0) %>% 
+   group_by(Name) %>% 
+   count() %>% 
+   ggplot(aes(n)) + 
+   geom_histogram(bins = 6) + 
+   theme_bw() +
+   labs(y = "Number of genes", x = "Number of pairs",
+        subtitle = "Genes with a difference CNV value shared between pairs") 
+ 
+row1 = cowplot::plot_grid(p1 + theme(legend.position = "none"), p2, ncol = 2, labels = c("A", "B"))
+
+
+p3 = genes_pairs %>%
+  filter(Norm_median_depth != 1) %>%
+  group_by(ID_file, Norm_median_depth) %>%
+  count()%>% 
+   ggplot(aes(x = ID_file, y = n, fill = as.character(Norm_median_depth))) + 
+   geom_bar(stat = "identity") + 
+   theme_bw() +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1, vjust = 1),
+        plot.margin = unit(c(0.5, 0.5, 0.5, 1.5), "cm")) +
+  labs(y = "Number of genes", x = element_blank(),
+       fill = "CNV")
+  
+cowplot::plot_grid(row1, p3, ncol =1, labels = c("", "C"))
+```
