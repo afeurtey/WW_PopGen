@@ -282,11 +282,6 @@ ggplot(aes(x=`Sampling year`, y =`Genome number`, fill = Continent)) +
 <br><br>
 
 
-
-
-
-
-
 # Variant calling
 ***
 ## Whole chromosomes SNV
@@ -1577,10 +1572,23 @@ The depth looks a bit strange around of region of interest. But the ratio of all
 
 In order to check further if the variants could be erroneously called around a structural variation of some type that the mapping + SNP calling would be confused by, I want to see if I can recover the  variants in pairwise alignments between the reference mitochondria and assembled mitochondria from the resequencing. To limit problems due to low quality assemblies or alignments, I only use the mitochondrial genomes which are completely assembled, i.e. a contig which represent 95% of the length aligned to the mitochondria in the assembly and is longer than 30kb. 
 ```{r find complete mito}
-#while read p ; do sh Detect_gene_blast.sh /home/alice/WW_project/WW_PopGen/Directories_new.sh /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+_only.fa ${p} Illumina /data2/alice/WW_project/2_Population_structure/1_Mitochondrial_genome/${p}.mitochondria.blast ; done < Keep_lists_samples/list_Third_batch_Dec_2018.txt
 
+# ----------------------------------------------------------------------------------------------------
 
-mito_blast_results_complete = read_delim(paste0(mito_PS_dir, "Most_genomes.mitochondria.blast"), delim = " ",
+# Copy of the commands used on the cluster to get all the data
+# ------------------------------------------------------------
+# Get list of good assemblies -> blast mitochondrial reference -> concatenate all results
+
+#cut -f 1 /data2/alice/WW_project/0_Data/2_Denovo_assemblies/Good_assemblies_stats.tab | sed '1d' > /home/alice/WW_PopGen/Keep_lists_samples/Good_assemblies.args
+
+#sbatch -p normal.168h --array=1-1195%50 Detect_gene_blast_array.sh /home/alice/WW_PopGen/Directories_new.sh /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+_only.fa /home/alice/WW_PopGen/Keep_lists_samples/Good_assemblies.args Illumina /data2/alice/WW_project/2_Population_structure/1_Mitochondrial_genome/
+
+# cat /data2/alice/WW_project/2_Population_structure/1_Mitochondrial_genome/*blast.tab >  /data2/alice/WW_project/2_Population_structure/1_Mitochondrial_genome/Mitochondria.blast_results.tsv
+
+# ----------------------------------------------------------------------------------------------------
+
+# After importing the concatenated table locally
+mito_blast_results_complete = read_delim(paste0(mito_PS_dir, "Mitochondria.blast_results.tsv"), delim = " ",
                                 col_names = c("sample_id", "gene", "qseqid", "sseqid", "pident", "length",
                                               "mismatch", "gapopen", "qstart", "qend",
                                               "sstart", "send", "evalue", "bitscore"))
