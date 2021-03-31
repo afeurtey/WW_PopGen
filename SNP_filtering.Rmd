@@ -919,10 +919,10 @@ nodes_with_groups %>%
 # Number of variants per step
 ```{r}
 #Reading the variants stats for the next steps
-next_steps = bind_rows(read_tsv(paste0(vcf_qual_check_dir, vcf_core_name, "ALL.filtered.clean.tab"), 
+next_steps = bind_rows(read_tsv(paste0(vcf_qual_check_dir, vcf_core_name, "ALL.filtered.clean.AB_filtered.variants.tab"), 
                    col_names = c("CHROM", "POS", "REF", "ALT")) %>%
             mutate(Filter = "3_Filtered_errors"), 
-                   read_tsv(paste0(vcf_qual_check_dir, vcf_core_name, "ALL.filtered.clean.good_samples.tab"), 
+                   read_tsv(paste0(vcf_qual_check_dir, vcf_core_name, "ALL.filtered.clean.AB_filtered.variants.good_samples.tab"), 
                             col_names = c("CHROM", "POS", "REF", "ALT")) %>%
             mutate(Filter = "4_Filtered_samples")) %>% 
   mutate(Nb_allele = str_count(ALT, pattern = ",") + 2) %>%
@@ -978,7 +978,7 @@ ggplot(aes(x=as.numeric(CHROM), y =n, fill = Var_type)) +
 ```
 
 ```{r allele counts filtered}
-counts = list.files(path = vcf_qual_check_dir, pattern = "filtered.clean.good_samples.frq.count", full.names = T)  %>% 
+counts = list.files(path = vcf_qual_check_dir, pattern = "filtered.clean.AB_filtered.variants.good_samples.frq.count", full.names = T)  %>% 
     map_df(~read_tsv(., skip = 1, 
                      col_names = c("CHROM", "POS", "N_ALLELES", "N_CHR", "Count1", "Count2", "Count3"), 
                      col_types = cols(col_character(), col_double(), col_double(), col_double(), 

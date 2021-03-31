@@ -15,6 +15,7 @@ library(cowplot)
 dir_name = "/data2/alice/WW_project/"
 data_dir = "/data2/alice/WW_project/0_Data/"
 data_dir=paste0(dir_name, "0_Data/")
+assemb_dir = paste0(data_dir, "2_Denovo_assemblies/")
 metadata_dir=paste0(dir_name, "Metadata/")
 list_dir="/home/alice/WW_PopGen/Keep_lists_samples/"
 
@@ -485,3 +486,160 @@ p3 = genes_pairs %>%
   
 cowplot::plot_grid(row1, p3, ncol =1, labels = c("", "C"))
 ```
+
+
+
+
+# De novo assemblies
+
+```{bash, eval = F}
+
+while read sample; 
+do 
+  echo $sample; 
+  python ~/Common_scripts/Rename_fragments_in_fasta.py \
+     --input /data2/alice/WW_project/0_Data/2_Denovo_assemblies/${sample}/scaffolds.fasta \
+     -o /data2/alice/WW_project/0_Data/2_Denovo_assemblies/${sample}.fasta \
+     --sample_name ${sample} --format spades --match_length_lines ; 
+done < Keep_lists_samples/Assembled.sample_list.args
+```
+
+```{bash}
+echo -e "Sample\tAssembly_type\tEstimate\tValue" > /data2/alice/WW_project/0_Data/2_Denovo_assemblies/Stats_filtered_assemblies.tab ;
+while read sample; 
+do 
+  echo $sample; 
+  python /home/alice/Common_scripts/Stats_from_fasta.py \
+     /data2/alice/WW_project/0_Data/2_Denovo_assemblies/${sample}.fasta; 
+  cat /data2/alice/WW_project/0_Data/2_Denovo_assemblies/${sample}.fasta_stats.txt | \
+    awk -v sample=$sample 'BEGIN{FS = "\t"; OFS = "\t"} {print sample, "Filtered", $1, $2} ' >> \
+    /data2/alice/WW_project/0_Data/2_Denovo_assemblies/Stats_filtered_assemblies.tab ; 
+done < Keep_lists_samples/Assembled.sample_list.args
+
+echo -e "Sample\tAssembly_type\tEstimate\tValue" > /data2/alice/WW_project/0_Data/2_Denovo_assemblies/Stats_raw_assemblies.tab
+while read sample; 
+do 
+  echo $sample; 
+  python /home/alice/Common_scripts/Stats_from_fasta.py \
+    /data2/alice/WW_project/0_Data/2_Denovo_assemblies/${sample}/scaffolds.fasta; 
+  cat /data2/alice/WW_project/0_Data/2_Denovo_assemblies/${sample}/scaffolds.fasta_stats.txt | \
+    awk -v sample=$sample 'BEGIN{FS = "\t"; OFS = "\t"} {print sample, "Raw", $1, $2} ' >> \
+    /data2/alice/WW_project/0_Data/2_Denovo_assemblies/Stats_raw_assemblies.tab ; 
+done < Keep_lists_samples/Assembled.sample_list.args
+
+
+```
+```{r}
+assemb_stats = bind_rows(read_tsv(paste0(assemb_dir, "Stats_raw_assemblies.tab")), 
+                         read_tsv(paste0(assemb_dir, "Stats_filtered_assemblies.tab"))) %>%
+  left_join(metadata_file, by = c("Sample" = "ID_file"))
+
+
+assemb_stats %>%
+  filter(!grepl("est contig", Estimate)) %>%
+  ggplot(aes(x = Value, fill = Assembly_type, col = Assembly_type)) +
+    geom_density(alpha = 0.6) +
+    theme_bw() + 
+    facet_wrap(vars(Estimate), scales = "free") +
+    scale_fill_manual(values = c("#FF9F1C", "#2EC4B6"))  +
+    scale_color_manual(values = c("#FF9F1C", "#2EC4B6")) 
+
+assemb_stats  %>%
+  filter(Assembly_type == "Filtered") %>%
+  filter(!grepl("est contig", Estimate)) %>%
+  group_by(Collection) %>%
+  mutate(Nb_per_collec = n()/4) %>%
+  filter(Nb_per_collec > 10) %>%
+  filter(Assembly_type == "Filtered") %>%
+  ggplot(aes(x = Collection, y = Value, fill = Collection)) +
+    geom_violin() +
+    theme_bw() + 
+    facet_grid(rows = vars(Estimate), scales = "free") +
+  theme(axis.text.x = element_text(angle = 30, vjust = 1, hjust = 1)) +
+  labs(x = element_blank())
+
+assemb_stats %>%
+  filter(Assembly_type == "Filtered") %>%
+  filter(!grepl("est contig", Estimate)) %>%
+  ggplot(aes(x = Value, fill = Assembly_type, col = Assembly_type)) +
+    geom_density(alpha = 0.6) +
+    theme_bw() + 
+    facet_wrap(vars(Estimate), scales = "free") +
+    scale_fill_manual(values = c("#FF9F1C", "#2EC4B6"))  +
+    scale_color_manual(values = c("#FF9F1C", "#2EC4B6")) 
+```
+
+```{r de novo thresholds}
+
+nb_contig_thr = 1600
+temp = assemb_stats %>%
+  filter(Assembly_type == "Filtered") %>%
+  filter(Estimate == "Nb contigs") 
+p1 = ggplot(temp, aes(x = Value, fill = Assembly_type, col = Assembly_type)) +
+  geom_density(alpha = 0.6) + 
+  geom_vline(xintercept = nb_contig_thr, col =  "#2EC4B6")  +
+  theme_bw() + 
+  labs(x = "Number of contigs",
+       y = element_blank(), 
+       subtitle = str_wrap(paste0(sum(temp$Value >= nb_contig_thr), 
+                         " bad quality / ", 
+                         sum(temp$Value < nb_contig_thr), " good quality"), 
+                         width = 60)) +
+    scale_fill_manual(values = c("#FF9F1C"))  +
+    scale_color_manual(values = c("#FF9F1C"))
+
+length_thr1 = 30000000
+length_thr2 = 40000000
+temp = assemb_stats %>%
+  filter(Assembly_type == "Filtered") %>%
+  filter(Estimate == "Cumulated length") 
+p2 = ggplot(temp, aes(x = Value, fill = Assembly_type, col = Assembly_type)) +
+    geom_density(alpha = 0.6) + 
+    geom_vline(xintercept = length_thr1, col =  "#2EC4B6")  +
+    geom_vline(xintercept = length_thr2, col =  "#2EC4B6")  +
+  theme_bw() + 
+  labs(x = "Length",
+       y = element_blank(), 
+       subtitle = str_wrap(paste0(sum(temp$Value <= length_thr1 | temp$Value  >= length_thr2), 
+                         " bad quality / ", 
+                         sum(temp$Value > length_thr &temp$Value  <= length_thr2), " good quality"), 
+                         width = 60))+
+    scale_fill_manual(values = c("#FF9F1C"))  +
+    scale_color_manual(values = c("#FF9F1C"))
+
+
+
+good_assemb = assemb_stats %>%
+  filter(Assembly_type == "Filtered") %>%
+  select(Sample, Estimate, Value) %>%
+  pivot_wider(names_from = Estimate, values_from = Value) %>%
+  filter(`Cumulated length` > length_thr1 & `Cumulated length`  < length_thr2) %>%
+  filter(`Nb contigs` <= nb_contig_thr)
+
+kept_assemblies = length(unique(good_assemb$Sample))
+
+p3 = good_assemb %>%
+  pivot_longer(-Sample, names_to = "Estimate", values_to = "Value") %>%
+  ggplot(aes(x = Value)) +
+    geom_density(alpha = 0.6, col = "#2EC4B6", fill = "#2EC4B6") +
+    theme_bw() + 
+    facet_wrap(vars(Estimate), scales = "free") + 
+  labs(x = element_blank(), y = element_blank(), 
+       subtitle = str_wrap(paste0("Combining the two filters retains ", kept_assemblies, 
+                         " good quality assemblies."), 
+                         width = 100))
+
+top_row = cowplot::plot_grid(p1 + theme(legend.position = "none"),
+                   p2 + theme(legend.position = "none"),
+                   ncol = 2, labels = c("A", "B"))
+
+cowplot::plot_grid(top_row, p3, ncol =1, labels = c("", "C"))
+
+good_assemb %>%
+  write_tsv(paste0(assemb_dir, "Good_assemblies_stats.tab"))
+```
+
+
+
+
+<br><br>
