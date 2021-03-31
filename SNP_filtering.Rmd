@@ -30,7 +30,7 @@ vcf_core_name = "Ztritici_global_March2021.genotyped."
 test_vcf_name = paste0(dir_name, "1_Variant_calling/4_Joint_calling/",
                   vcf_core_name, test_CHR)
 subset_vcf_name = paste0(dir_name, "1_Variant_calling/4_Joint_calling/",
-                  vcf_core_name, subset_CHR, ".filtered.clean")
+                  vcf_core_name, subset_CHR, ".filtered.clean.AB_filtered.variants")
 ref_genome = paste0(dir_name, "0_Data/", "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa")
 vcf_qual_check_dir = paste0(dir_name, "1_Variant_calling/5_Quality_checks/")
 TE_annot = paste0(dir_name, "4_TE_RIP/Ursula_IPO323_TE_merged.bed")
@@ -107,7 +107,6 @@ Now that we have the data extracted, I can make figures and test values for the 
 FS_thr = 10
 MQ_thr = 20
 QD_thr = 20
-#DP_thr = 100000
 ReadPosRankSum_thr_high = 2
 ReadPosRankSum_thr_low = -2
 MQRankSum_thr_high = 2
@@ -595,15 +594,6 @@ err_AD_list %>%
 
 ```
 
-```{r AD rest errors}
-# 
-err_AD_list %>%
-  filter(Allelic_balance == "Expected AB") %>%
-  filter(min_AD < 20) %>%
-  ggplot(aes(x=min_AD)) +
-  geom_histogram(bins = 20)
-
-```
 
 ```{r summary filtering}
 
@@ -630,10 +620,14 @@ All_P = bind_rows(err_var_list,
           err_AD_list %>% 
             filter(Allelic_balance == "Expected AB") %>%
             mutate(Filter = "3_Filtered_on_AB")) %>%
+  select(Var_type, Filter, POS, CHROM) %>%
+  distinct() %>%
   ggplot(aes(x=Filter, fill = Var_type)) +
      geom_bar(position = "dodge") + 
-     labs(x = element_blank(), y = "Number of variants") +
-     theme_minimal()+
+     labs(x = element_blank(), 
+          y = "Number of erroneous variants",
+       fill = "Variant type") +
+     theme_minimal() +
      scale_fill_manual(values = c("#FFD399", "#ff9f1c", "#cbf3f0", "#2ec4b6", "grey"))
 
 
@@ -642,18 +636,58 @@ SNP_P = bind_rows(err_var_list,
             filter(Allelic_balance == "Expected AB") %>%
             mutate(Filter = "3_Filtered_on_AB")) %>%
   filter(Var_type == "SNP_2") %>%
-  ggplot(aes(x=Filter, fill = Var_type)) +
+  select(Var_type, Filter, POS, CHROM) %>%
+  distinct() %>%
+   ggplot(aes(x=Filter, fill = Var_type)) +
      geom_bar(position = "dodge") + 
 stat_count(geom = "text", colour = "black", size = 3.5,
 aes(label = ..count..),position=position_stack(vjust=0.5)) + 
-     labs(x = element_blank(), y = "Number of variants") +
-     theme_minimal()+
+     labs(x = element_blank(), y = "Number of erroneous variants") +
+     theme_minimal() +
      scale_fill_manual(values = c("#cbf3f0", "#2ec4b6", "grey")) +
   theme(legend.position = "none")
 
-cowplot::plot_grid(All_P +coord_flip() +theme(legend.position = "left"), SNP_P+coord_flip(), rel_widths = c(1, 0.8))
+cowplot::plot_grid(All_P + coord_flip() + theme(legend.position = "left"), 
+                   SNP_P + coord_flip(), 
+                   rel_widths = c(1, 0.8), labels = c("A", "B"))
 ```
 
+```{r AD rest errors}
+# 
+p1 = err_AD_list %>%
+  filter(Allelic_balance == "Expected AB") %>%
+  group_by(Var_type, Filter, POS, CHROM) %>%
+  summarize (MIN_AD = min(min_AD)) %>%
+  filter(MIN_AD < 20) %>%
+  ggplot(aes(x=MIN_AD, fill = Var_type)) +
+  geom_histogram(bins = 19) +
+     theme_minimal() +
+     scale_fill_manual(values = c("#FFD399", "#ff9f1c", "#cbf3f0", "#2ec4b6", "grey")) +
+  labs(x = "Minimum allelic depth", 
+       y = "Variant count",
+       fill = "Variant type")
+
+p2 = err_AD_list %>%
+  filter(Allelic_balance == "Expected AB") %>%
+  group_by(Var_type, Filter, POS, CHROM) %>%
+  summarize (MIN_AD = min(min_AD)) %>%
+  ungroup() %>%
+  mutate(MIN_AD = ifelse(MIN_AD >= 10, "+10", MIN_AD)) %>%
+  filter(Var_type == "SNP_2") %>%
+  ggplot(aes(x=MIN_AD, fill = Var_type)) +
+  geom_histogram(bins = 20, stat="count") +
+     theme_minimal() +
+     scale_fill_manual(values = c("#cbf3f0")) +
+  labs(x = "Minimum allelic depth", 
+       y = "Variant count",
+       fill = "Variant type")+ 
+stat_count(geom = "text", colour = "black", size = 3.5,
+aes(label = ..count..),position=position_stack(vjust=0.5))
+
+cowplot::plot_grid(p1 + theme(legend.position = "top"), 
+                   p2 + theme(legend.position = "none"), 
+                   labels = c("A", "B"), ncol = 1)
+```
 
 
 # Pre-step 3 - Filtering based on individuals
@@ -665,33 +699,42 @@ info_per_ind = full_join(read_tsv(paste0(subset_vcf_name, ".imiss")),
   filter(!(INDV %in% unwanted_samples))
 
 NA_thr = 0.2
-p = ggplot(info_per_ind, aes(x = F_MISS, y = MEAN_DEPTH)) + 
+depth_thr = 6
+p = info_per_ind %>% 
+  mutate(to_remove = F_MISS >= NA_thr | MEAN_DEPTH <= depth_thr) %>%
+ggplot(aes(x = F_MISS, y = MEAN_DEPTH, col = to_remove)) + 
   geom_point(alpha = 0.6) +
-  geom_vline(aes(xintercept = NA_thr), col = "#ffa62b") + 
+  geom_vline(aes(xintercept = NA_thr), col = "#ffa62b", linetype = "dashed") +
+  geom_hline(aes(yintercept = depth_thr), col = "#ffa62b", linetype = "dashed") + 
   theme_classic() +
+  scale_color_manual(values = c("black", "grey")) +
   labs(title = "Missing data and depth in vcf",
-       subtitle = str_wrap(paste0("There are ", sum(info_per_ind$F_MISS > NA_thr), 
+       subtitle = str_wrap(paste0("There are ", sum(info_per_ind$F_MISS >= NA_thr | info_per_ind$MEAN_DEPTH <= depth_thr), 
                          " samples with too much missing data and ", 
-                         sum(info_per_ind$F_MISS <= NA_thr), " that are fine."), 
-                         width = 60))
+                         sum(info_per_ind$F_MISS < NA_thr & info_per_ind$MEAN_DEPTH > depth_thr), " that are fine."), 
+                         width = 60),
+       col = "Filtered sample", 
+       y = "Mean depth accross core chromosome variants",
+       x = "Missing fraction of core chromosome variants") +
+  theme(legend.position = "bottom")
 p1 <- ggMarginal(p, type="histogram", size = 2)
 p1
 
 samples_to_filter = info_per_ind %>% 
-  filter(F_MISS > NA_thr) %>%
+  filter(F_MISS >= NA_thr | MEAN_DEPTH <= depth_thr) %>%
   select(INDV) %>% 
   pull()
 ```
 
 ```{r, eval = F}
 info_per_ind %>% 
-  filter(F_MISS > NA_thr) %>%
+  filter(F_MISS >= NA_thr | MEAN_DEPTH <= depth_thr) %>%
   select(INDV) %>%
   write_tsv(paste0(data_dir, "Sample_with_too_much_NA.args"), col_names = F)
 ```
 
 
-The samples with too much missing data, on the right of the gold line, will be filtered out.
+The samples with too much missing data or low depth (in grey, on the right of the vertical gold or below the horizontal gold line) will be removed. These samples happen to come in large part from one particular collection: among the 135 samples, 92 (68%) are from the Swiss collection of 2016.
 
 ```{r}
 ibs = read_tsv(paste0(subset_vcf_name, ".mibs.id"), col_names = c("Whatever", "ID")) %>% select(ID) %>% pull()
@@ -833,7 +876,7 @@ nodes_with_groups = nodes_with_groups %>%
   mutate(Filter_based_on_ibs = ifelse(rank == 1, "Keep", "Filter_out"))
 
 #Let's make a pretty doughnut plot just for the fun of it.
-as.data.frame(table(nodes_with_groups$Filter_based_on_ibs)) %>%
+round = as.data.frame(table(nodes_with_groups$Filter_based_on_ibs)) %>%
   ggplot(aes(x=2, y=Freq, fill=Var1)) +
   geom_bar(stat="identity") +
   xlim(0.5, 2.5) +
@@ -843,8 +886,7 @@ as.data.frame(table(nodes_with_groups$Filter_based_on_ibs)) %>%
        title = "Filtering based on IBS threshold and depth/NA",
        subtitle = "For each group, the sample with the lowest amount of missing data is kept.") +
   theme_bw() +
-  theme(plot.title = element_text(face="bold",family=c("sans"),size=15),
-        legend.text=element_text(size=10),
+  theme(legend.text=element_text(size=10),
         axis.ticks=element_blank(),
         axis.text=element_blank(),
         axis.title=element_blank(),
@@ -852,6 +894,10 @@ as.data.frame(table(nodes_with_groups$Filter_based_on_ibs)) %>%
         panel.border=element_blank()) + 
   geom_text(aes(label = Freq), 
                position = position_stack(vjust = 0.5), size = 4)
+round
+cowplot::plot_grid(ggMarginal(p, type="histogram", size = 2), 
+                   round + theme(plot.title = element_text(size = 10), plot.subtitle = element_text(size = 8)), 
+                   rel_widths = c(1, 0.6))
 ```
 
 ```{r, eval = F}

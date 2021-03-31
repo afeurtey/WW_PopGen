@@ -1,11 +1,17 @@
 #!/bin/bash
 
+#This script is the first one for filtering the vcf file.
+# It takes the raw vcf file from the GATK variant calling,
+# and filters the positions based on the quality thresholds identified with the visualization.
+
+
 source $1
 
+# Quality thresholds per position
+# -------------------------------
 FSTHR=10.0
 MQTHR=20.0
 QDTHR=20.0
-#DPTHR=60000.0
 ReadPosRankSum_lower=-2.0
 ReadPosRankSum_upper=2.0
 MQRankSum_lower=-2.0
@@ -22,14 +28,14 @@ fi
 
 echo "Working on chromosome" $CHR ;
 
-#VCFNAME=${DIRNAME}1_Variant_calling/4_Joint_calling/Ztritici_global_December2020.genotyped.${CHR}
 VCFNAME=${vcf_dir}${VCFBasename}.genotyped.${CHR}
 echo $VCFNAME
 
 rm ${VCFNAME}.filtered.vcf.gz
 rm ${VCFNAME}.filtered.clean.vcf.gz
 
-#Filtering on the newly set parameters
+# Filtering on the newly set parameters
+# -------------------------------------
 ${GATK_PATH} VariantFiltration  \
  -R ${IPO323_REF} \
  -V ${VCFNAME}.vcf.gz \
@@ -56,6 +62,7 @@ ${GATK_PATH} SelectVariants  \
   
 gzip -f ${VCFNAME}.filtered.vcf
 gzip -f ${VCFNAME}.filtered.clean.vcf
+
 
 # Transforming to tab without genotypes to get stats
 ${BCFTOOLS_PATH} query \

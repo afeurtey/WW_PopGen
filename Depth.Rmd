@@ -9,6 +9,7 @@ output:
 ```{r setup}
 #Packages
 library(tidyverse)
+library(cowplot)
 
 #Files and directories 
 dir_name = "/data2/alice/WW_project/"
@@ -321,7 +322,7 @@ depth_per_gene %>%
        x = "Normalized depth of coverage per gene")
 ```
 Once I am confident that the normalization I am using is appropriate, I do this for all genes.
-```{r norm gene depth, results = F, warning=F}
+```{r norm gene depth, results = F, warning=F, eval = F}
 files <- list.files(depth_per_gene_dir, pattern = "depth_per_gene.q30.txt$", full.names = T)
 
 depth_per_gene = files %>%
@@ -352,6 +353,8 @@ write_tsv(depth_per_gene, paste0(depth_per_gene_dir, "Depth_per_genes_normalized
 # Depth for resequencing pairs
 
 ```{r GC bias per pair}
+
+depth_per_gene = read_tsv(paste0(depth_per_gene_dir, "Depth_per_genes_normalized.txt"))
 repeat_seq = read_delim(paste0(list_dir, "Repeat_sequencing.txt"), col_names = c("Seq1", "Seq2"), delim = " ") %>%
   mutate(Pair = paste0("Pair_", c(1:length(Seq1)))) %>% 
   pivot_longer(-Pair, names_to = "temp", values_to = "ID_file") %>% 
@@ -361,7 +364,10 @@ repeat_seq = read_delim(paste0(list_dir, "Repeat_sequencing.txt"), col_names = c
 
 repeat_collec = unique(repeat_seq$Collection)
 
-inner_join(temp, GC_bias) %>%
+depth_per_gene %>% 
+  select(Sample, Median_core) %>%
+  distinct() %>%
+  inner_join(., GC_bias, by = c("Sample" = "ID_file")) %>%
   filter(Collection %in% repeat_collec) %>%
   group_by(Collection) %>%
   mutate(Median = median(GC_bias_slope)) %>%
@@ -374,7 +380,10 @@ inner_join(temp, GC_bias) %>%
   geom_point(data = repeat_seq, aes(col = Pair, x = Collection, y = GC_bias_slope))
 
 
-temp2 = repeat_seq %>% dplyr::select(Pair, temp, GC_bias_slope) %>% pivot_wider(names_from = temp, values_from = GC_bias_slope)
+temp2 = repeat_seq %>% 
+  dplyr::select(Pair, temp, GC_bias_slope) %>% p
+ivot_wider(names_from = temp, values_from = GC_bias_slope)
+
 pair_GC_plot = ggplot(data = repeat_seq, aes(y = Pair, x = GC_bias_slope)) + 
   geom_point(aes(col = Collection)) + 
   geom_segment(data = temp2, aes(y = Pair, yend = Pair, x = Seq1, xend = Seq2)) + 
@@ -423,7 +432,9 @@ temp = genes_pairs %>%
 
 genes_pairs = genes_pairs %>%
   inner_join(., temp) %>%
-  mutate(Norm_median_depth = round(Depth / Median_core)) %>%
+  #mutate(Norm_median_depth = round(Depth / Median_core)) %>%
+  mutate(Norm_median_depth = ifelse(Depth / Median_core < 0.25, 0, 
+                                    ifelse(Depth / Median_core > 1.75, 2, 1))) %>%
   filter(str_detect(Gene, "_TU_"))  %>% 
   filter( !str_detect(Gene, "Parent")) %>%
   separate(col = Gene, into = c("ID", "Name"), sep = ";") %>%

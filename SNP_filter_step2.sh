@@ -1,6 +1,14 @@
 #!/bin/bash
 
+#This script takes quality filtered vcf files per chromosomes.
+#It concatenate all the vcf files in one, and filters on AB.
+#It also estimates different per samples stats (depth, NA and IBS).
+
 source $1
+
+#  ------------------------------------
+#|  Gathering files and filtering on AB |
+#  ------------------------------------
 
 # Get all variants in one file
 ${BCFTOOLS_PATH} concat \
@@ -31,10 +39,32 @@ ${BCFTOOLS_PATH} concat \
   -o ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean.vcf.gz \
   --output-type  z 
 
+# Filtering samples with allelic balance indicative of failed genotyping
+python Filter_vcf_on_AB.py \
+   --input ${vcf_dir}${VCFNAME}.filtered.clean.vcf.gz \
+   --gzipped --set_filtered_gt_to_nocall \
+   --out ${vcf_dir}${VCFNAME}.filtered.clean.AB_filtered.vcf
+
+ ${GATK_PATH} SelectVariants \
+   -R ${IPO323_REF} \
+   -V ${vcf_dir}${VCFNAME}.filtered.clean.AB_filtered.vcf \
+   --exclude-filtered  --exclude-non-variants --remove-unused-alternates  \
+   -O ${vcf_dir}${VCFNAME}.filtered.clean.AB_filtered.variants.vcf
+   
+gzip ${vcf_dir}${VCFNAME}.filtered.clean.AB_filtered.variants.vcf
+gzip ${vcf_dir}${VCFNAME}.filtered.clean.AB_filtered.vcf
+
+
+
+
+#  ----------------------------------
+#|  Estimating per sample information |
+#  ----------------------------------
+
 #Depth
 ${VCFTOOLS_PATH} \
-  --gzvcf ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean.vcf.gz \
-  --out ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean \
+  --gzvcf ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean.AB_filtered.variants.vcf.gz \
+  --out ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.AB_filtered.variants.clean \
   --depth \
   --not-chr 14 \
   --not-chr 15 \
@@ -49,8 +79,8 @@ ${VCFTOOLS_PATH} \
 
 #Missing data
 ${VCFTOOLS_PATH} \
-  --gzvcf ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean.vcf.gz  \
-  --out ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean \
+  --gzvcf ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean.AB_filtered.variants.vcf.gz  \
+  --out ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean.AB_filtered.variants \
   --missing-indv  \
   --not-chr 14 \
   --not-chr 15 \
@@ -66,14 +96,25 @@ ${VCFTOOLS_PATH} \
 #IBS
 ${SOFTPATH}plink \
   --distance square ibs \
-  --vcf ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean.vcf.gz \
-  --out ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean \
+  --vcf ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean.AB_filtered.variants.vcf.gz \
+  --out ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean.AB_filtered.variants \
   --const-fid \
   --not-chr 14-21 mt
+
+
+
+#  --------------------------------
+#|  Extracting positions for stats  |
+#  --------------------------------
 
 #Transform to tab for stats
 ${BCFTOOLS_PATH} query \
   -f '%CHROM\t%POS\t%REF\t%ALT\n' \
   ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean.vcf.gz \
   > ${vcf_qual_check_dir}${VCFBasename}.genotyped.ALL.filtered.clean.tab
+
+${BCFTOOLS_PATH} query \
+  -f '%CHROM\t%POS\t%REF\t%ALT\n' \
+  ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean.AB_filtered.variants.vcf.gz \
+  > ${vcf_qual_check_dir}${VCFBasename}.genotyped.ALL.filtered.clean.AB_filtered.variants.tab
 
