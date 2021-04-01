@@ -92,3 +92,4 @@ VCFBasename=Ztritici_global_March2021
 remove_ID_file=${DATA_DIR}Samples_to_filter_out.args
 low_depth_samples_file=${DATA_DIR}Sample_with_too_much_NA.args
 clones_file=${DATA_DIR}Sample_removed_based_on_IBS.args
+NA_thresholds=${DATA_DIR}Missing_data_thresholds.tab

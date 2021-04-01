@@ -900,19 +900,68 @@ cowplot::plot_grid(ggMarginal(p, type="histogram", size = 2),
                    rel_widths = c(1, 0.6))
 ```
 
-```{r, eval = F}
-#Writing a file to indicate which samples to remove
-nodes_with_groups %>%
-  filter(Filter_based_on_ibs == "Filter_out") %>%
-  ungroup() %>%
-  select(label) %>%
-  write_tsv(paste0(data_dir, "Sample_removed_based_on_IBS.args"), col_names = F)
-
+```{r write lists IBS, eval = F}
 
 nodes_with_groups %>%
   write_tsv(paste0(data_dir, "Groups_based_on_IBS.tab"), col_names = F)
 
+#Writing a file to indicate which samples to remove
+ibs_filtered = nodes_with_groups %>%
+  filter(Filter_based_on_ibs == "Filter_out") %>%
+  ungroup() %>%
+  select(label) 
+
+ibs_filtered %>%
+  write_tsv(paste0(data_dir, "Sample_removed_based_on_IBS.args"), col_names = F)
+
+# Identify and write good samples
+good_samples = info_per_ind %>% 
+  filter(F_MISS < NA_thr & MEAN_DEPTH > depth_thr) %>%
+  filter(!(INDV %in% pull(ibs_filtered)))
+
+good_samples %>%
+  select(INDV) %>%
+  write_tsv(paste0(list_dir, "Ztritici_global_March2021.genotyped.good_samples.args"), col_names = F)
+
 ```
+
+```{r}
+# Reading in the summarized depth of coverage
+core_depth = read_tsv(paste0(depth_per_window_dir, "Depth_per_sample_core_chr_summary.q30.txt")) %>%
+  mutate(Median_core = Median) %>%
+  inner_join(., good_samples %>% select(Sample = INDV))
+  
+chrom_depth = read_tsv(paste0(depth_per_window_dir, "Depth_per_chromosome_summary.q30.txt")) %>%
+  left_join(., core_depth %>% select(Sample, Median_core)) %>%
+  mutate(Relative_depth = as.numeric(Median)/as.numeric(Median_core)) %>%
+  inner_join(., good_samples %>% select(Sample = INDV))
+
+ggplot(data = chrom_depth, aes(Relative_depth)) +
+  geom_density(col = "#16697a", fill = "#16697a", alpha =0.4) +
+  facet_wrap(vars(as.numeric(CHROM)), scales = "free") +
+  theme_classic() +
+  geom_vline(xintercept = 0.2, col = "#ffa62b")
+
+# Setting thresholds for presence/absence
+Lthres = 0.50
+Hthres = 1.50
+depth = chrom_depth %>%
+  filter(CHROM != "mt") %>%
+  dplyr::mutate(Depth_is = ifelse(Relative_depth > Hthres, "High",ifelse(Relative_depth < Lthres, "Low", "Normal"))) %>%
+  filter(Depth_is != "Low") %>%
+  dplyr::group_by(CHROM) %>%
+  dplyr::count() %>% 
+  ungroup()
+
+max_samples = max(depth$n)
+temp = depth %>% add_row(CHROM = "mt", n = max_samples) %>%
+  mutate(Threshold_80 = max_samples - round(n * 0.8)) %>%
+  select(CHROM, Nb_present = n, Threshold_80) 
+temp
+write_tsv(temp, paste0(data_dir, "Missing_data_thresholds.tab"), col_names = F)
+
+```
+
 
 
 
@@ -949,16 +998,22 @@ t2 = next_steps  %>%
 
 bind_rows(t1, t2) %>% kable() 
 
-bind_rows(t1, t2) %>%
-  pivot_longer(-Filter, names_to = "Var_type", values_to = "Var_count") %>%
+temp = bind_rows(t1, t2) %>%
+  pivot_longer(-Filter, names_to = "Var_type", values_to = "Var_count") 
+
+temp %>%
   filter(Var_type != "Total") %>%
-  ggplot(aes(x=Filter, y =Var_count, fill = Var_type)) +
-  geom_bar(stat = "identity", position = "stack") +
+  ggplot() +
+  geom_bar(aes(x=Filter, y =Var_count, fill = Var_type), stat = "identity", position = "stack") +
   scale_fill_manual(values = c("#FFD399", "#ff9f1c", "#cbf3f0", "#2ec4b6")) +
   theme_minimal() +
   labs(title = "Variants number along the filtering steps", 
        x = "", y = "Number of variants", 
-       fill = "Variant type")
+       fill = "Variant type") +
+  geom_label(data = filter(temp, Var_type == "Total"), 
+            aes(x = Filter, y = Var_count + 500000, label = Var_count))+
+  geom_label(data = filter(temp, Var_type == "SNP_2"), 
+            aes(x = Filter, y = (Var_count/2) + 500000, label = Var_count))
 
 #Bar plots
 variants_per_step1

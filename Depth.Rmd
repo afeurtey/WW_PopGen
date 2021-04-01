@@ -27,7 +27,7 @@ VAR_dir = paste0(dir_name, "1_Variant_calling/")
   depth_per_gene_dir = paste0(VAR_dir, "2_Depth_per_gene/")
   vcf_dir = paste0(VAR_dir, "4_Joint_calling/")
 
-Zt_list = read_tsv("/home/alice/WW_PopGen/Keep_lists_samples/Ztritici_global_March2021.genotyped.sample_list.args", 
+Zt_list = read_tsv("/home/alice/WW_PopGen/Keep_lists_samples/Ztritici_global_March2021.genotyped.good_samples.args", 
                    col_names = "ID_file")
 metadata_cols = read_tsv("/home/alice/WW_PopGen/Keep_lists_samples/Main_table_from_SQL_Feb_2020_Description.tab", 
                          col_names = F) %>% pull()
@@ -99,9 +99,15 @@ heatmap_depth = chrom_depth %>%
   labs(fill = "Depth", x= "Chromosome") + xlim(c(0.5, 21.5))
 
 
+ggplot(data = chrom_depth, aes(Relative_depth)) +
+  geom_density(col = "#16697a", fill = "#16697a", alpha =0.4) +
+  facet_wrap(vars(as.numeric(CHROM)), scales = "free") +
+  theme_classic() +
+  geom_vline(xintercept = 0.2, col = "#ffa62b")
+
 # Estimation of low and high depth chromosomes
 # (as proxy for present in 0 or multiple copies)
-Lthres = 0.50
+Lthres = 0.20
 Hthres = 1.50
 depth = chrom_depth %>%
   filter(CHROM != "mt") %>%
@@ -148,6 +154,8 @@ bottom_row <- cowplot::plot_grid(bar_Ndepth_per_CHR + theme(legend.position = "b
                                  labels = c('B', 'C'), label_size = 12, ncol = 2)
 
 cowplot::plot_grid(heatmap_depth, bottom_row, labels = c('A', ''), label_size = 12, ncol = 1)
+
+
 
 ```
 
