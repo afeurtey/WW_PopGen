@@ -38,7 +38,7 @@ vcf_qual_check_dir=${var_cal_dir}5_Quality_checks/
 pan_mapped=${var_cal_dir}0_Mappings/1_On_Pangenome/ #On pangenome
 pan_DP_win=${var_cal_dir}1_Depth_per_window/ #No pangenome anymore
 pan_DP_gene=${var_cal_dir}2_Depth_per_gene/ #No pangenome anymore
-
+mito_SV=${var_cal_dir}6_Mito_SV/
 
 #Population structure
 pop_str_dir=${project_dir}2_Population_structure/

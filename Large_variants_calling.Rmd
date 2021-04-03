@@ -1,5 +1,5 @@
 ---
-title: "R Notebook"
+title: "Variants calling: CNV, PAV, and SV"
 output:
   html_document:
     df_print: paged
@@ -13,29 +13,38 @@ library(cowplot)
 
 #Files and directories 
 dir_name = "/data2/alice/WW_project/"
-data_dir = "/data2/alice/WW_project/0_Data/"
-data_dir=paste0(dir_name, "0_Data/")
-assemb_dir = paste0(data_dir, "2_Denovo_assemblies/")
 metadata_dir=paste0(dir_name, "Metadata/")
 list_dir="/home/alice/WW_PopGen/Keep_lists_samples/"
 
 
 #Analysis directories
-#--------------------
+#____________________
+data_dir=paste0(dir_name, "0_Data/")
+assemb_dir = paste0(data_dir, "2_Denovo_assemblies/")
+mito_gen_dir=paste0(data_dir, "4_Mitochondrial_genome/")
+  mito_blast=paste0(mito_gen_dir, "0_Mito_blast/")
+  mito_fasta=paste0(mito_gen_dir, "1_Mitochondrial_fastas/")
+  
 VAR_dir = paste0(dir_name, "1_Variant_calling/")
   depth_per_window_dir = paste0(VAR_dir, "1_Depth_per_window/")
   depth_per_gene_dir = paste0(VAR_dir, "2_Depth_per_gene/")
   vcf_dir = paste0(VAR_dir, "4_Joint_calling/")
+  mito_SV = paste0(VAR_dir, "6_Mito_SV/")
+PopStr_dir = paste0(dir_name, "2_Population_structure/")
+mito_PS_dir = paste0(PopStr_dir, "1_Mitochondrial_genome/")
 
+
+# Important files
+#________________
 Zt_list = read_tsv("/home/alice/WW_PopGen/Keep_lists_samples/Ztritici_global_March2021.genotyped.good_samples.args", 
                    col_names = "ID_file")
 metadata_cols = read_tsv("/home/alice/WW_PopGen/Keep_lists_samples/Main_table_from_SQL_Feb_2020_Description.tab", 
                          col_names = F) %>% pull()
 metadata_file= read_tsv("/home/alice/WW_PopGen/Keep_lists_samples/Main_table_from_SQL_Feb_2020_with_collection.tab",
                         col_names = metadata_cols) 
+mito_PS_dir = "/data2/alice/WW_project/0_Data/"
 
 
-Sys.setenv(WINDEPTH=depth_per_window_dir)
 
 
 knitr::opts_chunk$set(message = F)
@@ -499,6 +508,7 @@ cowplot::plot_grid(row1, p3, ncol =1, labels = c("", "C"))
 
 
 # De novo assemblies
+## Whole genome assembly statistics and filtering
 
 ```{bash, eval = F}
 
@@ -647,6 +657,257 @@ good_assemb %>%
   write_tsv(paste0(assemb_dir, "Good_assemblies_stats.tab"))
 ```
 
+
+## Mitochondrial complete assemblies
+
+```{bash mito blast, eval = F}
+
+project_dir=/data2/alice/WW_project/
+DATA_DIR=${project_dir}0_Data/
+mito_gen_dir=${DATA_DIR}4_Mitochondrial_genome/
+  mito_blast=${mito_gen_dir}0_Mito_blast/
+pop_str_dir=${project_dir}2_Population_structure/
+mito_PS_dir=${pop_str_dir}1_Mitochondrial_genome/
+
+cd ~/Software/mummer-4.0.0rc1/
+mkdir ${mito_gen_dir}
+mkdir ${mito_blast}
+
+# Get list of good assemblies -> blast mitochondrial reference -> concatenate all results
+
+#cut -f 1 /data2/alice/WW_project/0_Data/2_Denovo_assemblies/Good_assemblies_stats.tab | sed '1d' > /home/alice/WW_PopGen/Keep_lists_samples/Good_assemblies.args
+
+#sbatch -p normal.168h --array=1-1195%50 Detect_gene_blast_array.sh /home/alice/WW_PopGen/Directories_new.sh /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+_only.fa /home/alice/WW_PopGen/Keep_lists_samples/Good_assemblies.args Illumina ${mito_blast}
+
+# cat ${mito_blast}*blast.tab >  ${mito_blast}Mitochondria.blast_results.tsv
+```
+
+```{r find complete mito}
+
+mito_blast_results_complete = read_delim(paste0(mito_blast, "Mitochondria.blast_results.tsv"), delim = " ",
+                                col_names = c("sample_id", "gene", "qseqid", "sseqid", "pident", "length",
+                                              "mismatch", "gapopen", "qstart", "qend",
+                                              "sstart", "send", "evalue", "bitscore"))
+
+mito_blast_results_per_contig = mito_blast_results_complete %>%
+  group_by(sample_id, sseqid) %>%
+  summarize(Min_coord = min(min(sstart), min(send)), 
+            Max_coord = max(max(sstart), max(send)), 
+            Length = Max_coord - Min_coord) %>% 
+  ungroup()
+
+complete_mito = mito_blast_results_per_contig %>%
+  group_by(sample_id) %>%
+  summarize(Total_length = sum(Length)) %>% ungroup() %>%
+  full_join(mito_blast_results_per_contig, .)%>%
+  mutate(Percent = 100*Length/Total_length) %>%
+  filter(Percent > 90)  %>%
+  filter(Length > 30000)
+
+
+#Writing the table out to export to the cluster
+complete_mito %>%
+  dplyr::select(sample_id, sseqid) %>%
+  write_tsv(., paste0(mito_blast, "Complete_mitochondria_from_blast.txt"), col_names = F)
+
+```
+
+```{r}
+##TO CHECK WHETHER USING ONLY THE LENGTH THRESHOLD WOULD RECOVER HETEROPLASMY!!!
+
+#This section here is to check whether there are samples with two assembled mitochondria
+complete_mito2 = mito_blast_results_per_contig %>%
+  group_by(sample_id) %>%
+  summarize(Total_length = sum(Length)) %>% ungroup() %>%
+  full_join(mito_blast_results_per_contig, .)%>%
+  mutate(Percent = 100*Length/Total_length) %>%
+  filter(Length > 25000)
+
+ggplot(complete_mito2, aes(x = Percent, y = Length)) + 
+  geom_point()
+
+```
+
+
+In the end, I would like to recover the structural variants based on the reference genomes. However, because the mitochondria is linear, spurious rearrangements could be detected when the breakpoint is created by the assembler to linearize the mitochondria. To prevent this from happening, I want to harmonize the breakpoints. The steps for this are:
+
+1. Extract the mitochondrial genome from the *de novo* assemblies
+2. Duplicate the mitochondrial genome so it "loops" and has each pieces several times
+3. Align the duplicated sequence on the reference sequence and identify breakpoints
+4. Identify new start and stop based on the reference sequence and reextract the mitochondrial genome based on these
+
+```{bash aln 3rd mito}
+project_dir=/data2/alice/WW_project/
+  DATA_DIR=${project_dir}0_Data/
+    mito_gen_dir=${DATA_DIR}4_Mitochondrial_genome/
+      mito_blast=${mito_gen_dir}0_Mito_blast/
+      mito_fasta=${mito_gen_dir}1_Mitochondrial_fastas/
+  
+  pop_str_dir=${project_dir}2_Population_structure/
+    mito_PS_dir=${pop_str_dir}1_Mitochondrial_genome/
+
+cd ~/Software/mummer-4.0.0rc1/
+#mkdir ${mito_fasta}
+#mkdir ${mito_fasta}0_De_novo
+#mkdir ${mito_fasta}1_Tripled
+#mkdir ${mito_fasta}2_Aligned
+#mkdir ${mito_fasta}3_Harmonized
+
+out_file=${mito_fasta}2_Aligned/All_circular.mcoords
+echo -e "Sample Ref_start Ref_stop Denovo_start Denovo_stop" > $out_file
+
+while read sample contig ; 
+do echo $contig > temp ; 
+# Initial extraction
+   python ~/Common_scripts/Filter_fasta.py --list temp --action keep \
+      --out ${mito_fasta}/0_De_novo/${sample}.mitochondria.fasta \
+      ${DATA_DIR}2_Denovo_assemblies/${sample}.fasta ; 
+   sed -i "s/>/>${sample}_/" ${mito_fasta}/0_De_novo/${sample}.mitochondria.fasta ; 
+
+length=$(awk 'FNR==2 { print length }' ${mito_fasta}/0_De_novo/${sample}.mitochondria.fasta) ;
+
+if [ $length -lt 60000 ] ; 
+then 
+  # Multiple and alignment
+     python ~/Common_scripts/Multiply_mito.py \
+        --out ${mito_fasta}/1_Tripled/${sample}.mitochondria.triple.fasta \
+        ${mito_fasta}/0_De_novo/${sample}.mitochondria.fasta;
+
+     ./dnadiff \
+         -p ${mito_fasta}/2_Aligned/IPO323_vs_${sample}  \
+         ${DATA_DIR}Zymoseptoria_tritici.MG2.dna.toplevel.mt+_only.fa \
+         ${mito_fasta}/1_Tripled/${sample}.mitochondria.triple.fasta
+
+     awk -v sample=${sample} '{print sample, $1, $2, $3, $4}' \
+       ${mito_fasta}/2_Aligned/IPO323_vs_${sample}.mcoords \
+       >> ${out_file}
+fi 
+
+done < ${mito_blast}Complete_mitochondria_from_blast.txt
+
+```
+
+```{r}
+mito_aln = read_delim(paste0(mito_fasta, "2_Aligned/All_circular.mcoords"), col_names  = T, delim = " ") %>%
+  rowwise() %>%
+  mutate(Min_coord_denovo = min(Denovo_start, Denovo_stop), 
+         Max_coord_denovo = max(Denovo_start, Denovo_stop)) %>%
+  dplyr::select(-Denovo_start, -Denovo_stop)
+
+temp = mito_aln %>%
+  group_by(Sample, Ref_start)  %>%
+  #mutate(Min_start = min(Min_coord_denovo))  %>%
+  mutate(rank  = rank(Min_coord_denovo, ties.method = "random"))  %>%
+  filter(Ref_start == 1) %>%
+  filter(rank < 3) %>%
+  ungroup() %>%
+  select(-Max_coord_denovo, -Ref_start, -Ref_stop) %>%
+  pivot_wider(names_from = "rank", values_from = Min_coord_denovo)%>%
+  select(Sample, Start = `1`, Stop = `2`)  %>% 
+  mutate(Fragment = "First")
+
+temp2 = mito_aln %>%
+  group_by(Sample, Ref_start)  %>%
+  #mutate(Min_start = min(Min_coord_denovo))  %>%
+  mutate(rank  = rank(Min_coord_denovo, ties.method = "random"))  %>%
+  filter(Ref_start == 1) %>%
+  filter(rank > 1 & rank < 4) %>%
+  ungroup() %>%
+  select(-Max_coord_denovo, -Ref_start, -Ref_stop) %>%
+  pivot_wider(names_from = "rank", values_from = Min_coord_denovo) %>%
+  select(Sample, Start = `2`, Stop = `3`)%>% 
+  mutate(Fragment = "Second")
+
+
+fragments = bind_rows(temp, temp2) %>%
+  left_join(., complete_mito, by =c ("Sample" = "sample_id")) %>%
+  mutate(Length2 = (Stop - Start), Diff = (Length + 1) - Length2) %>%
+  group_by(Sample)  %>%
+  mutate(rank  = rank(Diff, ties.method = "random"))  
+
+fragments %>% 
+  filter(rank == 1) %>%
+  mutate(Start = Start - 1) %>%
+  select(Sample, sseqid, Start, Stop) %>%
+  unite(col = "contig", c(Sample, sseqid), remove = F) %>%
+  dplyr::select(-sseqid) %>%
+  relocate(Sample, contig) %>%
+  write_tsv(., paste0(mito_fasta, "3_Harmonized/", "Reextracting_mitochondria.bed"), col_names = F)
+
+```
+
+
+```{bash}
+project_dir=/data2/alice/WW_project/
+  DATA_DIR=${project_dir}0_Data/
+    mito_gen_dir=${DATA_DIR}4_Mitochondrial_genome/
+      mito_blast=${mito_gen_dir}0_Mito_blast/
+      mito_fasta=${mito_gen_dir}1_Mitochondrial_fastas/
+   var_cal_dir=${project_dir}1_Variant_calling/
+     mito_SV=${var_cal_dir}6_Mito_SV/
+  
+  pop_str_dir=${project_dir}2_Population_structure/
+    mito_PS_dir=${pop_str_dir}1_Mitochondrial_genome/
+
+cd ~/Software/mummer-4.0.0rc1/
+while read sample contig start stop ; 
+do 
+  echo -e "${contig}\t${start}\t${stop}" > temp.bed ; 
+  /home/alice/Software/bedtools getfasta \
+    -fi ${mito_fasta}1_Tripled/${sample}.mitochondria.triple.fasta \
+    -fo ${mito_fasta}3_Harmonized/${sample}.mitochondria.harmonized.fasta \
+    -bed temp.bed
+    
+  ./dnadiff \
+         -p ${mito_SV}IPO323_vs_${sample}  \
+         ${DATA_DIR}Zymoseptoria_tritici.MG2.dna.toplevel.mt+_only.fa \
+         ${mito_fasta}3_Harmonized/${sample}.mitochondria.harmonized.fasta
+         
+done < ${mito_fasta}3_Harmonized/Reextracting_mitochondria.bed
+```
+
+```{r}
+sample_list = fragments %>% select(Sample) %>% distinct() %>% pull()
+file_list = paste0(mito_SV, "IPO323_vs_", sample_list, ".mcoords")
+  
+  #list.files(path = paste0(mito_SV, "IPO323_vs_"), pattern = "*mcoords", full.names = TRUE)
+
+coords_list = list()
+for (i in c(1:length(file_list))) {
+  coords_list[[i]] = read_tsv(file_list[[i]], 
+         col_names = c("Ref_start", "Ref_end", "Query_start", "Query_end", 
+                       "Ref_aln_length", "Query_aln_length", "Percent_ID",  
+                       "Ref_length", "Query_length", "Ref_cov", "Query_cov", 
+                       "CHROM", "scaf")) 
+}
+
+coords_from_aln = do.call(rbind, coords_list) %>%
+  mutate(TEMP = gsub("_scaf", ":scaf", scaf)) %>%
+  separate(TEMP, into = c("sample_id", "scaffold"), sep = ":")
+
+coords_from_aln %>% group_by(sample_id) %>% count() %>%
+  qplot(data =., x = n, geom = "histogram")
+
+coords_from_aln %>% write_tsv(file = paste0(mito_SV, "All_complete_mitochondria.mcoords"))
+```
+
+```{r}
+file_list = paste0(mito_SV, "IPO323_vs_", sample_list, ".snps")
+
+snps_list = list()
+for (i in c(1:length(file_list))) {
+  snps_list[[i]] = read_tsv(file_list[[i]], 
+         col_names = c("POS", "REF", "ALT", "Ref", "POS_query",
+                       "V1", "V2", "V3", "V4", "V5", "CHROM", "scaf")) 
+}
+
+snps_from_aln = do.call(rbind, snps_list) %>%
+  mutate(TEMP = gsub("_scaf", ":scaf", scaf)) %>%
+  separate(TEMP, into = c("sample_id", "scaffold"), sep = ":") %>%
+  dplyr::select(CHROM, POS, REF, ALT, sample_id) 
+
+snps_from_aln %>% write_tsv(file = paste0(mito_SV, "All_complete_mitochondria.snps"))
+```
 
 
 
