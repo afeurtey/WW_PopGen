@@ -15,33 +15,33 @@ VCFNAME=${vcf_dir}${VCFBasename}.genotyped.ALL
 #  ---------------------------
 
 #Cleaning the file per pos and ind
-#${GATK_PATH} IndexFeatureFile \
-# -I ${VCFNAME}.filtered.clean.AB_filtered.variants.vcf.gz
+${GATK_PATH} IndexFeatureFile \
+ -I ${VCFNAME}.filtered.clean.AB_filtered.variants.vcf.gz
 
-#${GATK_PATH} SelectVariants  \
-#  -R ${IPO323_REF} \
-#  -V ${VCFNAME}.filtered.clean.AB_filtered.variants.vcf.gz \
-#  --exclude-sample-name ${low_depth_samples_file} \
-#  --exclude-sample-name ${clones_file}  \
-#  --exclude-filtered \
-#  --exclude-non-variants --remove-unused-alternates \
-#  -O ${VCFNAME}.filtered.clean.AB_filtered.variants.good_samples.vcf
+${GATK_PATH} SelectVariants  \
+  -R ${IPO323_REF} \
+  -V ${VCFNAME}.filtered.clean.AB_filtered.variants.vcf.gz \
+  --exclude-sample-name ${low_depth_samples_file} \
+  --exclude-sample-name ${clones_file}  \
+  --exclude-filtered \
+  --exclude-non-variants --remove-unused-alternates \
+  -O ${VCFNAME}.filtered.clean.AB_filtered.variants.good_samples.vcf
 
 
-#gzip -f ${VCFNAME}.filtered.clean.AB_filtered.variants.good_samples.vcf
+gzip -f ${VCFNAME}.filtered.clean.AB_filtered.variants.good_samples.vcf
 
 
 # Transform in tab file without genotypes to get stats
-#${BCFTOOLS_PATH} query \
-#  -f '%CHROM\t%POS\t%REF\t%ALT\n' \
-#  ${VCFNAME}.filtered.clean.AB_filtered.variants.good_samples.vcf.gz \
-#  > ${vcf_qual_check_dir}${VCFBasename}.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.tab
+${BCFTOOLS_PATH} query \
+  -f '%CHROM\t%POS\t%REF\t%ALT\n' \
+  ${VCFNAME}.filtered.clean.AB_filtered.variants.good_samples.vcf.gz \
+  > ${vcf_qual_check_dir}${VCFBasename}.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.tab
 
 # Allele counts
-#${VCFTOOLS_PATH} \
-#   --gzvcf ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.vcf.gz \
-#   --counts2 \
-#   --out ${vcf_qual_check_dir}${VCFBasename}.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples
+${VCFTOOLS_PATH} \
+   --gzvcf ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.vcf.gz \
+   --counts2 \
+   --out ${vcf_qual_check_dir}${VCFBasename}.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples
 
 
 #  ---------------------
@@ -50,13 +50,12 @@ VCFNAME=${vcf_dir}${VCFBasename}.genotyped.ALL
 
 while read CHR nb threshold ;
 do
-   
+ 
    ${VCFTOOLS_PATH} --gzvcf ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.vcf.gz \
       --recode --recode-INFO-all \
       --chr  $CHR \
       --max-missing-count ${threshold} \
       --out ${vcf_dir}${VCFBasename}.genotyped.${CHR}.filtered.clean.AB_filtered.variants.good_samples.max-m-80
-
    gzip ${vcf_dir}${VCFBasename}.genotyped.${CHR}.filtered.clean.AB_filtered.variants.good_samples.max-m-80.recode.vcf
 
 done < ${NA_thresholds}

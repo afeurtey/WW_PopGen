@@ -1,13 +1,14 @@
 ---
-title: "SNP filtering"
+title: "Short variants filtering"
 author: "Alice Feurtey"
 date: "01/13/2021"
 output:
-  html_document: 
+  html_document:
+    df_print: paged
     code_folding: hide
 ---
 
-```{r setup, include=TRUE}
+```{r setup, include=TRUE, warning=FALSE, message = FALSE}
 #Libraries needed
 library(tidyverse)
 library(ggExtra)
@@ -23,23 +24,28 @@ library(GenomicRanges)
 test_CHR = 6
 subset_CHR = "ALL"
 
-#Files and directories 
-dir_name = "/data2/alice/WW_project/"
-data_dir = "/data2/alice/WW_project/0_Data/"
-vcf_core_name = "Ztritici_global_March2021.genotyped."
-test_vcf_name = paste0(dir_name, "1_Variant_calling/4_Joint_calling/",
-                  vcf_core_name, test_CHR)
-subset_vcf_name = paste0(dir_name, "1_Variant_calling/4_Joint_calling/",
-                  vcf_core_name, subset_CHR, ".filtered.clean.AB_filtered.variants")
-ref_genome = paste0(dir_name, "0_Data/", "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa")
-vcf_qual_check_dir = paste0(dir_name, "1_Variant_calling/5_Quality_checks/")
-TE_annot = paste0(dir_name, "4_TE_RIP/Ursula_IPO323_TE_merged.bed")
-
+#Software paths 
 soft_dir = "/home/alice/Software/"
 list_dir = "/home/alice/WW_PopGen/Keep_lists_samples/"
 gatk_path = paste0(soft_dir, "gatk-4.1.4.1/gatk")
 #java_path = "/Library/Java/JavaAppletPlugin.plugin/Contents/Home/bin/java"
 bcftools_path = paste0(soft_dir, "bcftools-1.10.2/")
+
+#Directory paths
+dir_name = "/data2/alice/WW_project/"
+data_dir = "/data2/alice/WW_project/0_Data/"
+VAR_dir = paste0(dir_name, "1_Variant_calling/")
+  depth_per_window_dir = paste0(VAR_dir, "1_Depth_per_window/")
+  vcf_dir = paste0(VAR_dir, "4_Joint_calling/")
+  vcf_qual_check_dir = paste0(VAR_dir, "5_Quality_checks/")
+    
+# File paths
+TE_annot = paste0(dir_name, "4_TE_RIP/Ursula_IPO323_TE_merged.bed")
+vcf_core_name = "Ztritici_global_March2021.genotyped."
+test_vcf_name = paste0(vcf_dir, vcf_core_name, test_CHR)
+subset_vcf_name = paste0(vcf_dir, vcf_core_name, subset_CHR, ".filtered.clean.AB_filtered.variants")
+ref_genome = paste0(dir_name, "0_Data/", "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa")
+
 
 #This is a file that contains the name of all samples I am not interested in
 # for example Michael Habig's mutants and other resequencing of IPO323.
@@ -117,7 +123,8 @@ BaseQRankSum_thr_low = -2
 print(paste0(test_vcf_name, ".snps.low_depth.variants.info_fields.tab"))
 info = read_delim(paste0(test_vcf_name, ".snps.low_depth.variants.info_fields.tab"),
                   delim = " ", col_names =  c("CHROM", "POS", "MQ", "QD", "FS", "DP",
-                                              "MQRankSum", "QUAL", "ReadPosRankSum", "BaseQRankSum"), na = ".")
+                                              "MQRankSum", "QUAL", "ReadPosRankSum", "BaseQRankSum"), 
+                  na = ".")
 temp = info %>% 
   gather(key = "info_field", value = "value", -CHROM, -POS) %>% 
   mutate (Filter = "Unfiltered")
@@ -199,10 +206,16 @@ reseq_list = read_delim(paste0(list_dir, "Repeat_sequencing.txt"), delim =" ", c
 list_diff = list()
 for (sample in c(1:length(reseq_list$Name_1))) {
 
-list_filtered = list.files(path = vcf_qual_check_dir, pattern = paste0("filtered.clean.", reseq_list$Name_1[sample], ".tab"), full.names = T) 
-list_unfiltered = setdiff(list.files(path = vcf_qual_check_dir, pattern = paste0(reseq_list$Name_1[sample], ".tab"), full.names = T),
+list_filtered = list.files(path = vcf_qual_check_dir, 
+                           pattern = paste0("filtered.clean.", reseq_list$Name_1[sample], ".tab"), 
+                           full.names = T) 
+list_unfiltered = setdiff(list.files(path = vcf_qual_check_dir, 
+                                     pattern = paste0(reseq_list$Name_1[sample], ".tab"), 
+                                     full.names = T),
                      list.files(path = vcf_qual_check_dir, pattern = paste0("filtered.clean.", reseq_list$Name_1[sample], ".tab"), 
                                 full.names = T)) 
+
+list_unfiltered = list_unfiltered[!str_detect(list_unfiltered, pattern=".ALL.")]
 
 filtered = list_filtered %>% 
     map_df(~read_tsv(., col_names = c("CHROM", "POS", "REF", "ALT", "Clone1", "Clone2"), 
@@ -227,6 +240,8 @@ err_var_list = bind_rows(list_diff) %>%
   mutate(Indel = ifelse((str_count(ALT, pattern = "[*]") + str_count(REF, pattern = "[*]")) > 0, "Indel", 
                         ifelse(Nb_letter != Nb_allele, "Indel", "SNP"))) %>%
   unite(col = "Var_type", Indel, Nb_allele, sep = "_", remove = F) 
+
+rm(list_diff)
 ```
 I not only want to know how many loci contain genotyping errors but also what type of variants these are. So I will make some more plots to figure this out.
 ```{r plot reseq pairs}
@@ -441,7 +456,8 @@ windows = (bind_rows(list_temp))
 
 
 # Transforming the tables with the differences to match the windows
-temp = bind_rows(list_diff) %>% 
+#bind_rows(list_diff) %>% 
+temp = err_var_list %>% 
   mutate(Window = win_size*round(POS / win_size)) %>%
   group_by(CHROM, Filter, Sample, Window) %>%
   count() %>%
@@ -511,12 +527,16 @@ cat("Error number of errors post-filtering outside of TEs:", sum(width(setdiff(e
 
 
 ```
+```{bash}
+cat /data2/alice/WW_project/1_Variant_calling/5_Quality_checks/Ztritici_global_March2021.genotyped.*.filtered.clean.frq.count | grep -v "CHROM" > /data2/alice/WW_project/1_Variant_calling/5_Quality_checks/Ztritici_global_March2021.genotyped.concat.filtered.clean.frq.count.concat
+```
+
+
 ```{r allele counts}
-counts = list.files(path = vcf_qual_check_dir, pattern = "filtered.clean.frq.count", full.names = T)  %>% 
-    map_df(~read_tsv(., skip = 1, 
+counts =read_tsv("/data2/alice/WW_project/1_Variant_calling/5_Quality_checks/Ztritici_global_March2021.genotyped.concat.filtered.clean.frq.count.concat", 
                      col_names = c("CHROM", "POS", "N_ALLELES", "N_CHR", "Count1", "Count2", "Count3"), 
                      col_types = cols(col_character(), col_double(), col_double(), col_double(), 
-                                      col_double(), col_double(), col_double()))) %>%
+                                      col_double(), col_double(), col_double())) %>%
   rowwise() %>%
   mutate(minorAC = min(Count1, Count2, Count3, na.rm = T), 
          majorAC = max(Count1, Count2, Count3, na.rm = T),
@@ -900,25 +920,30 @@ cowplot::plot_grid(ggMarginal(p, type="histogram", size = 2),
                    rel_widths = c(1, 0.6))
 ```
 
-```{r write lists IBS, eval = F}
-
-nodes_with_groups %>%
-  write_tsv(paste0(data_dir, "Groups_based_on_IBS.tab"), col_names = F)
-
+```{r define lists IBS}
 #Writing a file to indicate which samples to remove
 ibs_filtered = nodes_with_groups %>%
   filter(Filter_based_on_ibs == "Filter_out") %>%
   ungroup() %>%
   select(label) 
 
-ibs_filtered %>%
-  write_tsv(paste0(data_dir, "Sample_removed_based_on_IBS.args"), col_names = F)
-
-# Identify and write good samples
+# Identify good samples
 good_samples = info_per_ind %>% 
   filter(F_MISS < NA_thr & MEAN_DEPTH > depth_thr) %>%
   filter(!(INDV %in% pull(ibs_filtered)))
 
+```
+
+```{r write lists IBS, eval = F}
+
+nodes_with_groups %>%
+  write_tsv(paste0(data_dir, "Groups_based_on_IBS.tab"), col_names = F)
+
+#Writing a file to indicate which samples to remove
+ibs_filtered %>%
+  write_tsv(paste0(data_dir, "Sample_removed_based_on_IBS.args"), col_names = F)
+
+# Write list good samples
 good_samples %>%
   select(INDV) %>%
   write_tsv(paste0(list_dir, "Ztritici_global_March2021.genotyped.good_samples.args"), col_names = F)
@@ -974,6 +999,9 @@ next_steps = bind_rows(read_tsv(paste0(vcf_qual_check_dir, vcf_core_name, "ALL.f
                    read_tsv(paste0(vcf_qual_check_dir, vcf_core_name, "ALL.filtered.clean.AB_filtered.variants.good_samples.tab"), 
                             col_names = c("CHROM", "POS", "REF", "ALT")) %>%
             mutate(Filter = "4_Filtered_samples")) %>% 
+  bind_rows(., read_tsv(paste0(vcf_qual_check_dir, vcf_core_name, "ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.tab"), 
+                            col_names = c("CHROM", "POS", "REF", "ALT")) %>%
+            mutate(Filter = "5_Filtered_80_NA")) %>%
   mutate(Nb_allele = str_count(ALT, pattern = ",") + 2) %>%
   mutate(Nb_letter = str_count(ALT, pattern = "[A-Z]") + str_count(REF, pattern = "[A-Z]")) %>%
   mutate(Indel = ifelse((str_count(ALT, pattern = "[*]") + str_count(REF, pattern = "[*]")) > 0, "Indel", 
@@ -1033,7 +1061,9 @@ ggplot(aes(x=as.numeric(CHROM), y =n, fill = Var_type)) +
 ```
 
 ```{r allele counts filtered}
-counts = list.files(path = vcf_qual_check_dir, pattern = "filtered.clean.AB_filtered.variants.good_samples.frq.count", full.names = T)  %>% 
+counts = list.files(path = vcf_qual_check_dir, 
+                    pattern = "filtered.clean.AB_filtered.variants.good_samples.frq.count", 
+                    full.names = T)  %>% 
     map_df(~read_tsv(., skip = 1, 
                      col_names = c("CHROM", "POS", "N_ALLELES", "N_CHR", "Count1", "Count2", "Count3"), 
                      col_types = cols(col_character(), col_double(), col_double(), col_double(), 
@@ -1043,7 +1073,5 @@ counts = list.files(path = vcf_qual_check_dir, pattern = "filtered.clean.AB_filt
          majorAC = max(Count1, Count2, Count3, na.rm = T),
          freq = minorAC/N_CHR)
 
-dim(counts %>% filter(mac == 1))
-dim(counts %>% filter(mac > 1))
 
 ```
