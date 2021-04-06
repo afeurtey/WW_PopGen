@@ -72,6 +72,7 @@ library(multcomp)
 #Variables
 world <- map_data("world")
 project_dir="/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/"
+lists_dir = "/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/WW_PopGen/Keep_lists_samples/"
 
 #Data directories
 data_dir=paste0(project_dir, "0_Data/")
@@ -96,14 +97,15 @@ sel_dir = paste0(project_dir, "8_Selection/")
   gene_list_dir = paste0(sel_dir, "0_Lists_unique_copy/")
 
 #Files
-vcf_name="Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.SNP.max-m-0.8.maf-0.05.thin-1000bp"
+vcf_name="Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.biall_SNP.max-m-1.maf-0.05.thin-1000bp"
 vcf_name_nomaf="Ztritici_global_March2021.filtered-clean.AB_filtered.SNP.max-m-0.8.thin-1000bp"
-vcf_name_mito = "Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.mt."
-Zt_list = paste0(metadata_dir, "Ztritici_global_March2021.genotyped.good_samples.args")
+vcf_name_mito = "Ztritici_global_March2021.genotyped.mt.filtered.clean.AB_filtered.variants.good_samples.max-m-80"
+Zt_list = paste0(lists_dir, "Ztritici_global_March2021.genotyped.good_samples.args")
 gff_file = paste0(data_dir, "Zymoseptoria_tritici.MG2.Grandaubert2015.no_CDS.gff3")
 ref_fasta_file = paste0(data_dir, "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa")
 metadata_name = "Main_table_from_SQL_Feb_2020"
 gene_annotation = read_tsv(paste0(data_dir, "Badet_GLOBAL_PANGENOME_TABLE.txt"))
+complete_mito = read_tsv(paste0(data_dir, "Complete_mitochondria_from_blast.txt"), col_names = c("ID_file", "Contig"))
 
 Sys.setenv(PROJECTDIR=project_dir)
 Sys.setenv(VARDIR=VAR_dir)
@@ -138,21 +140,21 @@ read_tsv(paste0(metadata_dir, "Samples_to_filter_out.args"), col_names = "ID_fil
   mutate(Filter = "Mutants_etc"))
 
 ##Samples in vcf
-genotyped_samples = read_tsv(paste0(project_dir, "WW_PopGen/Keep_lists_samples/Ztritici_global_March2021.genotyped.sample_list.args"), 
-         col_names = "ID_file")
+genotyped_samples = read_tsv(Zt_list, col_names = "ID_file")
 
 ## Metadata of genotyped samples 
 temp = read_tsv(paste0(metadata_dir, metadata_name, "_Description.tab"), col_names = F) %>% pull()
 
 Zt_meta=read_tsv(paste0(metadata_dir, metadata_name, "_with_collection.tab"), 
                  col_names = temp,
-                 na = "\\N") %>%
+                 na = "\\N", guess_max = 2000) %>%
   unite(Coordinates, Latitude, Longitude, sep = ";", remove = F) %>%
-  full_join(., genotyped_samples) 
+  inner_join(., genotyped_samples)  %>%
+  mutate(Country = ifelse(Country == "USA", paste(Country, Region, sep = "_"), Country))
 
-genotyped_samples %>%
-  filter(!(ID_file %in% filtered_samples$ID_file)) %>%
-    write_tsv(Zt_list, col_names = F)
+#genotyped_samples %>%
+#  filter(!(ID_file %in% filtered_samples$ID_file)) %>%
+#    write_tsv(Zt_list, col_names = F)
 
 
 
@@ -171,35 +173,17 @@ greens=c("#1B512D", "#669046", "#8CB053", "#B1CF5F", "#514F59")
 blues=c("#08386E", "#1C89C9", "#28A7C0", "#B0DFE8", "grey")
 ```
 
-Out of date:
-```{bash Outdate mportation from cluster, eval = F}
-# 1 - Variant calling
-rsync -avP \
-  alice@130.125.25.187:/data2/alice/WW_project/1_Variant_calling/1* \
-  /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/1_Variant_calling/
-
-rsync -avP \
-  alice@130.125.25.187:/data2/alice/WW_project/1_Variant_calling/2* \
-  /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/
-
-
-# 4 - TE and RIP
-rsync -avP \
-  alice@130.125.25.187:/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/*txt \
-  /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/0_RIP_estimation/
-#Composite_index.txt
-#GC_percent.txt
-#Nb_reads.txt
-#Nb_reads_per_TE.txt
-
-rsync -avP \
-  alice@130.125.25.187:/data2/alice/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/1_Blast_dim2_deRIPped/*txt \
-  /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/
-
-```
 
 ```{bash Importation from cluster, eval = F}
 # Uploading commands from the cluster to my computer.
+
+# 1 - Variant calling - Nuclear
+rsync -avP alice@130.125.25.244:/data2/alice/WW_project/1_Variant_calling/4_Joint_calling/Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.biall* ~/Documents/Postdoc_Bruce/Projects/WW_project/1_Variant_calling/4_Joint_calling/
+
+# 1 - Variant calling - Mito 
+rsync -avP alice@130.125.25.244:/data2/alice/WW_project/1_Variant_calling/4_Joint_calling/Ztritici_global_March2021.genotyped.mt.filtered.clean.AB_filtered.variants.good_samples.max-m-80.recode.vcf.gz  /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/1_Variant_calling/4_Joint_calling/
+
+rsync -avP alice@130.125.25.244:/data2/alice/WW_project/0_Data/4_Mitochondrial_genome/0_Mito_blast/Complete_mitochondria_from_blast.txt /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/
 
 # 1 - Variant calling - Depth 
 rsync -avP alice@130.125.25.244:/data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.1kb_windows.nuc_GC.tab ../0_Data/
@@ -640,15 +624,6 @@ __Methods__: Analyses to create would be:
 ### PCA with all continents
 As a first method to investigate the population structure of _Z.tritici_ at the world-wide scale, I chose to do a principal component analysis based on a subset of the SNPs. This PCA confirms previous results of a geographically structured species. Oceania emerges quite distincly as three separate clusters: one in New-Zealand and two Australian (see below for a more in-depth analysis of this pattern). North-America is also quite serapate. The distinction between the rest of the geographical location is not clear in this PCA, although PC3 might show a slight differenciation between Europe and the Middle-East.
 
-```{bash, eval = F}
-
-vcftools --vcf ${VCFDIR}${VCFNAME}.recode.vcf \
-  --keep $ZTLIST \
-  --non-ref-ac-any 1 \
-  --remove-filtered-all --recode --recode-INFO-all \
-  --out ${VCFDIR}${VCFNAME}.pass
-
-```
 
 
 ```{r PCA All run and plot, results = F}
@@ -658,8 +633,8 @@ genofile <- snpgdsOpen(paste0(PopStr_dir, vcf_name, ".recode.gds"))
 pca <-snpgdsPCA(genofile)
 snpgdsClose(genofile)
 
-pca2 = as_tibble(pca$eigenvect) %>% dplyr::select(V1:V4)
-colnames(pca2) = c("PC1", "PC2", "PC3", "PC4")
+pca2 = as_tibble(pca$eigenvect) %>% dplyr::select(V1:V6)
+colnames(pca2) = c("PC1", "PC2", "PC3", "PC4", "PC5", "PC6")
 pca2 = pca2 %>%
   dplyr::mutate(sample_id = pca$sample.id ) %>%
   dplyr::right_join(., Zt_meta, by = c("sample_id" = "ID_file")) %>%
@@ -692,6 +667,16 @@ q = ggplot(pca2, aes(x = PC3, y= PC4, text = for_display)) +
 
 #q
 ggplotly(q)
+
+q = ggplot(pca2, aes(x = PC5, y= PC6, text = for_display)) +
+  geom_point(aes(color = Continent)) +
+  labs(x = paste0("PC 5 (", round(pca$eigenval[5]*100/eigen_sum, 2), "%)"),
+       y = paste0("PC 6 (", round(pca$eigenval[6]*100/eigen_sum, 2), "%)")) +
+  Color_Continent +
+  theme_bw()
+
+#q
+ggplotly(q)
 ```
 
 
@@ -700,7 +685,7 @@ ggplotly(q)
 
 ``` {r PCA ggpairs}
 
-p = ggpairs(pca2, columns = c(1:4),
+p = ggpairs(pca2, columns = c(1:6),
             ggplot2::aes(col=Continent, fill = Continent, alpha = 0.6),
             title = "PCA based thinned SNPs",
             upper = list(continuous = "points", combo = "box_no_facet"))
@@ -722,43 +707,44 @@ The clustering here is done by using the snmf method from the LEA R package (htt
 ```{bash format snmf, eval = F}
 
 vcftools --vcf ${VCFDIR}$VCFNAME.recode.vcf \
-  --keep $ZTLIST \
-  --remove-filtered-all --extract-FORMAT-info GT \
-  --max-missing 1.0 --min-alleles 2 --max-alleles 2 \
-  --maf 0.05 \
-  --out ${POPSTR}$VCFNAME.pass_noNA
+  --extract-FORMAT-info GT \
+  --out ${POPSTR}$VCFNAME
 
-
-cat  ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT | cut -f 3- \
-    > ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT2
-cat  ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT | cut -f 1,2 \
-    > ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT.pos
-head -n1 ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT2 | gsed "s/\t/\n/g"  \
-    > ${POPSTR}$VCFNAME.pass_noNA.ind
-gsed "s/\t//g"  ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT2 | tail -n +2 \
-    > ${POPSTR}$VCFNAME.pass_noNA.geno
+cat  ${POPSTR}$VCFNAME.GT.FORMAT | cut -f 3- \
+    > ${POPSTR}$VCFNAME.GT.FORMAT2
+cat  ${POPSTR}$VCFNAME.GT.FORMAT | cut -f 1,2 \
+    > ${POPSTR}$VCFNAME.GT.FORMAT.pos
+head -n1 ${POPSTR}$VCFNAME.GT.FORMAT2 | gsed "s/\t/\n/g"  \
+    > ${POPSTR}$VCFNAME.ind
+gsed "s/\t//g"  ${POPSTR}$VCFNAME.GT.FORMAT2 | tail -n +2 \
+    > ${POPSTR}$VCFNAME.geno
+    
+datamash transpose < ~/Documents/Postdoc_Bruce/Projects/WW_project/2_Population_structure/Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.biall_SNP.max-m-1.maf-0.05.thin-1000bp.even_sampling.GT.FORMAT2  |  sed 's/^/>/' | sed 's/\t/\n/' | sed 's/\t//g' | cut -c -150 > ~/Documents/Postdoc_Bruce/Projects/WW_project/2_Population_structure/Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.biall_SNP.max-m-1.maf-0.05.thin-1000bp.even_sampling.fasta
 
 ```
 
 ```{r run snmf, eval =F}
-project = snmf(paste0(PopStr_dir, vcf_name, ".pass_noNA.geno"), K=1:15, entropy = TRUE,
+project = snmf(paste0(PopStr_dir, vcf_name, ".geno"), K=1:15, entropy = TRUE,
                         repetitions = 10, project = "new", ploidy = 1)
 ```
-First, let's look at the cross-validation results. sNMF estimates an entropy criterion which evaluates the quality of fit of the model to the data, potentially helping to find the best number of ancestral populations.
-```{r Cross-entropy plot}
+
+
+```{r reading snmf results}
+
+# Reading the results from the snmf runs
+# ______________________________________
 #Sample names
-indv_snmf = read_tsv(paste0(PopStr_dir, vcf_name, ".pass_noNA.ind"), col_names = F)
+indv_snmf = read_tsv(paste0(PopStr_dir, vcf_name, ".ind"), col_names = F)
 names(indv_snmf) = "Sample"
 
 #Load project
-project = load.snmfProject(paste0(PopStr_dir, vcf_name, ".pass_noNA.snmfProject"))
-plot(project, col = "goldenrod", pch = 19, cex = 1.2)
+project = load.snmfProject(paste0(PopStr_dir, vcf_name, ".snmfProject"))
 
-K_colors = c("#f9c74f", "#f9844a", "#90be6d", "#f5cac3", 
-"#83c5be", "#f28482", "#577590", "#e5e5e5", "#a09abc",  "#52796f")
+K_colors = c("#f9c74f", "#f9844a", "#90be6d", "#f5cac3", "#83c5be", 
+             "#f28482", "#577590", "#e5e5e5", "#a09abc",  "#52796f")
 K_list = c(1:15)
 
-#Reading data in
+#Extracting the clustering info for the best run per K
 datalist = list()
 for (i in K_list){
   best = which.min(cross.entropy(project, K = i))
@@ -772,24 +758,16 @@ for (i in K_list){
 }
 
 snmf_results_per_K = bind_rows(datalist) %>%
-  inner_join(., Zt_meta, by = c("Sample" = "ID_file"))  %>%
-  mutate(Country = ifelse(Country == "USA", Region, Country)) %>%
+  inner_join(., Zt_meta, by = c("Sample" = "ID_file")) %>%
   unite(Continent, Country, col = "for_display", remove = F)  
 
-```
 
-
-In the case of our analysis, we do not have a very clear-cut minimum value for the cross-entropy criterion value. There is however a plateau starting from K=9 or K=10. I chose to represent as barplots the best run for each value of K (as defined as the one with the lowest cross-entropy value). This seem to confirm the choice of a reasonable K value at 10 since no new major cluster seem to appear in the at higher values. 
-
-The results from the PCA and from the clutering analysis are coherent: Oceania separates into 3 clusters (one in New_Zealand, and two in Australia) and the North American isolates form two separate clusters. Higher K values also distinguish a Middle-Eastern/African cluster from the European cluster, representing the two extreme points of the gradient found between these populations in the PCA.
-
-```{r sNMF pretty plots}
-
-
+#sNMF pretty plots
+# _______________
 afiles = character(length(K_list))
 for (i in K_list){
   best = which.min(cross.entropy(project, K = i))
-  afiles[i] = Sys.glob(paste0(PopStr_dir, vcf_name, ".pass_noNA.snmf/K",i, "/run", best, "/*Q"))
+  afiles[i] = Sys.glob(paste0(PopStr_dir, vcf_name, ".snmf/K",i, "/run", best, "/*Q"))
 }
 
 # create a qlist
@@ -797,7 +775,6 @@ qlist <- readQBasic(afiles)
 al_qlist = alignK(qlist)
 
 lab_set = inner_join(indv_snmf, Zt_meta, by = c("Sample" = "ID_file")) %>%
-  mutate(Country = ifelse(Country == "USA", Region, Country)) %>%
   dplyr::select(Continent, Country) %>%
   mutate(Continent = ifelse(is.na(Continent), "Unknown", Continent),
          Country = ifelse(is.na(Country), "Unknown", Country))
@@ -829,7 +806,7 @@ grid.arrange(p2$plot[[1]])
 #High numbers
 from = 11
 up_to = 15
-p2 <-   plotQ(alignK(qlist[from:up_to], type = "across"),
+p3 <-   plotQ(alignK(qlist[from:up_to], type = "across"),
             imgoutput="join",
             returnplot=T,exportplot=F,
             quiet=T,basesize=11,
@@ -838,92 +815,120 @@ p2 <-   plotQ(alignK(qlist[from:up_to], type = "across"),
             clustercol = c("#f9c74f", "#f9844a", "#90be6d", "#f5cac3", 
 "#83c5be", "#f28482", "#577590", "#e5e5e5", "#a09abc",  "#52796f",
 "#219ebc", "#003049", "grey", "#283618", "white"))
-grid.arrange(p2$plot[[1]])
+grid.arrange(p3$plot[[1]])
 ```
 
-
-__Note__: I am not entirely sure about whether the high density of isolates from specific fields could bias the results. I remember it was the case with STRUCTURE, not sure if it is also the case of sNMF. To be checked.
-
-```{r}
-
-chosen_threshold = 0.7
-chosen_threshold2 = 0.75
+The results from the PCA and from the clutering analysis are coherent: Oceania separates into 3 clusters (one in New_Zealand, and two in Australia) and the North American isolates form two separate clusters. Higher K values also distinguish a Middle-Eastern/African cluster from the European cluster, representing the two extreme points of the gradient found between these populations in the PCA. Despite the high number of isolates from Europe, it's interesting to see that no clustering appears there. 
 
 
-temp = bind_rows(snmf_results_per_K %>%
-    filter(Admix_coef > 0.7) %>% 
-    mutate(Threshold = "> 0.7"), 
+I need to identify the isolates which belong to each of the clusters. For this, we need to set a threshold, since there are very few (or even no) isolates assigned fully to one only. I test two thresholds: isolates assigned to one cluster with a value higher than 0.75 and 0.9.
+```{r snmf threshold}
+
+#Setting thresholds to compare
+chosen_threshold = 0.75
+chosen_threshold2 = 0.9
+
+pure_by_threshold = bind_rows(snmf_results_per_K %>%
+    filter(Admix_coef > chosen_threshold) %>% 
+    mutate(Threshold = paste0("> ", chosen_threshold)), 
   snmf_results_per_K %>%
-    filter(Admix_coef > 0.75) %>%
-    mutate(Threshold = "> 0.75"))
+    filter(Admix_coef > chosen_threshold2) %>%
+    mutate(Threshold = paste0("> ", chosen_threshold2)))
 
 
-temp %>%
+# Number of pure isolates per K
+pure_by_threshold %>%
     dplyr::group_by(K, Threshold) %>%
     dplyr::count() %>%
-    ggplot(aes(x = K, y = n, fill = Threshold)) +
+    ggplot(aes(x = as.factor(K), y = n, fill = Threshold)) +
        geom_bar(stat = "identity", position = "dodge") +
-       theme_bw() + scale_fill_manual(values = c(blues[5], blues[3], blues[1]))
+       theme_bw() + scale_fill_manual(values = c("#16697a", "#82c0cc"))+ 
+    labs(x = "K", y = "Number of isolates", title = "Pure isolates per K") 
 
 
-
-temp2 = temp %>%
+# Number of pure isolates per K per country
+temp2 = pure_by_threshold %>%
   dplyr::group_by(Continent, for_display, Cluster, K, Threshold) %>%
   dplyr::count() 
 
-
 temp2 %>%
-  filter(K > 6 & K < 13) %>%
+  filter(K > 9 & K < 16) %>%
   ggplot(aes(x = Cluster, y = for_display,
              size = n, color = Continent)) +
   geom_point(alpha = 0.3) + Color_Continent+ theme_bw() +
   theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
   facet_grid(rows = vars(Threshold), cols = vars(K), scales = "free_x") + 
-    labs(x = "", title = "Number of genotypes with admix coef > 0.8") 
-
-
+    labs(x = "", y = "", size = "Nb of isolates",
+         title = "Pure isolates per country and per K") 
 ```
+Choosing the number K of clusters that best represent the data at hand is always a challenge. First, let's look at the cross-validation results. sNMF estimates an entropy criterion which evaluates the quality of fit of the model to the data, potentially helping to find the best number of ancestral populations. 
+```{r choice K snmf}
 
+#Dot plot of the cross-entropy 
+#plot(project, col = "goldenrod", pch = 19, cex = 1.2) #native method
+cross_ent = list()
+for (i in K_list){
+  cross_ent[[i]] = as_tibble(cross.entropy(project, K = i), rownames = "NA") %>% 
+    mutate( K = i)
+  colnames(cross_ent[[i]] ) <- c("Run", "Crossentropy", "K")
+}
+cross_ent = bind_rows(cross_ent)
+temp = cross_ent %>% group_by(K) %>% summarize(average = mean(Crossentropy), minimum = min(Crossentropy))
+
+p1 = ggplot() +
+  geom_point(data = cross_ent, aes(x = as.factor(K), y = Crossentropy), alpha = 0.4, size = 2, col = "#82c0cc") +
+  geom_point(data = temp, aes(x = as.factor(K), y = minimum), alpha = 0.4, size = 2, col = "#16697a") +
+  theme_cowplot() +
+    labs(x = "K", y = "Cross-entropy")
+
+p2 = pure_by_threshold %>%
+  filter(Threshold == paste0("> ", chosen_threshold)) %>%
+  filter(K > 1) %>%
+  dplyr::group_by(Cluster, K) %>%
+  dplyr::count()%>%
+  group_by(K) %>%
+  summarize(Size_smallest_cluster = min(n)) %>%
+  ggplot(aes(x = as.factor(K), label = Size_smallest_cluster)) +
+    geom_bar(aes(y = Size_smallest_cluster, fill = K), stat = "identity") + 
+    theme_cowplot() +
+    geom_label(aes(y = Size_smallest_cluster + 7)) +
+    scale_fill_continuous(high = "#16697a", low = "#82c0cc") +
+    labs(x = "K", y = "Size of the smallest cluster")
+
+p3 = pure_by_threshold %>%
+  filter(Threshold == paste0("> ", chosen_threshold)) %>%
+    dplyr::group_by(K) %>%
+    dplyr::count() %>%
+    ggplot(aes(x = as.factor(K), y = n, fill = K)) +
+       geom_bar(stat = "identity", position = "dodge") +
+       theme_bw() +
+       scale_fill_continuous(high = "#16697a", low = "#82c0cc") +
+    labs(x = "K", y = "Number of assigned samples")
+
+top_row = cowplot::plot_grid(p1, p3 + theme(legend.position = "none"), ncol = 2)
+cowplot::plot_grid(top_row, p2 + theme(legend.position = "none"), ncol = 1)
+```
+In the case of our analysis, we do not have a very clear-cut minimum value for the cross-entropy criterion value. There is however a plateau starting from K=10. I also look at the number of samples assigned to one cluster or another based on the threshold set previously, as well as at the smallest cluster size. Even though, we might get hints that a very real cluster exists in one specific population, if the cluster size is very small, I will not be able to estimate anything with them so there is no point in going to the level of mini-clusters!
 
 
 ```{r sNMF bubbles}
 #These values are chosen based on the plot above
-chosen_threshold = 0.75
-chosen_K = 10
+chosen_K = 11
 
 #Table
-temp %>%
+kable(snmf_results_per_K %>%
   filter(K == chosen_K) %>%
-  filter(Admix_coef > 0.8) %>%
+  filter(Admix_coef > chosen_threshold) %>%
   dplyr::group_by(Continent, Cluster) %>%
   dplyr::count() %>%
-  pivot_wider(names_from = Continent, values_from =n, values_fill = 0)
-
-
-#Bubble plot
-snmf_results_per_K %>%
-  filter(K == chosen_K) %>%
-  dplyr::group_by(Continent, for_display, Cluster) %>%
-  dplyr::summarize(Ave_admix_coef = round(mean(Admix_coef), 2)) %>%
-  dplyr::filter(Ave_admix_coef >= 0.02) %>%
-  ggplot(aes(x = for_display, y = Cluster,
-             size =  Ave_admix_coef, color = Continent)) +
-  geom_point(alpha = 0.5) + Color_Continent+ theme_bw() +
-  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
-    labs(x = "", title = "Average admixture coefficient per country")
+  pivot_wider(names_from = Continent, values_from =n, values_fill = 0))
 
 #Looking at individuals with admixture coef higher than the threshold defined above.
 high_anc_coef_snmf = snmf_results_per_K %>%
   filter(K == chosen_K) %>%
   filter(Admix_coef > chosen_threshold)
 
-##Table
-kable(high_anc_coef_snmf %>%
-  dplyr::group_by(for_display, Cluster) %>%
-  dplyr::count() %>%
-  pivot_wider(names_from = Cluster, values_from = n, values_fill = list(n = 0)))
-
-##Pretty plot
+##Bubble plot
 p_cluster = high_anc_coef_snmf %>%
   dplyr::group_by(Continent, for_display, Cluster) %>%
   dplyr::count() %>%
@@ -931,15 +936,20 @@ p_cluster = high_anc_coef_snmf %>%
              size = n, color = Continent)) +
   geom_point(alpha = 0.5) + Color_Continent+ theme_bw() +
   theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
-    labs(x = "", title = "Number of genotypes with admix coef > 0.8")
+    labs(x = "", 
+         title = "Pure isolates per country for the chosen K value",
+         subtitle = str_wrap(paste0("Number of genotypes with admix coef > ", chosen_threshold, 
+                                    " assigned to ", chosen_K, " clusters."),
+                             width = 70),
+         size = "Nb of isolates") 
 p_cluster
 
 ##Writing out tables for later
 high_anc_coef_snmf %>% dplyr::select(Sample) %>%
-  write_tsv(., path = paste0(PopStr_dir, vcf_name, ".pass_noNA.high_anc_coef_snmf.ind"),
+  write_tsv(., file = paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.ind"),
             col_names = F)
 high_anc_coef_snmf %>%
-  write_tsv(., path = paste0(PopStr_dir, vcf_name, ".pass_noNA.high_anc_coef_snmf.tsv"),
+  write_tsv(., file = paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.tsv"),
             col_names = T)
 ```
 
@@ -953,18 +963,19 @@ In the steps before, I have learned about population history indirectly by infer
 Because the populations in the clustering were not perfectly distinct from one another, I start with "discretized" populations by choosing only the isolates with high ancestry in one of the sNMF clusters.
 ```{bash discretized pop vcf, eval = F}
 vcftools --vcf ${VCFDIR}$VCFNAME.recode.vcf \
-  --keep ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.ind \
+  --keep ${POPSTR}$VCFNAME.high_anc_coef_snmf.ind \
   --remove-filtered-all --extract-FORMAT-info GT \
   --max-missing 1.0 --min-alleles 2 --max-alleles 2 \
   --maf 0.05 \
-  --out ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf
+  --out ${POPSTR}$VCFNAME.high_anc_coef_snmf
 
-cat  ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.GT.FORMAT | cut -f 3- \
-   >  ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.GT.FORMAT2
+cat  ${POPSTR}$VCFNAME.high_anc_coef_snmf.GT.FORMAT | cut -f 3- \
+   >  ${POPSTR}$VCFNAME.high_anc_coef_snmf.GT.FORMAT2
 ```
 
 
 ```{python convert genotype file to treemix}
+
 from collections import defaultdict
 
 #For each isolate, store its pop (as in sampling site) in a dictionary
@@ -973,19 +984,20 @@ dict_pop = dict(zip(r.high_anc_coef_snmf["Sample"],
 
 #Keep a list of the pop names/coordinates to write in the same order later
 all_pops = sorted(list(set(r.high_anc_coef_snmf["Cluster"])))
-out_name = r.PopStr_dir + r.vcf_name + ".pass_noNA.high_anc_coef_snmf.treemix"
+out_name = r.PopStr_dir + r.vcf_name + ".high_anc_coef_snmf.treemix"
 
 
 out = open(out_name, "w")
 shutup = out.write(" ".join(all_pops) + "\n")
 
-with open(r.PopStr_dir + r.vcf_name + ".pass_noNA.high_anc_coef_snmf.GT.FORMAT2", "r") as input_snps :
+with open(r.PopStr_dir + r.vcf_name + ".high_anc_coef_snmf.GT.FORMAT2", "r") as input_snps :
   for i, snp in enumerate(input_snps) :
+    
     #Setting two dictionaries with values at 0
     dict_snp0 = defaultdict(int)
     dict_snp1 = defaultdict(int)
     Lets_write = True
-
+    
     #The first line is the name of the isolates
     if i == 0 :
       indv = snp.strip().split("\t")
@@ -993,6 +1005,7 @@ with open(r.PopStr_dir + r.vcf_name + ".pass_noNA.high_anc_coef_snmf.GT.FORMAT2"
     else :
       #Keeping isolate name and allelic value together
       alleles = zip(indv, snp.strip().split("\t"))
+            
       #...and counting the O and 1 based on the pop
       for ind, allele in alleles:
         if allele == "0" :
@@ -1006,22 +1019,28 @@ with open(r.PopStr_dir + r.vcf_name + ".pass_noNA.high_anc_coef_snmf.GT.FORMAT2"
     if Lets_write :
       shutup = out.write(" ".join([",".join([str(dict_snp0[pop]), str(dict_snp1[pop])])  for pop in all_pops]) + "\n")
 
+
+print("All done!")
 out.close()
 ```
 
-```{bash run treemix, eval = F, message = F}
-gzip ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix
+```{bash run treemix, eval = F, message = F, results = F}
+
+if [ -f ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix ] ;
+then
+  gzip ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix
+fi
 
 treemix \
-  -i ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.gz \
-  -o ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.out \
-  -m 2 -root V3
+  -i ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix.gz \
+  -o ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix.out \
+  -m 5 -root V7
 
 ```
 
 ```{r plot treemix}
 source("/Users/feurtey/Documents/Software/treemix-1.13/src/plotting_funcs.R")
-t = plot_tree(paste0(PopStr_dir, vcf_name, ".pass_noNA.high_anc_coef_snmf.treemix.out"))
+t = plot_tree(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.treemix.out"))
 p_cluster
 ```
 
@@ -1029,51 +1048,60 @@ Along with the treemix software, are distribution the software treepop and fourp
 
 The three-population test is of the form f3(A;B;C), where a significantly negative value of the f3 statistic implies that population A is admixed. The output is four columns: populations | f3 statistic | standard error | Z-score
 ```{bash run threepop}
-threepop -i ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.gz -k 500
+threepop -i ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix.gz -k 500 | grep "^V" > ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix.3pop.tab
 ```
+```{r}
+read_delim(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.treemix.3pop.tab"), delim = " ", 
+           col_names = c("populations", "f3 statistic", "standard error", "Z-score")) %>%
+  filter(`f3 statistic` < 0)
+```
+
 
 The four-population test is of the form f4(A;B;C;D), where a significantly negative value of the f4 statistic implies gene flow in the tree. The output is four columns: populations | f4 statistic | standard error | Z-score
 ```{bash run fourpop}
-fourpop -i ${POPSTR}$VCFNAME.pass_noNA.high_anc_coef_snmf.treemix.gz -k 500
+fourpop -i ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix.gz -k 500
 ```
 
 
 
 #Split tree
 ```{r subset even sampling}
+threshold_per_pop = 6
+threshold_per_country = 20
+
 #Subsample
 temp = Zt_meta %>%
-  filter(!(ID_file %in% filtered_samples$ID_file)) %>% 
-  unite(Country, Region, col = "Country2", remove = F) %>%
-  mutate(Country_for_filter = ifelse(Country == "USA", Country2, Country)) %>%
+  #filter(!(ID_file %in% filtered_samples$ID_file)) %>% 
+  #unite(Country, Region, col = "Country2", remove = F) %>%
+  #mutate(Country_for_filter = ifelse(Country == "USA", Country2, Country)) %>%
   mutate(x = round(Latitude, 1), y = round(Longitude, 1)) %>%
   unite(Coord_for_filter, x, y, sep = ";", remove = F) %>%
   group_by(Coord_for_filter) %>% 
   mutate(Nb_per_coord = n()) %>% 
-  group_by(Country_for_filter) %>% 
+  group_by(Country) %>% 
   mutate(Nb_per_country= n())
   
 small_pop = temp %>%
-  filter(Nb_per_coord <= 15) %>%
-  filter(Nb_per_country <= 60)
+  filter(Nb_per_coord <= threshold_per_pop) %>%
+  filter(Nb_per_country <= threshold_per_country)
 
 temp2 = bind_rows(temp %>%
                     filter(!(ID_file %in% small_pop$ID_file))%>%
-                    filter(Nb_per_coord > 15) %>% 
+                    filter(Nb_per_coord > threshold_per_pop) %>% 
                     group_by(Coord_for_filter) %>%
-                    dplyr::sample_n(15),
+                    dplyr::sample_n(threshold_per_pop),
                   temp %>%
                     filter(!(ID_file %in% small_pop$ID_file))%>%
-                    filter(Nb_per_coord <= 15)) %>% 
+                    filter(Nb_per_coord <= threshold_per_pop)) %>% 
         ungroup() %>%
-        group_by(Country_for_filter) %>% 
+        group_by(Country) %>% 
         dplyr::mutate(Nb_per_country= n())
 
 Zt_meta_even_sampling = bind_rows(temp2 %>% 
-                    filter(Nb_per_country > 60) %>%
-                    dplyr::sample_n(60),
+                    filter(Nb_per_country > threshold_per_country) %>%
+                    dplyr::sample_n(threshold_per_country),
                   temp2 %>% 
-                    filter(Nb_per_country <= 60)) %>%
+                    filter(Nb_per_country <= threshold_per_country)) %>%
   bind_rows(., small_pop) %>%
   ungroup()
 
@@ -1084,10 +1112,10 @@ write_tsv(Zt_meta_even_sampling %>% dplyr::select(ID_file),
 
 
 ggplot() +
-  geom_bar(data = temp %>% group_by(Continent, Country_for_filter) %>% dplyr::count(),
-           aes(x= Country_for_filter, y = n, fill = Continent), alpha = 0.4, stat = "identity") +
-  geom_bar(data = Zt_meta_even_sampling %>% group_by(Continent, Country_for_filter) %>% dplyr::count(),
-           aes(x= Country_for_filter, y = n, fill = Continent), alpha = 0.4, stat = "identity") +
+  geom_bar(data = temp %>% group_by(Continent, Country) %>% dplyr::count(),
+           aes(x= Country, y = n, fill = Continent), alpha = 0.4, stat = "identity") +
+  geom_bar(data = Zt_meta_even_sampling %>% group_by(Continent, Country) %>% dplyr::count(),
+           aes(x= Country, y = n, fill = Continent), alpha = 0.4, stat = "identity") +
   Fill_Continent + theme_bw() +
   theme(axis.text.x = element_text(angle = 60, hjust = 1))
 
@@ -1101,19 +1129,19 @@ vcftools --vcf ${VCFDIR}$VCFNAME.recode.vcf \
   --remove-filtered-all --extract-FORMAT-info GT \
   --max-missing 1.0 --min-alleles 2 --max-alleles 2 \
   --maf 0.05 \
-  --out ${POPSTR}$VCFNAME.pass_noNA.even_sampling
+  --out ${POPSTR}$VCFNAME.even_sampling
 
 
-cat  ${POPSTR}$VCFNAME.pass_noNA.even_sampling.GT.FORMAT | cut -f 3- \
-    > ${POPSTR}$VCFNAME.pass_noNA.even_sampling.GT.FORMAT2
-cat  ${POPSTR}$VCFNAME.pass_noNA.even_sampling.GT.FORMAT | cut -f 1,2 \
-    > ${POPSTR}$VCFNAME.pass_noNA.even_sampling.GT.FORMAT.pos
-head -n1 ${POPSTR}$VCFNAME.pass_noNA.even_sampling.GT.FORMAT2 | gsed "s/\t/\n/g"  \
-    > ${POPSTR}$VCFNAME.pass_noNA.even_sampling.ind
-gsed "s/\t//g"  ${POPSTR}$VCFNAME.pass_noNA.even_sampling.GT.FORMAT2 | tail -n +2 \
-    > ${POPSTR}$VCFNAME.pass_noNA.even_sampling.geno
+cat  ${POPSTR}$VCFNAME.even_sampling.GT.FORMAT | cut -f 3- \
+    > ${POPSTR}$VCFNAME.even_sampling.GT.FORMAT2
+cat  ${POPSTR}$VCFNAME.even_sampling.GT.FORMAT | cut -f 1,2 \
+    > ${POPSTR}$VCFNAME.even_sampling.GT.FORMAT.pos
+head -n1 ${POPSTR}$VCFNAME.even_sampling.GT.FORMAT2 | gsed "s/\t/\n/g"  \
+    > ${POPSTR}$VCFNAME.even_sampling.ind
+gsed "s/\t//g"  ${POPSTR}$VCFNAME.even_sampling.GT.FORMAT2 | tail -n +2 \
+    > ${POPSTR}$VCFNAME.even_sampling.geno
     
-    
+datamash transpose < ${POPSTR}$VCFNAME.even_sampling.GT.FORMAT2  |  sed 's/^/>/' | sed 's/\t/\n/' | sed 's/\t//g' | cut -c -150 > ${POPSTR}$VCFNAME.even_sampling.fasta
 ```
 
 
@@ -1126,11 +1154,7 @@ gsed "s/\t//g"  ${POPSTR}$VCFNAME.pass_noNA.even_sampling.GT.FORMAT2 | tail -n +
 
 ##PCA with the mitochondrial genome
 ```{bash filter mito vcf, eval = F}
-#sed $'s/\tDP_filter\t/\tPASS\t/' \
-#  ../1_Variant_calling/4_Joint_calling/Ztritici_global_December2020.genotyped.mt.filtered.vcf > \
-# ../1_Variant_calling/4_Joint_calling/Ztritici_global_December2020.genotyped.mt.filtered.reversed_depth_filter.vcf
-
-vcftools --vcf ${VCFDIR}${VCFNAME_MITO}.vcf \
+vcftools --gzvcf ${VCFDIR}${VCFNAME_MITO}.recode.vcf.gz  \
   --non-ref-ac-any 1 \
   --min-alleles 2 --max-alleles 2 \
   --remove-filtered-all --recode --recode-INFO-all \
@@ -1143,8 +1167,8 @@ vcftools --vcf ${VCFDIR}${VCFNAME_MITO}.vcf \
 
 ```{r PCA mito run and plot, results = F}
 snpgdsVCF2GDS(paste0(vcf_dir, vcf_name_mito, ".biall.recode.vcf"),
-              paste0(PopStr_dir, vcf_name, ".biall.recode.gds"), method="biallelic.only")
-genofile_mito <- snpgdsOpen(paste0(PopStr_dir, vcf_name, ".biall.recode.gds"))
+              paste0(PopStr_dir, vcf_name_mito, ".biall.recode.gds"), method="biallelic.only")
+genofile_mito <- snpgdsOpen(paste0(PopStr_dir, vcf_name_mito, ".biall.recode.gds"))
 pca_mito <-snpgdsPCA(genofile_mito, autosome.only=FALSE)
 snpgdsClose(genofile_mito)
 
@@ -1183,12 +1207,12 @@ cowplot::plot_grid(p, q, ncol = 1, rel_heights = c(1, 1.2))
 
 #Let's make groups of samples from the PCA.
 p +
-  geom_vline(aes(xintercept = 0.03)) +
-  geom_label(aes(x = 0, y = -0.03, label = "Mito_group = 1")) +
-  geom_label(aes(x = 0.05, y = -0.03, label = "Mito_group = 0"))
+  geom_vline(aes(xintercept = -0.04)) +
+  geom_label(aes(x = -0.02, y = 0.03, label = "Mito_group = 1")) +
+  geom_label(aes(x = -0.07, y = 0.03, label = "Mito_group = 0"))
 
 pca_mito2 = pca_mito2 %>% 
-  mutate(Mito_group = ifelse(PC1 > 0.03, "0", "1")) 
+  mutate(Mito_group = ifelse(PC1 < -0.04, "0", "1")) 
 
 Nb_per_mito_group = pca_mito2 %>%
   group_by(Mito_group) %>%
@@ -1234,11 +1258,11 @@ vcftools \
 
 ```{r MAF mito}
 #First let's look at the distribution of SNPs and the maf 
-temp = read_tsv(paste0(vcf_dir, vcf_name_mito, ".clean.good_samples.positions"), 
+temp = read_tsv(paste0(vcf_dir, vcf_name_mito, ".biall.positions"), 
                           col_names = c("CHROM", "POS")) %>%
   mutate(window = trunc(POS/1000)*1000)
 
-mito_positions = read_tsv(paste0(vcf_dir, vcf_name_mito, ".clean.good_samples.frq"), col_names = T) %>%
+mito_positions = read_tsv(paste0(vcf_dir, vcf_name_mito, ".biall.frq"), col_names = T) %>%
   separate(`{ALLELE:FREQ}`, into = c("ALLELE", "FREQ"), sep = ":") %>%
   mutate(rev_FREQ = 1-as.numeric(FREQ)) %>%
   group_by(POS) %>%
@@ -1263,7 +1287,7 @@ mito_positions %>%
 
 # Looking at the genotypes for all samples: 
 # are there loci where the two groups contain different alleles?
-temp = read_tsv(paste0(vcf_dir, vcf_name_mito, ".clean.good_samples.genotypes"), 
+temp = read_tsv(paste0(vcf_dir, vcf_name_mito, ".biall.genotypes"), 
                           col_names = F) %>%
   pivot_longer(-c(X1, X2, X3)) %>%
   separate(value, into=c("sample_id", "Genotype"), sep = "=") %>%
@@ -1299,23 +1323,24 @@ I strongly suspect that the locus of high differentiation observed around the cy
 echo "#chrom chromStart  chromEnd" > ${VCFDIR}${VCFNAME_MITO}_positions_to_exclude.bed
 echo "mt  25500 30000" >> ${VCFDIR}${VCFNAME_MITO}_positions_to_exclude.bed
 
-vcftools --vcf ${VCFDIR}${VCFNAME_MITO}.vcf \
+vcftools \
+  --vcf ${VCFDIR}${VCFNAME_MITO}.biall.recode.vcf \
   --keep $ZTLIST \
   --non-ref-ac-any 1 \
   --min-alleles 2 --max-alleles 2 \
   --remove-filtered-all --recode --recode-INFO-all \
   --exclude-bed  ${VCFDIR}${VCFNAME_MITO}_positions_to_exclude.bed \
-  --out ${VCFDIR}${VCFNAME_MITO}.clean.good_samples.no_high_diff_region
+  --out ${VCFDIR}${VCFNAME_MITO}.biall.no_high_diff_region
 ```
 
 
 
 ```{r PCA mito wo high diff, results = F}
-snpgdsVCF2GDS(paste0(vcf_dir, vcf_name_mito, ".clean.good_samples.no_high_diff_region.recode.vcf"),
-              paste0(PopStr_dir, vcf_name, ".clean.good_samples.no_high_diff_region.recode.gds"),
+snpgdsVCF2GDS(paste0(vcf_dir, vcf_name_mito, ".biall.no_high_diff_region.recode.vcf"),
+              paste0(PopStr_dir, vcf_name, ".biall.no_high_diff_region.recode.gds"),
               method="biallelic.only")
 genofile_mito_wo_diff <- snpgdsOpen(paste0(PopStr_dir, vcf_name, 
-                                   ".clean.good_samples.no_high_diff_region.recode.gds"))
+                                   ".biall.no_high_diff_region.recode.gds"))
 pca_mito_wo_diff <-snpgdsPCA(genofile_mito_wo_diff, autosome.only=FALSE)
 snpgdsClose(genofile_mito_wo_diff)
 
@@ -1489,7 +1514,7 @@ for x in 0 1 ;
 do 
 
 #VCF with only variants within groups
-vcftools --vcf ${VCFDIR}${VCFNAME_MITO}.vcf \
+vcftools --gzvcf ${VCFDIR}${VCFNAME_MITO}.recode.vcf.gz \
   --keep ${MITOPOPSTR}Sample_list_mito_group${x}.txt \
   --non-ref-ac-any 1 \
   --min-alleles 2 --max-alleles 2 \
@@ -1497,7 +1522,7 @@ vcftools --vcf ${VCFDIR}${VCFNAME_MITO}.vcf \
   --out ${MITOPOPSTR}${VCFNAME_MITO}.mito_group${x}
   
 #VCF with all positions but within group samples only
-vcftools --vcf ${VCFDIR}${VCFNAME_MITO}.vcf \
+vcftools --gzvcf ${VCFDIR}${VCFNAME_MITO}.recode.vcf.gz \
   --keep ${MITOPOPSTR}Sample_list_mito_group${x}.txt \
   --recode --recode-INFO-all \
   --out ${MITOPOPSTR}${VCFNAME_MITO}.ALL_POS.mito_group${x}
@@ -1521,7 +1546,7 @@ vcftools --vcf ${MITOPOPSTR}${VCFNAME_MITO}.ALL_POS.mito_group${x}.recode.vcf \
  done
 ```
 
-For a start, I want to look at the depth, both for per genotype and then per allele. The first is to detect a potential duplication of the region of interest which would lead to SNPs being called in this region when in reality, the reads belongs to paralogs. The second is to check for heteroplasticity: do cells contain the two haplotypes?
+For a start, I want to look at the depth per genotype. The first is to detect a potential duplication/deletion of the region of interest which would lead to SNPs being called in this region when in reality.
 ```{r}
 #Depth in general
 temp = bind_rows(read_tsv(paste0(mito_PS_dir, vcf_name_mito, ".ALL_POS.mito_group1.ldepth")) %>%
@@ -1546,38 +1571,7 @@ p1 = ggplot(temp, aes(x = POS, y = norm_site_depth, col = Mito_group)) +
        x = "Position",
        y= "Normalized read depth")
 
-
-
-#Allelic depth
-
-temp = bind_rows(read.delim(paste0(mito_PS_dir, vcf_name_mito, ".ALL_POS.mito_group0.AD.tsv"), 
-                            header = F) %>% mutate(Mito_group = 0) %>%
-    pivot_longer(cols = -c(V1, V2, Mito_group), names_to ="Sample", values_to = "AD") , 
-                 read.delim(paste0(mito_PS_dir, vcf_name_mito, ".ALL_POS.mito_group1.AD.tsv"), 
-                            header = F) %>% mutate(Mito_group = 1)%>%
-    pivot_longer(cols = -c(V1, V2, Mito_group), names_to ="Sample", values_to = "AD") ) %>%
-  filter(str_count(AD, ",") == 1) %>%
-    separate(AD, into = c("REF", "ALT"), sep = ",") %>%
-    group_by(V2, Mito_group, Sample, V1) %>%
-    mutate(ratio = min(as.numeric(REF),as.numeric(ALT)) / (as.numeric(REF) + as.numeric(ALT)))
-
-
-temp2 = temp %>%
-  group_by(V2, Mito_group) %>%
-  summarize(ave_ratio = mean(ratio)) 
-
-y_lim = max(temp2$ave_ratio, na.rm = T)
-
-p2 = ggplot(temp2, aes(x = V2, y = ave_ratio, col = Mito_group)) + 
-  annotate("rect", alpha=0.3, fill=blues[[4]],
-           xmin=28000, xmax=30000, ymin=0, ymax=y_lim) +
-  labs(y = "Ratio of maf/(all depth)", 
-       title = "Ratio of allelic depth: heteroplasmy should lead to higher ratios", 
-       x = "Position") +
-    geom_point(alpha = 0.4) +
-    theme_bw()
-
-cowplot::plot_grid(p1, p2, ncol = 1)
+p1
 ```
 
 
@@ -1592,7 +1586,7 @@ In order to check further if the variants could be erroneously called around a s
 # Mitogroup + complete
 complete_mito = pca_mito2 %>%
   dplyr::select(sample_id, Mito_group) %>%
-  inner_join(., complete_mito)
+  inner_join(., complete_mito, by = c("sample_id" = "ID_file"))
 
 nb_complete_mito_per_group = as.data.frame(table(complete_mito$Mito_group))
 names(nb_complete_mito_per_group) = c("Mito_group", "Total_nb")
@@ -2208,36 +2202,36 @@ vcftools \
   --non-ref-ac-any 1 \
   --max-missing 1.0 --min-alleles 2 --max-alleles 2 \
   --recode \
-  --out ${SUMST}${VCFNAME_NOMAF}.pass_noNA.syn
+  --out ${SUMST}${VCFNAME_NOMAF}.syn
 
 #Create one count file per population
 for x in {1..6} ;
 do
-cut -f 1,2 ${POPSTR}${VCFNAME}.pass_noNA.high_anc_coef_snmf.tsv \
+cut -f 1,2 ${POPSTR}${VCFNAME}.high_anc_coef_snmf.tsv \
   | grep -w "V${x}" | cut -f 1 \
-  > ${SUMST}${VCFNAME}.pass_noNA.high_anc_coef_snmf.pop${x}.ind
+  > ${SUMST}${VCFNAME}.high_anc_coef_snmf.pop${x}.ind
 
 vcftools \
-  --vcf ${SUMST}${VCFNAME_NOMAF}.pass_noNA.syn.recode.vcf \
-  --keep ${SUMST}${VCFNAME}.pass_noNA.high_anc_coef_snmf.pop${x}.ind \
+  --vcf ${SUMST}${VCFNAME_NOMAF}.syn.recode.vcf \
+  --keep ${SUMST}${VCFNAME}.high_anc_coef_snmf.pop${x}.ind \
   --remove-filtered-all \
   --counts \
-  --out ${SUMST}${VCFNAME_NOMAF}.pass_noNA.high_anc_coef_snmf.pop${x}
+  --out ${SUMST}${VCFNAME_NOMAF}.high_anc_coef_snmf.pop${x}
 
 done
 
 
 #TODO: Filter vcf file for monomorphic SNP in outgroup and use to create dadi output?
 /Users/feurtey/Documents/Software/vcftools_jydu/src/cpp/vcftools \
-  --vcf ${SUMST}${VCFNAME_NOMAF}.pass_noNA.syn.recode.vcf \
+  --vcf ${SUMST}${VCFNAME_NOMAF}.syn.recode.vcf \
   --recode-INFO-all --recode \
-	--out ${SUMST}${VCFNAME_NOMAF}.pass_noNA.syn.for_dadi \
+	--out ${SUMST}${VCFNAME_NOMAF}.syn.for_dadi \
 	--max-indv 1
 
 
 /Users/feurtey/Documents/Software/bcftools/bcftools query -f '%CHROM\t%POS\t%REF[\t%TGT]\n' \
-  ${SUMST}${VCFNAME_NOMAF}.pass_noNA.syn.for_dadi.recode.vcf > \
-  ${SUMST}${VCFNAME_NOMAF}.pass_noNA.syn.for_dadi.tab
+  ${SUMST}${VCFNAME_NOMAF}.syn.for_dadi.recode.vcf > \
+  ${SUMST}${VCFNAME_NOMAF}.syn.for_dadi.tab
 
 ```
 
@@ -2246,7 +2240,7 @@ SFS_counts_list = list()
 
 for (x in c(1:6)) {
 count_file = paste0(Sumstats_dir, vcf_name_nomaf,
-                    ".pass_noNA.high_anc_coef_snmf.pop",
+                    ".high_anc_coef_snmf.pop",
                     x,".frq.count")
 
 counts = read_tsv(count_file,
@@ -3729,7 +3723,7 @@ __Geographic/environmental data__: For this, I will use the sampling site of eac
 ```{r Get Bioclim data}
 
 temp = Zt_meta %>%
-  filter(!(ID_file %in% filtered_samples$ID_file)) %>%
+  #filter(!(ID_file %in% filtered_samples$ID_file)) %>%
   filter(!is.na(Longitude)) %>%
   mutate(X = as.numeric(unlist(Longitude)),
                             Y = as.numeric(unlist(Latitude))) %>%
@@ -3778,7 +3772,7 @@ climate_per_coordinates = cbind(temp, do.call(cbind, bio_list)) %>%
 ```{r Plot distrib bioclim}
 
 dat = Zt_meta %>%
-  filter(!(ID_file %in% filtered_samples$ID_file)) %>% 
+  #filter(!(ID_file %in% filtered_samples$ID_file)) %>% 
   dplyr::select(ID_file, Latitude, Longitude, Continent) %>%
   full_join(., climate_per_coordinates,
                 by= c("Longitude" = "X", "Latitude" = "Y")) %>%
@@ -3823,7 +3817,7 @@ __How to choose the best variables?__
 ```{r PCA bioclim var}
 
 country_climate = Zt_meta %>%
-  filter(!(ID_file %in% filtered_samples$ID_file)) %>% 
+  #filter(!(ID_file %in% filtered_samples$ID_file)) %>% 
   filter(!is.na(Longitude)) %>%
   dplyr::select(Latitude, Longitude, Continent) %>% 
   unique()
@@ -3868,8 +3862,8 @@ __Methods__: Several software to explore:
 
 ```{bash, eval =F}
 datamash transpose \
-    < ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT2 \
-    > ${GEADIR}$VCFNAME.pass_noNA.GT.FORMAT2.transposed
+    < ${POPSTR}$VCFNAME.GT.FORMAT2 \
+    > ${GEADIR}$VCFNAME.GT.FORMAT2.transposed
 ```
 
 ```{bash format lfmm, eval = F}
@@ -3882,14 +3876,14 @@ vcftools --vcf ${VCFDIR}$VCFNAME.recode.vcf \
   --out ${POPSTR}$VCFNAME.pass_noNA
 
 
-cat  ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT | cut -f 3- \
-    > ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT2
-cat  ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT | cut -f 1,2 \
-    > ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT.pos
-head -n1 ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT2 | gsed "s/\t/\n/g"  \
-    > ${POPSTR}$VCFNAME.pass_noNA.ind
-gsed "s/\t//g"  ${POPSTR}$VCFNAME.pass_noNA.GT.FORMAT2 | tail -n +2 \
-    > ${POPSTR}$VCFNAME.pass_noNA.geno
+cat  ${POPSTR}$VCFNAME.GT.FORMAT | cut -f 3- \
+    > ${POPSTR}$VCFNAME.GT.FORMAT2
+cat  ${POPSTR}$VCFNAME.GT.FORMAT | cut -f 1,2 \
+    > ${POPSTR}$VCFNAME.GT.FORMAT.pos
+head -n1 ${POPSTR}$VCFNAME.GT.FORMAT2 | gsed "s/\t/\n/g"  \
+    > ${POPSTR}$VCFNAME.ind
+gsed "s/\t//g"  ${POPSTR}$VCFNAME.GT.FORMAT2 | tail -n +2 \
+    > ${POPSTR}$VCFNAME.geno
 
 ```
 
