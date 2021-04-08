@@ -1,13 +1,40 @@
 #!/bin/bash
 
 #need python with biopython
+# Example command:
+# ----------------
+# sbatch ./Identify_AAchange_from_vcf.sh  -s ./Keep_lists_samples/Ztritici_global_March2021.genotyped.good_samples.args  -p ./Directories_new.sh -b ./fungicideR_codon_ranges.bed
 
-source $1
-SAMPLES=$2
-BED=$3 # tab-delim table with loci/codons (see below) NOT A BED AT ALL
+# Inputs:
+# ------
+#  - List of general paths to directories and files. Directories_new.sh
+#  - List of samples of interest. Here, it's the genotyped samples. ${list_dir}Ztritici_global_March2021.genotyped.sample_list.args
+#  - Vcf file which includes the samples of interest. Here set up to: ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.vcf.gz
+#  - A tab-delimited table (called bed below despite it not being a bed file at all).
+#       Example line: QoI     mitochondrial_cytb      G143A   cytb    mt      26989   28160   -       27733   27735
+
+# Outputs:
+# -------
+
+
+#Reading options
+while getopts p:s:b: flag
+do
+    case "${flag}" in
+        p) path_file=${OPTARG};;
+        s) sample_list=${OPTARG};;
+        b) BED=${OPTARG};;
+        #o) output_prefix=${OPTARG};;
+    esac
+done
+
+source $path_file
+
+final_vcf=${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.vcf.gz
 
 cd ${fung_dir}
-#$TABIX_PATH -p vcf $IPO323_VCF
+
+$TABIX_PATH -p vcf $final_vcf
 mkdir -p temp_files
 
 # looping through the table of codons/loci
@@ -29,15 +56,15 @@ do
       ${BCFTOOLS_PATH} consensus \
         --sample $sample \
         -o temp_files/$gene.$codon.$sample.fa \
-        ${IPO323_VCF}
-        
+        ${final_vcf}
+
     sed -i "/>/ s/>.*/>$sample/" temp_files/$gene.$codon.$sample.fa
-  done < $SAMPLES
-  
+  done < $sample_list
+
   # combine files per locus
   cat temp_files/$gene.$codon.*.fa > $gene.$codon.tmp.fa
   rm temp_files/$gene.$codon.*.fa
-  
+
   # perform rev. comp. with seqk if "-", otherwise just translate
   if [ $strand = "-" ]; then
 	   seqkit seq -r -p $gene.$codon.tmp.fa > $gene.$codon.fa
