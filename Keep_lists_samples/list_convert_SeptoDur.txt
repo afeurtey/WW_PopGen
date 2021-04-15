@@ -1,0 +1,7 @@
+Sample_SeptoDur10	ST13FR_Biog_SeptoDur10
+Sample_SeptoDur12	ST13FR_Biog_SeptoDur12
+Sample_SeptoDur29	ST13FR_Biog_SeptoDur29
+Sample_SeptoDur8	ST13FR_Biog_SeptoDur8
+Sample_SeptoDur82	ST13FR_Biog_SeptoDur82
+Sample_SeptoDur88	ST13FR_Biog_SeptoDur88
+Sample_SeptoDur104	ST13SP_Biog_SeptoDur104
