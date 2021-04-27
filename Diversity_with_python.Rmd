@@ -1,0 +1,167 @@
+---
+title: "Untitled"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=TRUE}
+library(tidyverse)
+library(reticulate)
+library(cowplot)
+
+
+knitr::opts_chunk$set(echo = F)
+knitr::opts_chunk$set(message = F)
+knitr::opts_chunk$set(warning = F)
+knitr::opts_chunk$set(results = T)
+
+use_condaenv(condaenv = "env0", required = TRUE)
+
+#Directory paths
+dir_name = "/data2/alice/WW_project/"
+data_dir = "/data2/alice/WW_project/0_Data/"
+VAR_dir = paste0(dir_name, "1_Variant_calling/")
+  depth_per_window_dir = paste0(VAR_dir, "1_Depth_per_window/")
+  vcf_dir = paste0(VAR_dir, "4_Joint_calling/")
+  vcf_qual_check_dir = paste0(VAR_dir, "5_Quality_checks/")
+  
+# File paths
+vcf_core_name = "Ztritici_global_March2021.genotyped."
+
+chrom = 13
+```
+
+```{python set up2}
+import allel
+import numpy as np
+import scipy
+import pandas
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+%matplotlib inline
+import seaborn as sns
+sns.set_style('white')
+sns.set_style('ticks')
+
+#
+def plot_windowed_variant_density(pos, window_size, title=None):
+    window_size = 1000
+    # setup windows 
+    bins = np.arange(0, pos.max(), window_size)
+    
+    # use window midpoints as x coordinate
+    x = (bins[1:] + bins[:-1])/2
+    
+    # compute variant density in each window
+    h, _ = np.histogram(pos, bins=bins)
+    y = h / window_size
+    
+    # plot
+    fig, ax = plt.subplots(figsize=(12, 3))
+    sns.despine(ax=ax, offset=10)
+    ax.plot(x, y)
+    ax.set_xlabel('Chromosome position (bp)')
+    ax.set_ylabel('Variant density (bp$^{-1}$)')
+    if title:
+        ax.set_title(title)
+    plt.show()
+```
+
+
+
+
+
+
+```{r}
+var_list = bind_rows(paste0(vcf_qual_check_dir, vcf_core_name, c(1:21), ".tab") %>%
+                         map_df(~read_tsv(., col_names = c("CHROM", "POS", "REF", "ALT"), 
+                           col_types = cols(col_character(), col_double(), col_character(), col_character()))) %>%
+                         mutate(Filter = "Raw"),
+                     read_tsv(paste0(vcf_qual_check_dir, vcf_core_name,
+                                     "ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.tab"),
+                              col_names = c("CHROM", "POS", "REF", "ALT"), 
+                           col_types = cols(col_character(), col_double(), col_character(), col_character())) %>%
+                         mutate(Filter = "Filtered"))
+```
+
+```{r}
+window_size = 1000
+threshold_kept = 80
+variants_per_window = var_list %>% mutate(Window = floor(POS/window_size)) %>%
+  group_by(CHROM, Window, Filter) %>%
+  count() %>%
+  ungroup() %>%
+  mutate(Start = window_size * Window, End = Start + window_size) %>%
+  pivot_wider(names_from = Filter, values_from = n, values_fill = 0) %>%
+  mutate(Percent_kept = (100*Filtered)/Raw,
+         Window_status = ifelse(Percent_kept > threshold_kept, "Keep", "Remove"))
+
+dplyr::count(x = variants_per_window, Window_status)
+
+variants_per_window %>%
+  ggplot(aes(Percent_kept)) +
+  geom_density() +
+  facet_wrap(vars(CHROM), scales = "free")
+
+variants_per_window %>%
+  filter(CHROM != "mt") %>%
+  ggplot(aes(x = reorder(CHROM, as.numeric(CHROM)), fill = Window_status)) +
+  geom_bar() +
+  scale_fill_manual(values =c( "#82c0cc", "#EDE7E3")) +
+  theme_bw()
+
+p1 = variants_per_window %>%
+  filter(CHROM != "mt") %>%
+  filter(as.numeric(CHROM) <= 10) %>%
+  ggplot() +
+  geom_segment(aes(x = reorder(CHROM, as.numeric(CHROM)), xend = reorder(CHROM, as.numeric(CHROM)),
+                   y = Start, yend = End, color = Window_status), size = 5)+
+  scale_color_manual(values =c( "#82c0cc", "#EDE7E3")) +
+  theme_bw() +
+  coord_flip() +
+  theme(legend.position = "none") +
+  labs(x = "Chromosome", y = "Coordinates")
+
+p2 = variants_per_window %>%
+  filter(CHROM != "mt") %>%
+  filter(as.numeric(CHROM) > 10) %>%
+  ggplot() +
+  geom_segment(aes(x = reorder(CHROM, as.numeric(CHROM)), xend = reorder(CHROM, as.numeric(CHROM)),
+                   y = Start, yend = End, color = Window_status), size = 5)+
+  scale_color_manual(values =c( "#82c0cc", "#EDE7E3")) +
+  theme_bw() +
+  coord_flip()+
+  labs(x = "Chromosome", y = element_blank())
+
+cowplot::plot_grid(p2, p1, ncol = 1)
+
+  
+```
+
+```{python}
+right_chr = r.variants_per_window['CHROM']==str(int(r.chrom))
+kept_windows = r.variants_per_window['Window_status']=="Keep"
+windows_table = r.variants_per_window[right_chr & kept_windows]
+
+callset = allel.read_vcf("/data2/alice/WW_project/1_Variant_calling/4_Joint_calling/Ztritici_global_March2021.genotyped." + str(int(r.chrom)) +".filtered.clean.AB_filtered.variants.good_samples.max-m-80.recode.vcf.gz")#, fields = ['calldata/GT'])
+
+callset.keys()
+
+pos = callset['variants/POS'][:]
+
+
+h = allel.GenotypeArray(callset['calldata/GT'])
+ac = h.count_alleles()
+pairwise_diff = allel.mean_pairwise_difference(ac)
+```
+
+```{python}
+print(windows_table)
+for index, row in windows_table.iterrows() :
+    pi = allel.sequence_diversity(pos, ac, start=int(row['Start']), stop=int(row['End']))
+    print(int(row['Start']), int(row['End']), round(pi, 6)) 
+
+print("Done)
+```
+
