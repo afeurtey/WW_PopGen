@@ -30,6 +30,7 @@ library(raster)
 library(sp)
 library(rgdal)
 library(maps)
+library(geosphere)
 
 #Data wrangling and data viz
 library(tidyverse)
@@ -57,6 +58,9 @@ library(gridExtra)
 
 library(ggtree)
 library(tidytree)
+library(multcomp)
+library(lsmeans)
+
 
 
 #GEA
@@ -77,6 +81,7 @@ lists_dir = "/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/WW_PopGe
 #Data directories
 data_dir=paste0(project_dir, "0_Data/")
 metadata_dir=paste0(project_dir, "Metadata/")
+fig_dir = "/Users/feurtey/Documents/Postdoc_Bruce/Manuscripts/Feurtey_WW_Zt/Draft_figures/"
 
 #Analysis directories
 #-___________________
@@ -85,7 +90,8 @@ VAR_dir = paste0(project_dir, "1_Variant_calling/")
   vcf_dir = paste0(VAR_dir, "4_Joint_calling/")
   mito_SV = paste0(VAR_dir, "6_Mito_SV/")
 PopStr_dir = paste0(project_dir, "2_Population_structure/")
-mito_PS_dir = paste0(PopStr_dir, "1_Mitochondrial_genome/")
+  nuc_PS_dir=paste0(PopStr_dir, "0_Nuclear_genome/")
+  mito_PS_dir = paste0(PopStr_dir, "1_Mitochondrial_genome/")
 Sumstats_dir = paste0(project_dir, "3_Sumstats_demography/")
 TE_RIP_dir=paste0(project_dir, "4_TE_RIP/")
    RIP_DIR=paste0(TE_RIP_dir, "0_RIP_estimation/")
@@ -145,12 +151,16 @@ genotyped_samples = read_tsv(Zt_list, col_names = "ID_file")
 ## Metadata of genotyped samples 
 temp = read_tsv(paste0(metadata_dir, metadata_name, "_Description.tab"), col_names = F) %>% pull()
 
-Zt_meta=read_tsv(paste0(metadata_dir, metadata_name, "_with_collection.tab"), 
+Zt_meta = read_tsv(paste0(metadata_dir, metadata_name, "_with_collection.tab"), 
                  col_names = temp,
                  na = "\\N", guess_max = 2000) %>%
   unite(Coordinates, Latitude, Longitude, sep = ";", remove = F) %>%
   inner_join(., genotyped_samples)  %>%
-  mutate(Country = ifelse(Country == "USA", paste(Country, Region, sep = "_"), Country))
+  mutate(Country = ifelse(Country == "USA", paste(Country, Region, sep = "_"), Country)) %>%
+  mutate(Country = ifelse(Country == "Australia", paste(Country, Region, sep = "_"), Country)) %>%
+  mutate(Country = ifelse(Country == "NZ", "New Zealand", Country)) %>%
+  mutate(Country = ifelse(Country == "CH", "Switzerland", Country)) %>%
+  mutate(Latitude2 = round(Latitude, 2), Longitude2 = round(Longitude, 2))
 
 #genotyped_samples %>%
 #  filter(!(ID_file %in% filtered_samples$ID_file)) %>%
@@ -160,10 +170,16 @@ Zt_meta=read_tsv(paste0(metadata_dir, metadata_name, "_with_collection.tab"),
 
 #Define colors
 ## For continents
-myColors <- c("#04078B", "#a10208", "#FFBA08", "#CC0044", "#5C9D06", "#129EBA","#305D1B")
+#myColors <- c("#04078B", "#a10208", "#FFBA08", "#CC0044", "#5C9D06", "#129EBA","#305D1B")
+myColors <- c("#DA4167", "grey", "#ffba0a", "#A20106", "#3F6E0C", "#129eba", "#8fa253" )
 names(myColors) = levels(factor(Zt_meta$Continent))
 Color_Continent = ggplot2::scale_colour_manual(name = "Continent", values = myColors)
 Fill_Continent = ggplot2::scale_fill_manual(name = "Continent", values = myColors)
+
+## For clustering
+K_colors = c("#f9c74f", "#f9844a", "#90be6d", "#f5cac3", 
+"#83c5be", "#f28482", "#577590", "#e5e5e5", "#a09abc",  "#52796f",
+"#219ebc", "#003049", "#82c0cc", "#283618", "white")
 
 ## For correlations
 mycolorsCorrel<- colorRampPalette(c("#0f8b8d", "white", "#a8201a"))(20)
@@ -173,12 +189,31 @@ greens=c("#1B512D", "#669046", "#8CB053", "#B1CF5F", "#514F59")
 blues=c("#08386E", "#1C89C9", "#28A7C0", "#B0DFE8", "grey")
 ```
 
+```{r}
+#myColors <- c("#DA4167", "grey", "#ffba0a", "#A20106", "#3F6E0C", "#129eba", "#8fa253" )
+
+myColors <- c("#DA4167", "grey", "#FFBA0A", "#EC6B09", "#8DDBE0", "#6F8B2D", "#0B7DA3" )
+
+names(myColors) = levels(factor(Zt_meta$Continent))
+Color_Continent = ggplot2::scale_colour_manual(name = "Continent", values = myColors)
+Fill_Continent = ggplot2::scale_fill_manual(name = "Continent", values = myColors)
+
+sum_temp %>%
+ggplot(aes(x=`Sampling year`, y =`Genome number`, fill = Continent)) +
+  geom_bar(stat = "identity") +
+  theme_bw() + theme(axis.title = element_blank(),
+                     axis.text.x = element_text(angle = 60, hjust = 1)) +
+  Fill_Continent
+```
+
 
 ```{bash Importation from cluster, eval = F}
 # Uploading commands from the cluster to my computer.
 
 # 1 - Variant calling - Nuclear
 rsync -avP alice@130.125.25.244:/data2/alice/WW_project/1_Variant_calling/4_Joint_calling/Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.biall* ~/Documents/Postdoc_Bruce/Projects/WW_project/1_Variant_calling/4_Joint_calling/
+rsync -avP alice@130.125.25.244:/home/alice/WW_PopGen/Keep_lists_samples/Ztritici_global_March2021.genotyped.good_samples.args \
+  ../WW_PopGen/Keep_lists_samples/
 
 # 1 - Variant calling - Mito 
 rsync -avP alice@130.125.25.244:/data2/alice/WW_project/1_Variant_calling/4_Joint_calling/Ztritici_global_March2021.genotyped.mt.filtered.clean.AB_filtered.variants.good_samples.max-m-80.recode.vcf.gz  /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/1_Variant_calling/4_Joint_calling/
@@ -194,8 +229,6 @@ rsync -avP alice@130.125.25.244:/data2/alice/WW_project/1_Variant_calling/1_Dept
 # Depth_per_chromosome_summary.q30.txt
 rsync -avP alice@130.125.25.244:/data2/alice/WW_project/1_Variant_calling/2_Depth_per_gene/Depth_per_genes_normalized.txt \
     ../1_Variant_calling/2_Depth_per_gene/
-rsync -avP alice@130.125.25.244:/home/alice/WW_PopGen/Keep_lists_samples/Ztritici_global_March2021.genotyped.good_samples.args \
-  ../WW_PopGen/Keep_lists_samples/
   
 # 1 - Variant calling - SV
 rsync -avP alice@130.125.25.244:/data2/alice/WW_project/1_Variant_calling/6_Mito_SV/All_complete_mitochondria.* \
@@ -217,6 +250,8 @@ rsync -avP \
 rsync -avP \
   alice@130.125.25.244:/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/Composite_index.txt \
   /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/0_RIP_estimation/
+rsync -avP   alice@130.125.25.244:/data2/alice/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/1_Blast_dim2_deRIPped/ \
+ /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/
   
   
 # 5 - GEA
@@ -260,6 +295,7 @@ isolate_map = ggplot() + theme_void() +
   scale_size("Number of genomes", limits = c(1, max_circle))
 isolate_map
 
+
 ```
 
 
@@ -284,6 +320,298 @@ ggplot(aes(x=`Sampling year`, y =`Genome number`, fill = Continent)) +
   Fill_Continent
 ```
 
+```{r list samples per country}
+countries = dplyr::count(Zt_meta, Country, Continent)
+
+countries %>% filter(n >= 8) %>%
+  ggplot(aes(x = Country, y =n, fill = Continent)) +
+    geom_bar(stat = "identity") +
+    Fill_Continent +
+    theme_cowplot() +
+    labs(x = element_blank(), y = "Number of samples") +
+    theme(axis.text.x = element_text(angle = 40, hjust = 1, vjust = 1))
+
+for (country in filter(countries, n >= 8) %>% pull(Country)) {
+  country_name = str_replace(country, pattern = " ", replacement = "_")
+  file_name = paste0(PopStr_dir, "Sample_list_", country_name, ".args")
+  
+  Zt_meta %>% filter(Country == country) %>%
+    dplyr::select(ID_file) %>%
+    write_tsv(file = file_name, col_names = F)
+}
+```
+
+
+```{r subset country sampling}
+
+for ( min_number in c(6, 10) ) {
+  
+  small_pops = Zt_meta %>%
+    filter(!is.na(Country) & !is.na(Sampling_Date)) %>%
+    dplyr::count(Country, Latitude2, Longitude2, Sampling_Date, name = "Number_genomes") %>%
+    filter( Number_genomes >= min_number ) 
+  
+  map1 = ggplot() + 
+    theme_void() +
+    geom_polygon(data = map_data("world"), aes(x=long, y = lat, group = group), fill="#ede7e3")  +
+    scale_size("Number of genomes", limits = c(1, max_circle))  +
+    theme(legend.position = "None", 
+          panel.border  = element_rect(fill=NA, colour = "grey",size = 0.5, linetype = 1))+
+      scale_fill_manual(values = c("grey", K_colors) )
+  
+  p1 = map1 + coord_cartesian(xlim=c(-20, 60), ylim=c(20, 70)) + 
+    geom_point(data = small_pops, 
+               mapping = aes(x=Longitude2, y=Latitude2, size=Number_genomes),
+               alpha = 0.6, color = "#16697a")
+  
+  p2 = map1 + coord_cartesian(xlim=c(-160, -40), ylim=c(-80, 80)) + 
+    geom_point(data = small_pops, 
+               mapping = aes(x=Longitude2, y=Latitude2, size=Number_genomes),
+               alpha = 0.6, color = "#16697a")
+  
+  p3 = map1 + coord_cartesian(xlim=c(115, 175), ylim=c(-65, 10)) + 
+    geom_point(data = small_pops, 
+               mapping = aes(x=Longitude2, y=Latitude2, size=Number_genomes),
+               alpha = 0.6, color = "#16697a")
+  
+  aus_map = cowplot::plot_grid(p3, get_legend(isolate_map), ncol = 2, rel_widths = c(1, 0.9))
+  ligne = cowplot::plot_grid(p1, aus_map, ncol = 1,  rel_heights = c(1, 0.7))
+  cowplot::plot_grid(p2, ligne, ncol = 2, rel_widths = c(0.7, 1)) 
+  
+  
+  
+  for (t in 1:nrow(small_pops)) {
+    country = pull(small_pops[t, "Country"])
+    year = pull(small_pops[t, "Sampling_Date"])
+    lat = pull(small_pops[t, "Latitude2"])
+    long = pull(small_pops[t, "Longitude2"])
+    country_name = str_replace(country, pattern = " ", replacement = "_")
+    
+    for (i in 1:10 ){
+      
+      file_name = paste0(PopStr_dir, "Sample_list_subset_", 
+                         paste(min_number, country_name, year, lat, long, i, sep = "_"), 
+                         ".args")
+      
+      temp = Zt_meta %>% 
+        filter(Country == country) %>%
+        filter(Sampling_Date == year)  %>% 
+        filter(Latitude2 == lat) %>%
+        filter(Longitude2 == long) %>%
+        dplyr::select(ID_file) %>%
+        pull()
+     
+      print(file_name) 
+      print(length(temp))
+      
+      write_tsv(as.tibble(sample(temp, size = min_number)), file = file_name, col_names = F) 
+    }
+  }
+}
+
+```
+
+
+
+# Wheat trade and wheat production across the world
+```{r wheat prod}
+
+# Get area for country, wheat culture and percentage of land dedicated to wheat
+wheat_per_country = read_csv(paste0(metadata_dir, "FAOSTAT_data_4-9-2021_crops_production.csv")) %>% 
+  filter(Unit == "ha") %>% 
+  dplyr::select(Area, `Year Code`, Value)  %>%
+  group_by(Area) %>%
+  summarize(Wheat_ha = mean(Value)) %>%
+  inner_join(.,read_csv(paste0(metadata_dir, "FAOSTAT_data_4-15-2021_land_stats.csv")) %>%
+               filter(Item == "Arable land") %>%
+               mutate(Arable_land_area_in_ha = Value * 1000) %>%
+               dplyr::select(Area, Arable_land_area_in_ha)) %>%
+  mutate(Arable_land_for_wheat = Wheat_ha * 100 / Arable_land_area_in_ha) %>%
+  inner_join(.,read_csv(paste0(metadata_dir, "FAOSTAT_data_4-15-2021_land_stats.csv")) %>%
+               filter(Item == "Land area") %>%
+               mutate(Land_area_in_ha = Value * 1000) %>%
+               dplyr::select(Area, Land_area_in_ha)) %>%
+  mutate(Land_for_wheat = Wheat_ha * 100 / Land_area_in_ha)
+
+
+
+#Normalize country names
+correspondence_table = readxl::read_excel(path = paste0(metadata_dir, "FAO_stats_map_corres.xlsx"), sheet = "Summary")
+for (i in c(1:nrow(correspondence_table))) {
+  print(pull(correspondence_table[i, 2])) 
+  print(pull(correspondence_table[i, 1]))
+  wheat_per_country =  wheat_per_country %>% 
+    mutate_at(vars(contains('Area')), 
+              funs(str_replace(., pull(correspondence_table[i, 2]), pull(correspondence_table[i, 1]))))
+}
+
+#Maps 
+world2 = left_join(world, wheat_per_country, by = c("region" = "Area"))
+
+temp = Zt_meta %>%
+   dplyr::count(Country, Latitude, Longitude, name = "Number_genomes") %>%
+   filter(Number_genomes > 0)
+
+ggplot() + theme_void() +
+  geom_polygon(data = world2, aes(x=long, y = lat, group = group, fill = Land_for_wheat), alpha=0.7) +
+  scale_size("Number of genomes", limits = c(1, max_circle)) +
+  scale_fill_gradient(low = "#FEEDD8", high = "goldenrod", na.value="#F7F4F3")
+
+ggplot() + theme_void() +
+  geom_polygon(data = world2, aes(x=long, y = lat, group = group, fill = Land_for_wheat), alpha=0.7) +
+  scale_size("Number of genomes", limits = c(1, max_circle)) +
+  scale_fill_gradient(low = "#FEEDD8", high = "goldenrod", na.value="#F7F4F3")
+
+
+
+```
+
+```{r diversity per country}
+temp_countries = c("Algeria", "Argentina", "Australia", "Belgium", "Canada", "Chile", "Czech_Republic", 
+                   "Denmark", "France", "Germany", "Iran", "Ireland", "Israel", "Netherlands", 
+                   "New_Zealand", "Switzerland", "Tunisia", "Turkey", "UK", 
+                   "USA_Indiana", "USA_Missouri", "USA_Oregon", "USA_Texas", "Uruguay")
+
+windows = read_tsv(paste0(Sumstats_dir, "Windows_for_diversity.bed"), 
+                   col_names = c("CHROM", "BIN_START", "BIN_END")) %>%
+  mutate(BIN_START = BIN_START +1 )
+
+
+#temp_diversity = paste0(nuc_PS_dir,
+#                        "Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.",
+#       temp_countries, ".windowed.pi") %>%
+#  map_df(~read_tsv(.) %>% mutate(Country = temp_countries)) %>% 
+#  inner_join(windows)
+
+
+diversity_list = list()
+for (country in temp_countries) {
+filename = paste0(nuc_PS_dir,
+                  "Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.",
+                   country, ".windowed.pi")
+
+temp = read_tsv(filename) %>% mutate(Country = country)
+diversity_list[[country]] = temp
+}
+
+temp_diversity = bind_rows(diversity_list) %>%
+  inner_join(windows) %>%
+  mutate(Country = ifelse(str_detect(Country, "^USA"), "USA", Country)) 
+
+summary_diversity = temp_diversity %>%
+  group_by(Country) %>%
+  summarize(ave_pi = mean(PI), med_pi = median(PI)) %>%
+  left_join(Zt_meta %>% dplyr::select(Country, Continent) %>% distinct()) %>%
+  mutate(Continent = ifelse(Country == "Australia", "Oceania", Continent)) %>%
+  mutate(Continent = ifelse(Country == "New_Zealand", "Oceania", Continent)) %>%
+  mutate(Continent = ifelse(Country == "USA", "North America", Continent)) 
+
+summary_diversity = wheat_per_country %>%
+  mutate(Area = ifelse(Area == "United States of America", "USA", Area)) %>%
+  mutate(Area = ifelse(Area == "United Kingdom of Great Britain and Northern Ireland", "UK", Area)) %>%
+  mutate(Area = ifelse(Area == "Czechia", "Czech_Republic", Area)) %>%
+  mutate(Area = ifelse(Area == "New Zealand", "New_Zealand", Area)) %>%
+  mutate(Area = ifelse(Area == "Iran (Islamic Republic of)", "Iran", Area)) %>%
+  inner_join(., summary_diversity, by = c("Area" = "Country"))
+
+p3 = pivot_longer(summary_diversity, cols = c(Arable_land_for_wheat, Land_for_wheat), 
+               names_to = "Wheat_qty_est", values_to = "Percent") %>%
+  ggplot(aes(x = med_pi, y = Percent, label = Area, col = Continent)) +
+  geom_text() + 
+  theme_bw() +
+  facet_wrap(vars(Wheat_qty_est), scales = "free_y") +
+  Color_Continent + 
+  xlim(c(0.004, 0.012))
+
+
+res.aov2 <- aov(ave_pi ~ Land_for_wheat + Continent, data = summary_diversity)
+summary(res.aov2)
+
+p1 = filter(summary_diversity, Continent == "Europe") %>%
+  ggplot(aes(x = med_pi, y = Land_for_wheat, label = Area, col = Continent)) +
+  geom_text() + 
+  theme_bw() +
+  Color_Continent
+
+p2 = filter(summary_diversity, Continent != "Europe") %>%
+  ggplot(aes(x = med_pi, y = Land_for_wheat, label = Area, col = Continent)) +
+  geom_text() + 
+  theme_bw() +
+  Color_Continent
+
+row = cowplot::plot_grid(p1, p2, nrow = 1) 
+cowplot::plot_grid(p3, row, ncol = 1)
+
+
+filter(summary_diversity, Continent == "Europe") %>%
+  ggplot(aes(x = med_pi, y = Wheat_ha, label = Area, col = Continent)) +
+  geom_text() + 
+  theme_bw() +
+  Color_Continent
+```
+
+
+```{r}
+
+#Read and correct capitals for coordinates per country
+wheat_trade = read_csv(paste0(metadata_dir, "FAOSTAT_data_4-9-2021_detailed_trade_matrix.csv")) 
+
+correspondence_table = readxl::read_excel(path = paste0(metadata_dir, "FAO_stats_map_corres.xlsx"), sheet = "Summary")
+for (i in c(1:nrow(correspondence_table))) {
+  print(pull(correspondence_table[i, 2])) 
+  print(pull(correspondence_table[i, 1]))
+  wheat_trade =  wheat_trade %>% 
+    mutate_at(vars(contains('Countries')), 
+              funs(str_replace(., pull(correspondence_table[i, 2]), pull(correspondence_table[i, 1]))))
+}
+
+our_wheat_trade = wheat_trade %>%
+  filter(Element == "Import Quantity" & Unit == "tonnes") %>%
+  group_by(`Reporter Countries`, `Partner Countries`) %>%
+  dplyr::select(`Reporter Countries`, `Partner Countries`, Value) %>%
+  summarize(Average_value = mean(Value))
+
+
+#Read and correct capitals for coordinates per country
+capital = read_csv(paste0(metadata_dir, "simple_maps_worldcities.csv")) %>% 
+  filter(capital == "primary") %>%
+    group_by(country) %>%
+    mutate(rank = rank(population, ties.method = "random"))  %>%
+    filter(rank == 1)
+correspondence_table = readxl::read_excel(path = paste0(metadata_dir, "FAO_stats_map_corres.xlsx"), sheet = "Summary_capital")
+for (i in c(1:nrow(correspondence_table))) {
+  print(pull(correspondence_table[i, 2])) 
+  print(pull(correspondence_table[i, 1]))
+  capital =  capital %>% 
+    mutate_at(vars(contains('country')), 
+              funs(str_replace(., pull(correspondence_table[i, 2]), pull(correspondence_table[i, 1]))))
+}
+
+temp = inner_join(our_wheat_trade, capital %>%
+                   dplyr::select(country, yend = lat, xend = lng),
+                   by = c("Reporter Countries" = "country")) %>%
+        inner_join(., capital %>%
+                   dplyr::select(country, y = lat, x = lng),
+                   by = c("Partner Countries" = "country")) 
+
+temp2 = filter(temp,`Partner Countries` != `Reporter Countries`) %>% 
+  filter(Average_value > 10000) %>% distinct()
+
+
+#
+ggplot() + theme_void() +
+  geom_polygon(data = world2, 
+               aes(x=long, y = lat, group = group, fill = Land_for_wheat), 
+               alpha=0.7) +
+  scale_fill_gradient(low = "#FEEDD8", high = "#faa307", na.value="#F7F4F3") +
+  geom_curve(data = temp2, aes(x = x, y = y, xend = xend, yend = yend, 
+                               size = Average_value, alpha = Average_value), 
+             curvature = 0.2, color = "#432818") +
+  scale_size_continuous(guide = FALSE, range = c(0.02, 0.5)) 
+
+
+
+```
 
 
 <br><br>
@@ -668,7 +996,7 @@ p = ggplot(pca2, aes(x = PC1, y= PC2, text = for_display)) +
 ggplotly(p)
 
 q = ggplot(pca2, aes(x = PC3, y= PC4, text = for_display)) +
-  geom_point(aes(color = Continent)) +
+  geom_point(aes(color = Continent), alpha = .4) +
   labs(x = paste0("PC 3 (", round(pca$eigenval[3]*100/eigen_sum, 2), "%)"),
        y = paste0("PC 4 (", round(pca$eigenval[4]*100/eigen_sum, 2), "%)")) +
   Color_Continent +
@@ -678,7 +1006,7 @@ q = ggplot(pca2, aes(x = PC3, y= PC4, text = for_display)) +
 ggplotly(q)
 
 q = ggplot(pca2, aes(x = PC5, y= PC6, text = for_display)) +
-  geom_point(aes(color = Continent)) +
+  geom_point(aes(color = Continent), alpha = .4) +
   labs(x = paste0("PC 5 (", round(pca$eigenval[5]*100/eigen_sum, 2), "%)"),
        y = paste0("PC 6 (", round(pca$eigenval[6]*100/eigen_sum, 2), "%)")) +
   Color_Continent +
@@ -749,9 +1077,6 @@ names(indv_snmf) = "Sample"
 #Load project
 project = load.snmfProject(paste0(PopStr_dir, vcf_name, ".snmfProject"))
 
-K_colors = c("#f9c74f", "#f9844a", "#90be6d", "#f5cac3", 
-"#83c5be", "#f28482", "#577590", "#e5e5e5", "#a09abc",  "#52796f",
-"#219ebc", "#003049", "grey", "#283618", "white")
 K_list = c(1:15)
 
 #Extracting the clustering info for the best run per K
@@ -963,6 +1288,147 @@ high_anc_coef_snmf %>%
 
 
 
+```{r list samples per cluster}
+max_continent = dplyr::count(high_anc_coef_snmf, Cluster, Continent) %>%
+  group_by(Cluster) %>%
+  mutate(somme = sum(n), prop = n/somme) %>%
+  filter(prop > 0.5) %>%
+  dplyr::select(Cluster, Continent)
+
+clusters = dplyr::count(high_anc_coef_snmf, Cluster, Continent)
+
+ggplot(high_anc_coef_snmf, aes(x = Cluster, fill = Continent)) +
+  geom_bar() +
+  theme_cowplot() +
+  labs(x = element_blank(), y = "Number of samples") +
+  theme(axis.text.x = element_text(angle = 40, hjust = 1, vjust = 1)) +
+  Fill_Continent
+
+for (cluster in max_continent %>% pull(Cluster)) {
+  file_name = paste0(PopStr_dir, "Sample_list_", cluster, ".args")
+  high_anc_coef_snmf %>% filter(Cluster == cluster) %>%
+    dplyr::select(Sample) %>%
+    write_tsv(file = file_name, col_names = F)
+}
+```
+```{r}
+chosen_coef = snmf_results_per_K %>% 
+  filter(K == chosen_K) %>%
+  filter(Country != "NA") %>%
+  filter(Country != "USA_NA") %>%
+  dplyr::select(Sample, Continent, Country, Admix_coef, Cluster)
+
+cluster_per_country = high_anc_coef_snmf %>%
+  group_by(Country, Cluster) %>%
+  summarise(n = n()) %>%
+  mutate(freq = n / sum(n)) %>%
+  filter(freq > 0.5) %>%
+  dplyr::select(Country, Main_country_cluster = Cluster)
+
+
+
+status_admix = inner_join(chosen_coef, cluster_per_country) %>% 
+  group_by(Sample, Continent, Country) %>%
+  mutate(max_admix = max(Admix_coef),
+         max_cluster = ifelse(Admix_coef == max_admix, Cluster, "")) %>%
+  filter(max_cluster != "") %>%
+  mutate(Status = ifelse(max_admix < chosen_threshold, "Hybrid",
+                         ifelse(max_cluster == Main_country_cluster, "Pure local", 
+                                "Pure other")))
+  
+temp = status_admix %>% group_by(Country) %>% 
+  dplyr::count(Status) %>% 
+  pivot_wider(names_from = Status, values_from = n, values_fill = 0) 
+
+ggplot(status_admix, aes(x = Country, fill = Status)) +
+  geom_bar(position = "fill") + 
+  theme_cowplot() +
+  theme(axis.title.x = element_blank(), 
+        axis.text.x = element_text(angle = 50, hjust = 1, vjust = 1, size = 10)) +
+  scale_fill_manual(values =c("#16697a", "#EDE7E3", "#82c0cc"))
+
+chosen_coef %>%
+  filter(Continent != "NA") %>%
+  filter(Continent != "Asia") %>%
+  group_by(Continent, Country, Cluster) %>%
+  summarize(average_coef = mean(Admix_coef)) %>%
+  mutate(Cluster2 = ifelse(average_coef < 0.1, "Other", Cluster)) %>%
+  ggplot(aes(x = Country, y = average_coef, fill = Cluster2))  + 
+    geom_bar(stat = "identity") +
+    scale_fill_manual(values = c(c("white"),  K_colors)) +
+    facet_wrap(vars(Continent), scales = "free") +
+    theme_bw()
+
+
+chosen_coef %>%
+  filter(Continent == "North America")  %>%
+  group_by(Continent, Country, Cluster) %>%
+  summarize(average_coef = mean(Admix_coef)) %>%
+  mutate(Cluster2 = ifelse(average_coef < 0.1, "Other", Cluster)) %>%
+  ggplot(aes(x = Country, y = average_coef, fill = Cluster2)) + 
+    geom_bar(stat = "identity") +
+    scale_fill_manual(values = K_colors) +
+    theme_bw()+
+  theme(axis.title.x = element_blank(), 
+        axis.text.x = element_text(angle = 50, hjust = 1, vjust = 1, size = 10)) 
+
+
+chosen_coef %>%
+  filter(Continent == "North America")  %>%
+  group_by(Continent, Country, Cluster) %>%
+  summarize(average_coef = mean(Admix_coef)) %>%
+  mutate(Cluster2 = ifelse(average_coef < 0.1, "Other", Cluster)) %>%
+  ggplot(aes(x = Country, y = average_coef, fill = Cluster2)) + 
+    geom_bar(stat = "identity") +
+    scale_fill_manual(values = K_colors) +
+    theme_bw()+
+  theme(axis.title.x = element_blank(), 
+        axis.text.x = element_text(angle = 50, hjust = 1, vjust = 1, size = 10)) 
+```
+
+```{r scatter pies}
+
+average_coord_per_country = snmf_results_per_K %>% 
+  group_by(Country) %>%
+  summarize(lat = mean(Latitude, na.rm = T),
+            long = mean(Longitude, na.rm = T))
+
+pies = chosen_coef %>%
+  group_by(Continent, Country, Cluster) %>%
+  summarize(average_coef = mean(Admix_coef)) %>%
+  mutate(Cluster2 = ifelse(average_coef < 0.1, "Other", Cluster)) %>%
+  group_by(Continent, Country, Cluster2) %>%
+  summarize(to_plot = sum(average_coef)) %>%
+  pivot_wider(names_from = Cluster2, values_from = to_plot, values_fill = 0) %>%
+  inner_join(., average_coord_per_country) 
+
+
+map1 = ggplot() + 
+  theme_void() +
+  geom_polygon(data = map_data("world"), aes(x=long, y = lat, group = group), fill="#ede7e3")  +
+  scale_size("Number of genomes", limits = c(1, max_circle))  +
+  theme(legend.position = "None", 
+        panel.border  = element_rect(fill=NA, colour = "grey",size = 0.5, linetype = 1))+
+    scale_fill_manual(values = c("grey", K_colors) )
+
+p1 = map1 + coord_cartesian(xlim=c(-20, 60), ylim=c(20, 70)) + 
+  geom_scatterpie(data = pies, mapping = aes(x=long, y=lat, group=Country, r = 2.5), 
+                  cols = c("Other", "V10", "V6", "V9", "V3", "V7", "V1", 
+                           "V2", "V8", "V11", "V5", "V4"), color=NA, alpha=.8)
+p2 = map1 + coord_cartesian(xlim=c(-160, -40), ylim=c(-80, 80)) + 
+  geom_scatterpie(data = pies, mapping = aes(x=long, y=lat, group=Country, r = 5), 
+                  cols = c("Other", "V10", "V6", "V9", "V3", "V7", "V1", 
+                           "V2", "V8", "V11", "V5", "V4"), color=NA, alpha=.8)
+p3 = map1 + coord_cartesian(xlim=c(115, 175), ylim=c(-65, 10)) + 
+  geom_scatterpie(data = pies, mapping = aes(x=long, y=lat, group=Country , r = 4), 
+                  cols = c("Other", "V10", "V6", "V9", "V3", "V7", "V1", 
+                           "V2", "V8", "V11", "V5", "V4"), color=NA, alpha=.8)
+aus_map = cowplot::plot_grid(p3, get_legend(isolate_map), ncol = 2, rel_widths = c(1, 0.9))
+ligne = cowplot::plot_grid(p1, aus_map, ncol = 1,  rel_heights = c(1, 0.7))
+cowplot::plot_grid(p2, ligne, ncol = 2, rel_widths = c(0.7, 1)) 
+
+ggsave(paste0(fig_dir, "Str_scatter_pie.pdf"), width = 18, height = 10, units = "cm")
+```
 
 
 ## Population trees
@@ -1150,6 +1616,26 @@ gsed "s/\t//g"  ${POPSTR}$VCFNAME.even_sampling.GT.FORMAT2 | tail -n +2 \
     > ${POPSTR}$VCFNAME.even_sampling.geno
     
 datamash transpose < ${POPSTR}$VCFNAME.even_sampling.GT.FORMAT2  |  sed 's/^/>/' | sed 's/\t/\n/' | sed 's/\t//g' | cut -c -150 > ${POPSTR}$VCFNAME.even_sampling.fasta
+```
+```{bash vcftools even sampling}
+vcftools --vcf ${VCFDIR}$VCFNAME.recode.vcf \
+  --remove-filtered-all --extract-FORMAT-info GT \
+  --max-missing 1.0 --min-alleles 2 --max-alleles 2 \
+  --maf 0.05 \
+  --thin 1000 \
+  --out ${POPSTR}$VCFNAME.for_splits_tree
+
+
+cat  ${POPSTR}$VCFNAME.for_splits_tree.GT.FORMAT | cut -f 3- \
+    > ${POPSTR}$VCFNAME.for_splits_tree.GT.FORMAT2
+cat  ${POPSTR}$VCFNAME.for_splits_tree.GT.FORMAT | cut -f 1,2 \
+    > ${POPSTR}$VCFNAME.for_splits_tree.GT.FORMAT.pos
+head -n1 ${POPSTR}$VCFNAME.for_splits_tree.GT.FORMAT2 | gsed "s/\t/\n/g"  \
+    > ${POPSTR}$VCFNAME.for_splits_tree.ind
+gsed "s/\t//g"  ${POPSTR}$VCFNAME.for_splits_tree.GT.FORMAT2 | tail -n +2 \
+    > ${POPSTR}$VCFNAME.for_splits_tree.geno
+    
+datamash transpose < ${POPSTR}$VCFNAME.for_splits_tree.GT.FORMAT2  |  sed 's/^/>/' | sed 's/\t/\n/' | sed 's/\t//g' > ${POPSTR}$VCFNAME.for_splits_tree.fasta
 ```
 
 
@@ -2330,9 +2816,6 @@ summary(model)
 hist(residuals(model), col="darkgray")
 
 #Post-hoc analysis:  mean separation tests
-library(multcomp)
-library(lsmeans)
-
 marginal = lsmeans(model, ~ Continent)
 
 pairs(marginal, adjust="tukey")
@@ -2369,7 +2852,7 @@ TE_qty %>%
 ```{r TE content estimation plots woHOG}
 
 #Reading in the data
-TE_qty = read_delim(paste0(RIP_DIR, "Nb_reads.txt"), delim = " ") %>%
+TE_qty2 = read_delim(paste0(RIP_DIR, "Nb_reads.txt"), delim = " ") %>%
   dplyr::filter(Total_reads > Te_aligned_reads) %>%
   dplyr::mutate(Percent_TE_Reads = Te_aligned_reads * 100 / Total_reads) %>%
   left_join(., Zt_meta) %>%
@@ -2378,12 +2861,12 @@ TE_qty = read_delim(paste0(RIP_DIR, "Nb_reads.txt"), delim = " ") %>%
   filter(Collection != "Hartmann_FstQst_2015") 
 
 world_avg <-
-  TE_qty  %>%
+  TE_qty2  %>%
   dplyr::summarize(avg = mean(as.numeric(Percent_TE_Reads), na.rm = T)) %>%
   pull(avg)
 
 #Building the basic violin plot per continent
-TE_prop =  TE_qty %>%
+TE_prop2 =  TE_qty2 %>%
   filter(!is.na(Continent)) %>%
   ggplot(aes(x = Continent, y = Percent_TE_Reads, fill = Continent)) +
   geom_hline(aes(yintercept = world_avg),
@@ -2402,36 +2885,33 @@ TE_prop =  TE_qty %>%
 
 #One-way ANOVA with blocks
 ##Define linear model
-model = lm(Percent_TE_Reads ~ Continent + Collection ,
-          data=TE_qty)
-summary(model)   ### Will show overall p-value and r-squared
+model2 = lm(Percent_TE_Reads ~ Continent + Collection ,
+          data=TE_qty2)
+summary(model2)   ### Will show overall p-value and r-squared
 
 ##Conduct analysis of variance
-Anova(model,type = "II")  
-summary(model)
+Anova(model2,type = "II")  
+summary(model2)
 
-hist(residuals(model), col="darkgray")
+hist(residuals(model2), col="darkgray")
 
 #Post-hoc analysis:  mean separation tests
-library(multcomp)
-library(lsmeans)
-
-marginal = lsmeans(model, ~ Continent)
+marginal = lsmeans(model2, ~ Continent)
 
 pairs(marginal, adjust="tukey")
 
-CLD = cld(marginal,
+CLD2 = cld(marginal,
           alpha   = 0.05,
           Letters = letters,  ### Use lower-case letters for .group
           adjust  = "tukey")  ### Tukey-adjusted p-values
 
-CLD
+CLD2
 
-CLD$.group=gsub(" ", "", CLD$.group)
+CLD2$.group=gsub(" ", "", CLD2$.group)
 
 ### Plot
-TE_prop +
-  geom_text(data = CLD, aes(x = Continent, label = .group, y = 34), color   = "black")
+TE_prop2 +
+  geom_text(data = CLD2, aes(x = Continent, label = .group, y = 34), color   = "black")
 
 
 ```
@@ -2520,11 +3000,11 @@ I now look at the repeat-induced point mutations in reads that map on the differ
 
 #while read p; do fichier_list=$(ls -1 /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/3_RIP_estimation/${p}*txt) ; for fichier in $fichier_list; do short_name=$(echo $fichier | cut -f 8 -d "/" | cut -f 2 -d "." ) ; comp=$(grep Composite $fichier) ; echo $p $short_name $comp ;  done; done < Keep_lists_samples/Ztritici_global_March2021.genotyped.good_samples.args > /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/Composite_index.txt 
 
-RIP=read_tsv(paste0(RIP_DIR, "Composite_index.txt"),
-             col_names = c("ID_file", "TE",  "Composite_median", "Composite_mean" )) %>%
-  separate(TE, into = c("Superfamily", "TE_id"), sep = "_", remove = F) %>%
+RIP=read_delim(paste0(RIP_DIR, "Composite_index.txt"),
+             col_names = c("ID_file", "TE",  "Variable", "Composite_median", "Composite_mean" ), delim = " ") %>%
+  separate(TE, into = c("Superfamily", "TE_id"), sep = "_", remove = F, extra = "merge") %>%
   mutate(Order = ifelse(!grepl('^D',TE), "Class II (DNA transposons)", "Class I (retrotransposons)"))%>%
-  left_join(Zt_meta) %>%
+  left_join(Zt_meta %>% dplyr::select(Continent, Country, Collection, ID_file)) %>%
   unite(Continent, Country, ID_file, col = "for_display", remove = F) %>%
   left_join(., reads_per_TE)
 #DONE: merge with reads_per_TE to be able to filter the points that have too few reads mapped!
@@ -2688,8 +3168,7 @@ ggplotly(p)
 
 Finally, I look at the relation between the amount of reads mapping on TE consensus and the level of RIP detected. I also investigate several possible bias.  
 ```{r RIP and TE together}
-TE_RIP = inner_join(TE_qty, RIP %>%
-  filter(TE == "RIP_est") )
+TE_RIP = inner_join(TE_qty, RIP %>% filter(TE == "RIP_est"))
 
 TE_RIP$Sampling_Date[is.na(TE_RIP$Sampling_Date)] <- "Unknown"
 
@@ -3119,7 +3598,7 @@ In order to identify the native dim2 copy in genomes, I look for several things:
 ```{r dim2 blast results dots}
   
   
-system(paste0("cat ", DIM2_DIR, "Results_blast_dim2*txt > ", DIM2_DIR, "Overall_results_blast_dim2.txt"))
+#system(paste0("cat ", DIM2_DIR, "*.blast.tab > ", DIM2_DIR, "Overall_results_blast_dim2.txt"))
 
 length_dim2 = 3846
 length_flank1 = 3689
@@ -3134,29 +3613,32 @@ dim2_blast_results_complete = read_delim(paste0(DIM2_DIR, "Overall_results_blast
                                               "sstart", "send", "evalue", "bitscore"))
 
 flank1 = dim2_blast_results_complete %>%
-  filter(gene == "dim2_flank1") %>%
+  filter(gene == "dim2_flank1_Zt10_unitig_006_0418") %>%
   dplyr::select(sample, gene, sseqid, length, sstart, send) %>%
   dplyr::mutate(midcoord_flank1 = (sstart + send)/2) %>%
   filter(length > threshold_length_flank1) %>%
   pivot_wider(names_from = gene, values_from = sseqid) %>%
   dplyr::select(-length, -sstart, -send) %>%
   group_by(sample) %>%
-  dplyr::mutate(nb_gene = n())
+  dplyr::mutate(nb_gene = n(), 
+                dim2_flank1 = dim2_flank1_Zt10_unitig_006_0418 )
+  
 
 flank2 = dim2_blast_results_complete %>%
-  filter(gene == "dim2_flank2") %>%
+  filter(gene == "dim2_flank2_Zt10_unitig_006_0416") %>%
   dplyr::select(sample, gene, sseqid, length, sstart, send) %>%
   dplyr::mutate(midcoord_flank2 = (sstart + send)/2) %>%
   filter(length > threshold_length_flank2) %>%
   pivot_wider(names_from = gene, values_from = sseqid) %>%
   dplyr::select(-length, -sstart, -send) %>%
   group_by(sample) %>%
-  dplyr::mutate(nb_gene = n())
+  dplyr::mutate(nb_gene = n(), 
+                dim2_flank2 = dim2_flank2_Zt10_unitig_006_0416)
 
 #First let's extract some information such as finding the middle coordinates for the
 # 3 genes of interest
 dim2_blast_results = dim2_blast_results_complete %>%
-  dplyr::filter(gene == "dim2") %>%
+  dplyr::filter(gene == "Zt10_dim2_from_MgDNMT_deRIP") %>%
   full_join(., flank1, by = "sample") %>%
   full_join(., flank2, by = "sample") %>%
   dplyr::mutate(dim2_flank1 = replace_na(dim2_flank1, "Not_found"),
@@ -4066,6 +4548,9 @@ q = temp2 %>%
   labs(y = str_wrap("Min Temperature of Coldest Month (-logP)", 25))
 
 cowplot::plot_grid(p, q, nrow = 2)
+
+ggsave(paste0(fig_dir, "GEA_Manhattan_main.pdf"), width = 18, height = 10, units = "cm")
+
 ```
 
 
