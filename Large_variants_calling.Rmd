@@ -46,7 +46,8 @@ metadata_file= read_tsv("/home/alice/WW_PopGen/Keep_lists_samples/Main_table_fro
 mito_PS_dir = "/data2/alice/WW_project/0_Data/"
 
 
-
+Sys.setenv(DATADIR=data_dir)
+Sys.setenv(DEPTHGENEDIR=depth_per_gene_dir)
 
 knitr::opts_chunk$set(message = F)
 knitr::opts_chunk$set(warning = F)
@@ -164,8 +165,6 @@ bottom_row <- cowplot::plot_grid(bar_Ndepth_per_CHR + theme(legend.position = "b
                                  labels = c('B', 'C'), label_size = 12, ncol = 2)
 
 cowplot::plot_grid(heatmap_depth, bottom_row, labels = c('A', ''), label_size = 12, ncol = 1)
-
-
 
 ```
 
@@ -400,8 +399,8 @@ depth_per_gene %>%
 
 
 temp2 = repeat_seq %>% 
-  dplyr::select(Pair, temp, GC_bias_slope) %>% p
-ivot_wider(names_from = temp, values_from = GC_bias_slope)
+  dplyr::select(Pair, temp, GC_bias_slope) %>% 
+  pivot_wider(names_from = temp, values_from = GC_bias_slope)
 
 pair_GC_plot = ggplot(data = repeat_seq, aes(y = Pair, x = GC_bias_slope)) + 
   geom_point(aes(col = Collection)) + 
@@ -503,6 +502,156 @@ p3 = genes_pairs %>%
        fill = "CNV")
   
 cowplot::plot_grid(row1, p3, ncol =1, labels = c("", "C"))
+```
+```{r}
+# head -n1 /data2/alice/WW_project/1_Variant_calling/2_Depth_per_gene/global_IPO-CNV.seg.gene.table \
+#    > /data2/alice/WW_project/1_Variant_calling/2_Depth_per_gene/global_IPO-CNV.seg.gene.reseq_only.tab
+# grep -f WW_PopGen/Keep_lists_samples/Repeat_sequencing.args \
+#    /data2/alice/WW_project/1_Variant_calling/2_Depth_per_gene/global_IPO-CNV.seg.gene.table  | cut -f 2- \
+#     >> /data2/alice/WW_project/1_Variant_calling/2_Depth_per_gene/global_IPO-CNV.seg.gene.reseq_only.tab
+
+genes_pairs_Sabina = read_csv(paste0(depth_per_gene_dir, "Sabina_gcnv_event.reseq_only.csv"))  %>% 
+  full_join(., repeat_seq, by = c("sample" = "ID_file"))
+
+temp = genes_pairs_Sabina %>%
+  dplyr::select(Pair, temp, ref_gene, event) %>%
+  filter(temp != "NA") %>%
+  distinct() %>%
+  pivot_wider(names_from = temp, values_from = event) %>%
+  mutate(Comparison = ifelse( Seq1 == Seq2, "OK", "Different"))
+
+
+p1 = temp %>% 
+  filter(Comparison == "Different") %>%
+  group_by(Pair) %>%
+  count() %>% 
+   ggplot(aes(x = Pair, y = n, fill = Pair)) + 
+   geom_bar(stat = "identity") + 
+   theme_bw() +
+   labs(y = "Number of genes", x = "",
+        subtitle = "Genes with a different CNV value per pair") 
+
+
+p2 = left_join(genes_pairs_Sabina, temp) %>%
+  filter(!is.na(Comparison)) %>%
+  filter(Seq1 != "P" | Seq2 != "P") %>%
+  ggplot(aes(x = Pair, y = QS, fill = Comparison, color = Comparison)) +
+    geom_violin() +
+  scale_fill_manual(values =c( "#82c0cc", "#EDE7E3")) +
+  scale_color_manual(values =c( "#82c0cc", "#EDE7E3")) +
+  theme_cowplot() +
+  labs(x = element_blank(), y = "Variants quality") + 
+  theme(axis.text = element_text(size = 10),
+        axis.title = element_text(size = 12))
+
+p3 = left_join(genes_pairs_Sabina, temp) %>%
+  filter(!is.na(Comparison)) %>%
+  ggplot(aes(x = Pair, y = QS, fill = Comparison, color = Comparison)) +
+    geom_violin() +
+  scale_fill_manual(values =c( "#82c0cc", "#EDE7E3")) +
+  scale_color_manual(values =c( "#82c0cc", "#EDE7E3")) +
+  theme_cowplot() +
+  labs(x = element_blank(), y = "All genes quality") + 
+  theme(axis.text = element_text(size = 10),
+        axis.title = element_text(size = 12))
+
+legend_b = get_legend(p3 + theme(legend.position = "bottom"))
+
+col2 = cowplot::plot_grid(p2 + theme(legend.position = "none"), 
+                          p3 + theme(legend.position = "none"), 
+                          legend_b, 
+                          ncol = 1, rel_heights = c(1, 1, 0.4))
+cowplot::plot_grid(p1+ theme(legend.position = "none"), col2, ncol = 2)
+```
+
+```{r CNV filtering}
+threshold_QS = 1000
+Sys.setenv(threshold_QS=threshold_QS)
+  
+filtered_comparison = left_join(genes_pairs_Sabina, temp) %>%
+  filter(!is.na(Comparison)) %>%
+  filter(Seq1 != "P" | Seq2 != "P") 
+
+filtered_comparison %>%
+  ggplot(aes(x = Comparison, y = QS, fill = Comparison)) +
+    geom_violin() +
+    geom_boxplot(width = 0.03, fill = "white") +
+    scale_fill_manual(values =c( "#82c0cc", "#EDE7E3")) +
+    theme_cowplot() +
+    labs(x = element_blank(), y = "Variants quality") + 
+    theme(axis.text = element_text(size = 10),
+          axis.title = element_text(size = 12))
+
+filtered_comparison %>%
+  ggplot(aes(x = QS, fill = Comparison)) +
+    geom_density(alpha = 0.6) +
+    scale_fill_manual(values =c( "#82c0cc", "#EDE7E3")) +
+    theme_cowplot() +
+    labs(x = element_blank(), y = "Variants quality") + 
+    theme(axis.text = element_text(size = 10),
+          axis.title = element_text(size = 12)) +
+    geom_vline(xintercept = threshold_QS)
+
+
+summary_filtered = filtered_comparison %>%
+  group_by(Comparison) %>%
+  count(QS > threshold_QS) 
+
+summary_filtered %>%
+  ggplot(aes(x = Comparison, y = n, fill = `QS > threshold_QS`)) +
+    geom_bar(stat = "identity") +
+    theme_cowplot() +
+    scale_fill_manual(values =c( "#EDE7E3", "#82c0cc" )) +
+    geom_label(data = summary_filtered %>% filter(`QS > threshold_QS`),
+               mapping = aes(x = Comparison, y = n + 1000 , label = n))
+  
+```
+
+```{bash}
+ awk -v threshold=${threshold_QS} 'BEGIN { FS = "," } $9 > threshold {print} ' \
+    ${DEPTHGENEDIR}Sabina_gcnv_event.csv \
+    > ${DEPTHGENEDIR}Sabina_gcnv_event.filtered.csv
+```
+
+
+```{r}
+
+annot = read_tsv(paste0(data_dir, "Annotations_2018_genomes_for_publication.tab")) %>%
+  filter(Sample == "Zt09")
+
+effectors = annot %>% filter(Effector == "Effector") %>% select(Protein_ID) %>% pull()
+  
+effector_CNV = read_tsv(paste0(depth_per_gene_dir, "Sabina_gcnv_event.filtered.simplified.tsv")) %>%
+  filter(ref_gene %in% effectors)
+#  inner_join(., effectors, by = c("ref_gene" = "Protein_ID"))
+
+ggplot(effector_CNV, aes(x = ref_gene, y = sample, fill = event)) +
+  geom_tile() +
+  theme_cowplot() +
+  theme()
+
+temp = left_join(effector_CNV, metadata_file, by = c("sample" = "ID_file")) %>%
+  mutate(sample = fct_reorder(sample, Sampling_Date)) %>%
+  mutate(sample = fct_reorder(sample, Country)) %>%
+  mutate(sample = fct_reorder(sample, Continent)) 
+
+heatmap_CNV = temp %>%
+  ggplot(aes(x = ref_gene, y = sample, fill = event)) +
+  geom_tile() + 
+  theme(axis.text.y = element_blank(), axis.ticks.y=element_blank(), axis.title.y = element_blank(),
+        axis.text.x = element_blank(), axis.ticks.x=element_blank()) 
+
+plot_continent = ggplot(data = temp, aes(x = 1, y=sample, fill=Continent)) +
+  geom_tile(aes(width = 2))  +
+  theme_classic() +
+  theme(axis.text.y = element_blank(), axis.ticks.y=element_blank(),
+        legend.position="left",
+        axis.text.x=element_text(colour="white")) +
+  scale_fill_brewer(palette = "Dark2") +
+    labs(y= "Isolate") 
+
+plot_grid(plot_continent, heatmap_CNV, rel_widths = c(2, 5))
+
 ```
 
 

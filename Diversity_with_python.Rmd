@@ -21,10 +21,16 @@ use_condaenv(condaenv = "env0", required = TRUE)
 #Directory paths
 dir_name = "/data2/alice/WW_project/"
 data_dir = "/data2/alice/WW_project/0_Data/"
+
 VAR_dir = paste0(dir_name, "1_Variant_calling/")
   depth_per_window_dir = paste0(VAR_dir, "1_Depth_per_window/")
   vcf_dir = paste0(VAR_dir, "4_Joint_calling/")
   vcf_qual_check_dir = paste0(VAR_dir, "5_Quality_checks/")
+  
+pop_str_dir=paste0(dir_name, "2_Population_structure/")
+  nuc_PS_dir=paste0(pop_str_dir, "0_Nuclear_genome/")
+  
+div_dir=paste0(dir_name, "3_Sumstats_demography/")
   
 # File paths
 vcf_core_name = "Ztritici_global_March2021.genotyped."
@@ -40,6 +46,7 @@ import pandas
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 %matplotlib inline
+from os import walk
 import seaborn as sns
 sns.set_style('white')
 sns.set_style('ticks')
@@ -66,6 +73,8 @@ def plot_windowed_variant_density(pos, window_size, title=None):
     if title:
         ax.set_title(title)
     plt.show()
+
+
 ```
 
 
@@ -74,6 +83,8 @@ def plot_windowed_variant_density(pos, window_size, title=None):
 
 
 ```{r}
+
+#Reading raw and filtered variants
 var_list = bind_rows(paste0(vcf_qual_check_dir, vcf_core_name, c(1:21), ".tab") %>%
                          map_df(~read_tsv(., col_names = c("CHROM", "POS", "REF", "ALT"), 
                            col_types = cols(col_character(), col_double(), col_character(), col_character()))) %>%
@@ -96,6 +107,12 @@ variants_per_window = var_list %>% mutate(Window = floor(POS/window_size)) %>%
   pivot_wider(names_from = Filter, values_from = n, values_fill = 0) %>%
   mutate(Percent_kept = (100*Filtered)/Raw,
          Window_status = ifelse(Percent_kept > threshold_kept, "Keep", "Remove"))
+rm(var_list)
+
+variants_per_window %>%
+  filter(Window_status == "Keep") %>%
+  dplyr::select(CHROM, Start, End) %>%
+  write_tsv(file = paste0(div_dir, "Windows_for_diversity.bed"), col_names = FALSE)
 
 dplyr::count(x = variants_per_window, Window_status)
 
@@ -139,29 +156,61 @@ cowplot::plot_grid(p2, p1, ncol = 1)
   
 ```
 
-```{python}
-right_chr = r.variants_per_window['CHROM']==str(int(r.chrom))
-kept_windows = r.variants_per_window['Window_status']=="Keep"
-windows_table = r.variants_per_window[right_chr & kept_windows]
-
-callset = allel.read_vcf("/data2/alice/WW_project/1_Variant_calling/4_Joint_calling/Ztritici_global_March2021.genotyped." + str(int(r.chrom)) +".filtered.clean.AB_filtered.variants.good_samples.max-m-80.recode.vcf.gz")#, fields = ['calldata/GT'])
-
-callset.keys()
-
-pos = callset['variants/POS'][:]
-
-
-h = allel.GenotypeArray(callset['calldata/GT'])
-ac = h.count_alleles()
-pairwise_diff = allel.mean_pairwise_difference(ac)
-```
 
 ```{python}
-print(windows_table)
-for index, row in windows_table.iterrows() :
-    pi = allel.sequence_diversity(pos, ac, start=int(row['Start']), stop=int(row['End']))
-    print(int(row['Start']), int(row['End']), round(pi, 6)) 
+#List of files containing subsets
+_, _, filenames = next(walk(r.nuc_PS_dir))
+sample_lists = [ x for x in filenames if "Sample_list_subset_" in x]
+print(" ".join(sample_lists))
+print("")
 
-print("Done)
+# Per subset, estimate the diversity per window
+for sample_list in sample_lists[0:4]:
+  
+    # Derive info from the subset file name
+    subset_name = sample_list.replace(".args", "").replace("Sample_list_subset", "Subset")
+    print("\n" + subset_name)
+    out = open(r.div_dir + sample_list.replace(".args", "") + "_diversity_pi.tsv", "w")
+  
+    # Read samples from the subset as a list
+    with open(r.nuc_PS_dir + sample_list, "r") as input_file :
+        samples = [x.strip() for x in input_file]
+  
+    # Loop over chromosomes
+    for chromosome in [x+1 for x in range(21)] : 
+        print(subset_name, str(int(chromosome)))
+        
+        #Select windows with relevant information 
+        right_chr = r.variants_per_window['CHROM']==str(int(chromosome))
+        kept_windows = r.variants_per_window['Window_status']=="Keep"
+        windows_table = r.variants_per_window[right_chr & kept_windows]
+        
+        # Reading the SNPs for the right chromosome and the right samples
+        vcf_file = "/data2/alice/WW_project/1_Variant_calling/4_Joint_calling/Ztritici_global_March2021.genotyped." + str(int(chromosome)) + ".filtered.clean.AB_filtered.variants.good_samples.max-m-80.recode.vcf.gz"
+        print(vcf_file)
+        
+        callset = allel.read_vcf(vcf_file, samples = samples) 
+        #callset.keys()
+        print(callset['samples'])
+        pos = callset['variants/POS'][:]
+        h = allel.GenotypeArray(callset['calldata/GT'])
+        
+        #Estimating diversity
+        ac = h.count_alleles()
+        for ind in windows_table.index :
+            #for index, row in windows_table.iterrows() :
+            start = windows_table.loc[ind, "Start"]
+            stop = windows_table.loc[ind, "End"]
+            try :
+                pi = allel.sequence_diversity(pos, ac, start=int(start), stop=int(stop))
+                to_write = [subset_name, str(chromosome), str(start), str(stop), str(round(pi, 6))]
+                shutup = out.write("\t".join(to_write) + "\n")
+            except :
+                print([subset_name, str(chromosome), str(start), str(stop)])
+    
+    print(subset_name)
+    out.close()
+
+print("All done!")
 ```
 

@@ -566,6 +566,8 @@ ggplot(temp, aes(x = freq)) +
 ## Set up allelic balance filter
 We clearly have way too many errors after the first round of filtering. Another possible cause of errors could be that the intrinsic machinery of GATK is made for diploids and not for haploids. How does it treat the positions with reads giving conflicting information that would be called heterozygous positions in a diploid?
 ```{r Get AD }
+AB_threshold = 0.9
+
 #Read data for all chromosomes and for each pair of samples
 list_AD = list()
 for (sample in c(1:length(reseq_list$Name_1))) {
@@ -588,29 +590,43 @@ err_AD_list = bind_rows(list_AD) %>%
   mutate(AB1 = max(AD1_0, AD1_1, AD1_2, na.rm = T)/sum(AD1_0, AD1_1, AD1_2, na.rm = T),
          AB2 = max(AD2_0, AD2_1, AD2_2, na.rm = T)/sum(AD2_0, AD2_1, AD2_2, na.rm = T),
          min_AD = min(max(AD1_0, AD1_1, AD1_2, na.rm = T), max(AD2_0, AD2_1, AD2_2, na.rm = T))) %>%
-  mutate(Allelic_balance = ifelse(AB1 > 0.99 && AB2 > 0.99, "Expected AB", "Unbalanced AB")) %>% 
+  mutate(Allelic_balance = ifelse(AB1 > AB_threshold && AB2 > AB_threshold, "Expected AB", "Unbalanced AB")) %>% 
   mutate(Nb_allele = str_count(ALT, pattern = ",") + 2) %>%
   mutate(Nb_letter = str_count(ALT, pattern = "[A-Z]") + str_count(REF, pattern = "[A-Z]")) %>%
   mutate(Indel = ifelse((str_count(ALT, pattern = "[*]") + str_count(REF, pattern = "[*]")) > 0, "Indel", 
                         ifelse(Nb_letter != Nb_allele, "Indel", "SNP"))) %>%
   unite(col = "Var_type", Indel, Nb_allele, sep = "_", remove = F) 
 
+#Illustrating threshold relevance
+density_AB = err_AD_list %>%
+  select(AB1, AB2) %>%
+  pivot_longer(cols = c(AB1, AB2), names_to = "Whatever", values_to = "Allelic_balance") %>%
+  ggplot(aes(Allelic_balance)) + 
+    geom_density(fill = "grey80") + 
+    theme_cowplot() +
+    geom_vline(xintercept = AB_threshold, col = "goldenrod") +
+    labs(y = element_blank(), x = "AB and AB threshold") + 
+  theme(axis.title.x = element_text(size = 10),
+        axis.text = element_text(size = 10))
 
 
-
+#Counting the effect of the filter on the errors
 err_AD_list %>%
   group_by(Var_type, Allelic_balance) %>%
   dplyr::count() %>%
   pivot_wider(names_from = Allelic_balance, values_from = n)
   
-err_AD_list %>%
+bars_AD = err_AD_list %>%
   group_by(Filter, Var_type, Allelic_balance) %>%
   count() %>%
   ggplot(aes(x=Allelic_balance, y =n, fill = Var_type)) +
      geom_bar(stat = "identity") +
      labs(x = "Allelic balance", y = "Proportion of variants") +
-     theme_minimal()+
+     theme_cowplot()+
      scale_fill_manual(values = c("#FFD399", "#ff9f1c", "#cbf3f0", "#2ec4b6", "grey"))
+
+ggdraw(bars_AD + theme(legend.position = "left")) + 
+  draw_plot(density_AB, x = 0.73, y = 0.62, width = 0.26, height = 0.38)
 
 ```
 
