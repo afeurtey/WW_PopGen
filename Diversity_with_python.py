@@ -20,21 +20,21 @@ sns.set_style('ticks')
 # |  Inputs, outputs & initial variables  |
 #    <<>><<>><<>><<>><<>><<>><<>><<>><<>>
 
-parser = argparse.ArgumentParser(description='',
-        formatter_class=argparse.RawTextHelpFormatter)
+parser = argparse.ArgumentParser(description='', formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument('--vcf_file', type=str, help='path to the input vcf file.')
 parser.add_argument('--bed_file', type=str, help='path to the input bed file containing regions to compute the diversity over')
 parser.add_argument('--sample_list', type=str, help='path to the input sample list. Extension must be args.')
 parser.add_argument('--out_dir', type=str, help='path to the output directory')
 parser.add_argument('--pi', action="store_true")
 parser.add_argument('--TajD', action="store_true")
+parser.add_argument('--theta', action="store_true")
+
 A = parser.parse_args()
 
 
 
-if not A.pi :
-    if not A.TajD :
-        sys.exit("\n\n I have to stop now! Please use the options --pi and/or --TajD. ")
+if not A.pi and  not A.TajD and not A.theta:
+    sys.exit("\n\n I have to stop now! Please use the options --pi and/or --TajD and/or --theta.")
 
 
 
@@ -83,9 +83,12 @@ for chromosome in [x+1 for x in range(21)] :
             if A.pi :
                 pi = allel.sequence_diversity(pos, ac, start = int(start), stop = int(stop))
                 to_write.append(str(round(pi, 6)))
-            elif A.TajD :
+            if A.TajD :
                 taj_D = allel.tajima_d(ac, pos, start = int(start), stop = int(stop))
                 to_write.append(str(round(taj_D, 6)))
+            if A.theta :
+                theta_hat_w = allel.watterson_theta(pos, ac, start = int(start), stop = int(stop))
+                to_write.append(str(round(theta_hat_w, 6)))
 
             shutup = out.write("\t".join(to_write) + "\n")
         except :
