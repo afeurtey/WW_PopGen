@@ -1,5 +1,6 @@
 #/usr/bin/python3
 
+import sys
 import argparse
 import allel
 import numpy as np
@@ -25,8 +26,13 @@ parser.add_argument('--vcf_file', type=str, help='path to the input vcf file.')
 parser.add_argument('--bed_file', type=str, help='path to the input bed file containing regions to compute the diversity over')
 parser.add_argument('--sample_list', type=str, help='path to the input sample list. Extension must be args.')
 parser.add_argument('--out_dir', type=str, help='path to the output directory')
+parser.add_argument('--pi', action="store_true")
+parser.add_argument('--TajD', action="store_true")
 A = parser.parse_args()
 
+if not A.pi :
+    if not A.TajD :
+        sys.exit("Please use the options --pi and/or --TajD. ")
 
 #  ------------
 # |   Script   |
@@ -69,8 +75,17 @@ for chromosome in [x+1 for x in range(21)] :
         start = row[1]
         stop = row[2]
         try :
-            pi = allel.sequence_diversity(pos, ac, start=int(start), stop=int(stop))
-            to_write = [subset_name, str(chromosome), str(start), str(stop), str(round(pi, 6))]
+            if A.pi and A.TajD :
+                pi = allel.sequence_diversity(pos, ac, start = int(start), stop = int(stop))
+                taj_D = allel.tajima_d(ac, pos, start = int(start), stop = int(stop)) 
+                to_write = [subset_name, str(chromosome), str(start), str(stop), str(round(pi, 6)), str(round(taj_D, 6))]
+            elif A.pi :
+                pi = allel.sequence_diversity(pos, ac, start = int(start), stop = int(stop))
+                to_write = [subset_name, str(chromosome), str(start), str(stop), str(round(pi, 6))]
+            elif A.TajD :
+                taj_D = allel.tajima_d(ac, pos, start = int(start), stop = int(stop))
+                to_write = [subset_name, str(chromosome), str(start), str(stop), str(round(pi, 6)), str(round(taj_D, 6))]
+
             shutup = out.write("\t".join(to_write) + "\n")
         except :
             print([subset_name, str(chromosome), str(start), str(stop)])
