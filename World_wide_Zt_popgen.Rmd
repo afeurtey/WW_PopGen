@@ -417,23 +417,30 @@ for ( min_number in c(6, 10) ) {
 ```{r wheat prod}
 
 # Get area for country, wheat culture and percentage of land dedicated to wheat
+temp = read_csv(paste0(metadata_dir, "FAOSTAT_data_4-15-2021_land_stats.csv"), 
+                col_types = "ccdcdcdcddcdc")
 wheat_per_country = read_csv(paste0(metadata_dir, "FAOSTAT_data_4-9-2021_crops_production.csv")) %>% 
   filter(Unit == "ha") %>% 
   dplyr::select(Area, `Year Code`, Value)  %>%
   group_by(Area) %>%
   summarize(Wheat_ha = mean(Value)) %>%
-  inner_join(.,read_csv(paste0(metadata_dir, "FAOSTAT_data_4-15-2021_land_stats.csv")) %>%
-               filter(Item == "Arable land") %>%
+  inner_join(.,  filter(temp, Item == "Arable land") %>%
                mutate(Arable_land_area_in_ha = Value * 1000) %>%
                dplyr::select(Area, Arable_land_area_in_ha)) %>%
   mutate(Arable_land_for_wheat = Wheat_ha * 100 / Arable_land_area_in_ha) %>%
-  inner_join(.,read_csv(paste0(metadata_dir, "FAOSTAT_data_4-15-2021_land_stats.csv")) %>%
-               filter(Item == "Land area") %>%
+  inner_join(., filter(temp, Item == "Land area") %>%
                mutate(Land_area_in_ha = Value * 1000) %>%
                dplyr::select(Area, Land_area_in_ha)) %>%
+  mutate(Land_for_wheat = Wheat_ha * 100 / Land_area_in_ha) 
+
+wheat_per_state = read_tsv(paste0(metadata_dir, "USDA_crop_production_2017-2019.txt")) %>%
+  mutate(Land_area_in_ha = `Land area` * 1000)  %>% 
+  dplyr::select(Area, Year, Wheat_ha, Land_area_in_ha)  %>%
+  group_by(Area) %>%
+  summarize(Wheat_ha = mean(Wheat_ha), Land_area_in_ha = mean(Land_area_in_ha)) %>%
   mutate(Land_for_wheat = Wheat_ha * 100 / Land_area_in_ha)
 
-
+wheat_per_country = bind_rows(wheat_per_country, wheat_per_state) 
 
 #Normalize country names
 correspondence_table = readxl::read_excel(path = paste0(metadata_dir, "FAO_stats_map_corres.xlsx"), sheet = "Summary")
@@ -456,12 +463,6 @@ ggplot() + theme_void() +
   geom_polygon(data = world2, aes(x=long, y = lat, group = group, fill = Land_for_wheat), alpha=0.7) +
   scale_size("Number of genomes", limits = c(1, max_circle)) +
   scale_fill_gradient(low = "#FEEDD8", high = "goldenrod", na.value="#F7F4F3")
-
-ggplot() + theme_void() +
-  geom_polygon(data = world2, aes(x=long, y = lat, group = group, fill = Land_for_wheat), alpha=0.7) +
-  scale_size("Number of genomes", limits = c(1, max_circle)) +
-  scale_fill_gradient(low = "#FEEDD8", high = "goldenrod", na.value="#F7F4F3")
-
 
 
 ```
@@ -502,6 +503,7 @@ summary_diversity = temp_diversity %>%
   group_by(Country) %>%
   summarize(ave_pi = mean(PI), med_pi = median(PI)) %>%
   left_join(Zt_meta %>% dplyr::select(Country, Continent) %>% distinct()) %>%
+  left_join(Zt_meta %>% dplyr::count(Country, name = "Number_of_isolates")) %>%
   mutate(Continent = ifelse(Country == "Australia", "Oceania", Continent)) %>%
   mutate(Continent = ifelse(Country == "New_Zealand", "Oceania", Continent)) %>%
   mutate(Continent = ifelse(Country == "USA", "North America", Continent)) 
@@ -548,6 +550,81 @@ filter(summary_diversity, Continent == "Europe") %>%
   geom_text() + 
   theme_bw() +
   Color_Continent
+
+nb_samples = filter(summary_diversity, Continent == "Europe") %>%
+  ggplot(aes(x = med_pi, y = Number_of_isolates, label = Area, col = Continent)) +
+  geom_text() + 
+  theme_bw() +
+  Color_Continent
+
+cowplot::plot_grid(p1 + theme(legend.position = "none"), nb_samples + theme(legend.position = "none"), ncol = 2)
+
+
+summary_diversity %>%
+  ggplot(aes(x = med_pi, y = Land_for_wheat, size = Number_of_isolates, col = Continent)) +
+  geom_point() + 
+  theme_bw() +
+  Color_Continent
+
+
+res.aov2 <- aov(med_pi ~ Land_for_wheat + Continent + Number_of_isolates, data = summary_diversity)
+summary(res.aov2)
+
+```
+
+```{r}
+temp = read_tsv(paste0(Sumstats_dir, "Summary_diversity_pi.tsv"), 
+         col_names = c("Subset_size", "Country", "Year", "Lat", "Long", "Repeat", "Mean_pi", "Median_pi")) %>%
+  unite(col = "Place", Country, Year, Lat, Long, remove = FALSE) %>%
+  #mutate(Country = ifelse(str_detect(Country, "^USA"), "USA", Country)) %>%
+  mutate(Country = ifelse(str_detect(Country, "^Australia"), "Australia", Country))%>%
+  left_join(Zt_meta %>% dplyr::select(Country, Continent) %>% distinct()) %>%
+  mutate(Continent = ifelse(Country == "Australia", "Oceania", Continent)) %>%
+  mutate(Continent = ifelse(Country == "NewZealand", "Oceania", Continent)) %>%
+  mutate(Continent = ifelse(Country == "USA", "North America", Continent)) 
+
+temp %>%
+  ggplot(aes(x = Place, y = Median_pi)) +
+  geom_point(col = "goldenrod", alpha = .6) +
+  facet_wrap(vars(Subset_size)) +
+  coord_flip() + theme_bw()
+
+summary_diversity2 = wheat_per_country %>%
+  #mutate(Area = ifelse(Area == "United States of America", "USA", Area)) %>%
+  mutate(Area = ifelse(Area == "United Kingdom of Great Britain and Northern Ireland", "UK", Area)) %>%
+  mutate(Area = ifelse(Area == "Czechia", "Czech_Republic", Area)) %>%
+  mutate(Area = ifelse(Area == "New Zealand", "NewZealand", Area)) %>%
+  mutate(Area = ifelse(Area == "Iran (Islamic Republic of)", "Iran", Area)) %>%
+  inner_join(., filter(temp, Subset_size == 6) %>% group_by(Country, Continent) %>% summarize(Median_pi = median(Median_pi)), 
+             by = c("Area" = "Country")) 
+
+res.aov2 <- aov(Median_pi ~ Wheat_ha + Continent, data = summary_diversity2)
+summary(res.aov2)
+
+res.aov2 <- aov(Median_pi ~ Arable_land_for_wheat + Continent, data = summary_diversity2)
+summary(res.aov2)
+
+res.aov2 <- aov(Median_pi ~ Land_for_wheat + Continent, data = summary_diversity2)
+summary(res.aov2)
+
+res.aov2 <- aov(Median_pi ~ Arable_land_for_wheat, data = summary_diversity2[summary_diversity2$Continent == "Europe", ])
+summary(res.aov2)
+res.aov2 <- aov(Median_pi ~ Land_for_wheat, data = summary_diversity2[summary_diversity2$Continent == "North America", ])
+summary(res.aov2)
+
+pivot_longer(summary_diversity2, cols = c(Arable_land_for_wheat, Land_for_wheat, Wheat_ha), 
+               names_to = "Wheat_qty_est", values_to = "Land_use") %>%
+  ggplot(aes(x = Median_pi, y = Land_use, label = Area, col = Continent)) +
+  geom_text() + 
+  theme_bw() +
+  facet_wrap(vars(Wheat_qty_est), scales = "free_y") +
+  Color_Continent 
+
+filter(summary_diversity2, Continent == "Europe") %>%
+  ggplot(aes(x = Median_pi, y = Arable_land_for_wheat, label = Area, col = Continent)) +
+  geom_text() + 
+  theme_bw()  +
+  Color_Continent 
 ```
 
 
@@ -1374,7 +1451,7 @@ chosen_coef %>%
 
 
 chosen_coef %>%
-  filter(Continent == "North America")  %>%
+  filter(Continent == "Europe")  %>%
   group_by(Continent, Country, Cluster) %>%
   summarize(average_coef = mean(Admix_coef)) %>%
   mutate(Cluster2 = ifelse(average_coef < 0.1, "Other", Cluster)) %>%
@@ -1507,15 +1584,50 @@ fi
 
 treemix \
   -i ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix.gz \
-  -o ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix.out \
+  -o ${POPSTR}$VCFNAME.high_anc_coef_snmf.m0.treemix.out \
+  -m 0 -root V7
+
+treemix \
+  -i ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix.gz \
+  -o ${POPSTR}$VCFNAME.high_anc_coef_snmf.m1.treemix.out \
+  -m 1 -root V7
+
+treemix \
+  -i ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix.gz \
+  -o ${POPSTR}$VCFNAME.high_anc_coef_snmf.m2.treemix.out \
+  -m 2 -root V7
+
+treemix \
+  -i ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix.gz \
+  -o ${POPSTR}$VCFNAME.high_anc_coef_snmf.m3.treemix.out \
+  -m 3 -root V7
+  
+treemix \
+  -i ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix.gz \
+  -o ${POPSTR}$VCFNAME.high_anc_coef_snmf.m4.treemix.out \
+  -m 4 -root V7
+
+treemix \
+  -i ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix.gz \
+  -o ${POPSTR}$VCFNAME.high_anc_coef_snmf.m5.treemix.out \
   -m 5 -root V7
 
+treemix \
+  -i ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix.gz \
+  -o ${POPSTR}$VCFNAME.high_anc_coef_snmf.m6.treemix.out \
+  -m 6 -root V7
 ```
 
 ```{r plot treemix}
 source("/Users/feurtey/Documents/Software/treemix-1.13/src/plotting_funcs.R")
-t = plot_tree(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.treemix.out"))
 p_cluster
+t = plot_tree(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.m0.treemix.out"))
+t = plot_tree(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.m1.treemix.out"))
+t = plot_tree(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.m2.treemix.out"))
+t = plot_tree(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.m3.treemix.out"))
+t = plot_tree(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.m4.treemix.out"))
+t = plot_tree(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.m5.treemix.out"))
+t = plot_tree(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.m6.treemix.out"))
 ```
 
 Along with the treemix software, are distribution the software treepop and fourpop. These measure f3 and f4 statistics which test for treeness in population trees.
@@ -1524,6 +1636,7 @@ The three-population test is of the form f3(A;B;C), where a significantly negati
 ```{bash run threepop}
 threepop -i ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix.gz -k 500 | grep "^V" > ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix.3pop.tab
 ```
+
 ```{r}
 read_delim(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.treemix.3pop.tab"), delim = " ", 
            col_names = c("populations", "f3 statistic", "standard error", "Z-score")) %>%
@@ -1595,6 +1708,7 @@ ggplot() +
 
   
 ```
+
 ```{bash vcftools even sampling}
 head ${POPSTR}List_samples_even_sampling.txt
 
