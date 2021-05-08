@@ -1,0 +1,948 @@
+---
+title: "World-wide popgen Zt"
+author: "Alice Feurtey"
+date: "5/5/2020"
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    css: /Users/feurtey/Documents/epur_css.css
+    number_sections: no
+    code_folding: hide
+  #html_document:
+   # toc: yes
+   # df_print: paged
+logo: /Users/feurtey/Documents/Postdoc_Bruce/Communication/Logo_WWZt.png
+---
+
+
+<br><br>
+
+> Here, I analyse and document my progress with the analysis of a world-wide whole genome sampling of *Zymoseptoria tritici*. Some of the analysis are just exploratory while some other are lined up in a clear path to answering questions related to the history of *Z.tritici* and to better understand its adaptation to various climates.
+
+```{r setup, warning=FALSE, message = FALSE}
+
+library(knitr)
+library(reticulate)
+
+#Spatial analyses packages
+library(raster)
+library(sp)
+library(rgdal)
+library(maps)
+library(geosphere)
+
+#Data wrangling and data viz
+library(tidyverse)
+library(purrr)
+library(RColorBrewer)
+library(plotly)
+library(cowplot)
+library(GGally)
+library(corrplot)
+library(pheatmap)
+library(ggstance)
+library('pophelper')
+library(ggbiplot)
+library(igraph)
+library(ggraph)
+library(ggtext)
+
+#Pop structure and pop genomic
+library(GenomicFeatures)
+library(SNPRelate) #PCA
+library(LEA) #Clustering
+library(pophelper)
+library(PopGenome) #Summary statistics
+library(gridExtra)
+
+library(ggtree)
+library(tidytree)
+library(multcomp)
+library(lsmeans)
+
+
+
+#GEA
+library(lfmm)
+
+#Statistics
+library(car)
+library(corrr)
+library(lsmeans)
+library(multcomp)
+
+
+#Variables
+world <- map_data("world")
+project_dir="/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/"
+lists_dir = "/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/WW_PopGen/Keep_lists_samples/"
+
+#Data directories
+data_dir=paste0(project_dir, "0_Data/")
+metadata_dir=paste0(project_dir, "Metadata/")
+fig_dir = "/Users/feurtey/Documents/Postdoc_Bruce/Manuscripts/Feurtey_WW_Zt/Draft_figures/"
+
+#Analysis directories
+#-___________________
+VAR_dir = paste0(project_dir, "1_Variant_calling/")
+  depth_per_window_dir = paste0(VAR_dir, "1_Depth_per_window/")
+  vcf_dir = paste0(VAR_dir, "4_Joint_calling/")
+  mito_SV = paste0(VAR_dir, "6_Mito_SV/")
+PopStr_dir = paste0(project_dir, "2_Population_structure/")
+  nuc_PS_dir=paste0(PopStr_dir, "0_Nuclear_genome/")
+  mito_PS_dir = paste0(PopStr_dir, "1_Mitochondrial_genome/")
+Sumstats_dir = paste0(project_dir, "3_Sumstats_demography/")
+TE_RIP_dir=paste0(project_dir, "4_TE_RIP/")
+   RIP_DIR=paste0(TE_RIP_dir, "0_RIP_estimation/")
+   DIM2_DIR=paste0(TE_RIP_dir, "1_Blast_from_denovo_assemblies/")
+GEA_dir=paste0(project_dir, "5_GEA/")
+fung_dir=paste0(project_dir, "6_Fungicide_resistance/")
+virulence_dir = paste0(project_dir, "7_Virulence/")
+sel_dir = paste0(project_dir, "8_Selection/")
+  gene_list_dir = paste0(sel_dir, "0_Lists_unique_copy/")
+
+#Files
+vcf_name="Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.biall_SNP.max-m-1.maf-0.05.thin-1000bp"
+vcf_name_nomaf="Ztritici_global_March2021.filtered-clean.AB_filtered.SNP.max-m-0.8.thin-1000bp"
+vcf_name_mito = "Ztritici_global_March2021.genotyped.mt.filtered.clean.AB_filtered.variants.good_samples.max-m-80"
+Zt_list = paste0(lists_dir, "Ztritici_global_March2021.genotyped.good_samples.args")
+gff_file = paste0(data_dir, "Zymoseptoria_tritici.MG2.Grandaubert2015.no_CDS.gff3")
+ref_fasta_file = paste0(data_dir, "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa")
+metadata_name = "Main_table_from_SQL_Feb_2020"
+gene_annotation = read_tsv(paste0(data_dir, "Badet_GLOBAL_PANGENOME_TABLE.txt"))
+complete_mito = read_tsv(paste0(data_dir, "Complete_mitochondria_from_blast.txt"), col_names = c("ID_file", "Contig"))
+
+Sys.setenv(PROJECTDIR=project_dir)
+Sys.setenv(VARDIR=VAR_dir)
+Sys.setenv(VCFDIR=vcf_dir)
+Sys.setenv(POPSTR=PopStr_dir)
+Sys.setenv(MITOPOPSTR=mito_PS_dir)
+
+Sys.setenv(SUMST=Sumstats_dir)
+Sys.setenv(GEADIR=GEA_dir)
+
+Sys.setenv(ZTLIST=Zt_list)
+Sys.setenv(GFFFILE = gff_file)
+Sys.setenv(REFFILE = ref_fasta_file)
+Sys.setenv(VCFNAME=vcf_name)
+Sys.setenv(VCFNAME_NOMAF=vcf_name_nomaf)
+Sys.setenv(VCFNAME_MITO=vcf_name_mito)
+
+#knitr::opts_chunk$set(echo = F)
+knitr::opts_chunk$set(message = F)
+knitr::opts_chunk$set(warning = F)
+knitr::opts_chunk$set(results = T)
+
+
+# Metadata and sample lists
+##Filtered_samples
+filtered_samples = bind_rows(
+  read_tsv(paste0(metadata_dir, "Sample_removed_based_on_IBS.args"), col_names = "ID_file") %>%
+  mutate(Filter = "IBS"),
+read_tsv(paste0(metadata_dir, "Sample_with_too_much_NA.args"), col_names = "ID_file") %>%
+  mutate(Filter = "High_NA"),
+read_tsv(paste0(metadata_dir, "Samples_to_filter_out.args"), col_names = "ID_file") %>%
+  mutate(Filter = "Mutants_etc"))
+
+##Samples in vcf
+genotyped_samples = read_tsv(Zt_list, col_names = "ID_file")
+
+## Metadata of genotyped samples 
+temp = read_tsv(paste0(metadata_dir, metadata_name, "_Description.tab"), col_names = F) %>% pull()
+
+Zt_meta = read_tsv(paste0(metadata_dir, metadata_name, "_with_collection.tab"), 
+                 col_names = temp,
+                 na = "\\N", guess_max = 2000) %>%
+  unite(Coordinates, Latitude, Longitude, sep = ";", remove = F) %>%
+  inner_join(., genotyped_samples)  %>%
+  mutate(Country = ifelse(Country == "USA", paste(Country, Region, sep = "_"), Country)) %>%
+  mutate(Country = ifelse(Country == "Australia", paste(Country, Region, sep = "_"), Country)) %>%
+  mutate(Country = ifelse(Country == "NZ", "New Zealand", Country)) %>%
+  mutate(Country = ifelse(Country == "CH", "Switzerland", Country)) %>%
+  mutate(Latitude2 = round(Latitude, 2), Longitude2 = round(Longitude, 2))
+
+#genotyped_samples %>%
+#  filter(!(ID_file %in% filtered_samples$ID_file)) %>%
+#    write_tsv(Zt_list, col_names = F)
+
+
+
+#Define colors
+## For continents
+#myColors <- c("#04078B", "#a10208", "#FFBA08", "#CC0044", "#5C9D06", "#129EBA","#305D1B")
+myColors <- c("#DA4167", "grey", "#ffba0a", "#A20106", "#3F6E0C", "#129eba", "#8fa253" )
+names(myColors) = levels(factor(Zt_meta$Continent))
+Color_Continent = ggplot2::scale_colour_manual(name = "Continent", values = myColors)
+Fill_Continent = ggplot2::scale_fill_manual(name = "Continent", values = myColors)
+
+## For clustering
+K_colors = c("#f9c74f", "#f9844a", "#90be6d", "#f5cac3", 
+"#83c5be", "#f28482", "#577590", "#e5e5e5", "#a09abc",  "#52796f",
+"#219ebc", "#003049", "#82c0cc", "#283618", "white")
+
+## For correlations
+mycolorsCorrel<- colorRampPalette(c("#0f8b8d", "white", "#a8201a"))(20)
+
+#Random gradients
+greens=c("#1B512D", "#669046", "#8CB053", "#B1CF5F", "#514F59")
+blues=c("#08386E", "#1C89C9", "#28A7C0", "#B0DFE8", "grey")
+
+#Bioclim data (from Worldclim)
+Bioclim_var = c("Annual Mean Temperature", "Mean Diurnal Range ",
+                "Isothermality (BIO2/BIO7) (×100)", "Temperature Seasonality (standard deviation ×100)",
+                "Max Temperature of Warmest Month", "Min Temperature of Coldest Month",
+                "Temperature Annual Range (BIO5-BIO6)",
+                "Mean Temperature of Wettest Quarter","Mean Temperature of Driest Quarter",
+                "Mean Temperature of Warmest Quarter", "Mean Temperature of Coldest Quarter",
+                "Annual Precipitation", "Precipitation of Wettest Month",
+                "Precipitation of Driest Month", "Precipitation Seasonality (Coefficient of Variation)",
+                "Precipitation of Wettest Quarter", "Precipitation of Driest Quarter",
+                "Precipitation of Warmest Quarter","Precipitation of Coldest Quarter")
+```
+
+```{r}
+#myColors <- c("#DA4167", "grey", "#ffba0a", "#A20106", "#3F6E0C", "#129eba", "#8fa253" )
+
+myColors <- c("#DA4167", "grey", "#FFBA0A", "#EC6B09", "#8DDBE0", "#6F8B2D", "#0B7DA3" )
+
+names(myColors) = levels(factor(Zt_meta$Continent))
+Color_Continent = ggplot2::scale_colour_manual(name = "Continent", values = myColors)
+Fill_Continent = ggplot2::scale_fill_manual(name = "Continent", values = myColors)
+
+sum_temp %>%
+ggplot(aes(x=`Sampling year`, y =`Genome number`, fill = Continent)) +
+  geom_bar(stat = "identity") +
+  theme_bw() + theme(axis.title = element_blank(),
+                     axis.text.x = element_text(angle = 60, hjust = 1)) +
+  Fill_Continent
+```
+
+
+# Adaptation to local climatic conditions
+***
+
+## Geographic/environmental data
+I will use the sampling site of each isolate (as precisely as I can manage) to approximate environmental parameters such as temperature, precipitation or solar radiation. One possibility to find such data is this website, https://www.worldclim.org/data/worldclim21.html (published in Fick and Hijmans, 2017), which gives access to climate data for 1970-2018. These can be transformed into bioclimatic variables using the biovars function from the R package dismo (https://rdrr.io/cran/dismo/man/biovars.html).
+
+```{r Get Bioclim data}
+
+temp = Zt_meta %>%
+  #filter(!(ID_file %in% filtered_samples$ID_file)) %>%
+  filter(!is.na(Longitude)) %>%
+  mutate(X = as.numeric(unlist(Longitude)),
+                            Y = as.numeric(unlist(Latitude))) %>%
+  dplyr::select(X, Y) %>%
+  distinct()
+
+sp = SpatialPoints(temp[, c("X", "Y")])
+summary(sp)
+
+
+
+bio_list = list()
+for (i in c(1:length(Bioclim_var))) {
+  file_name=paste0(data_dir,"Climatic_data/wc2.1_10m_bio/wc2.1_10m_bio_", i, ".tif")
+  rast_temp = raster(file_name)    
+  bio_list[[Bioclim_var[i]]] = raster::extract(rast_temp, sp)
+}
+
+#Adding solar radiations
+sol_list = list()
+for (i in c(1:12)) {
+  file_name=paste0(data_dir,"Climatic_data/wc2.1_10m_srad/wc2.1_10m_srad_", str_pad(i, 2, pad ="0"), ".tif")
+  rast_temp = raster(file_name)    
+  sol_list[[i]] = raster::extract(rast_temp, sp)
+}
+sol_months = cbind(temp, do.call(cbind, sol_list))
+sol_months$srad_max = apply(sol_months[, c(3:ncol(sol_months))], 1, max)
+sol_months = sol_months %>% dplyr::select(X,Y, srad_max)
+
+
+climate_per_coordinates = cbind(temp, do.call(cbind, bio_list)) %>%
+  full_join(., sol_months)
+
+```
+
+```{r Plot distrib bioclim}
+
+dat = Zt_meta %>%
+  #filter(!(ID_file %in% filtered_samples$ID_file)) %>% 
+  dplyr::select(ID_file, Latitude, Longitude, Continent) %>%
+  full_join(., climate_per_coordinates,
+                by= c("Longitude" = "X", "Latitude" = "Y")) %>%
+  dplyr::select(-ID_file) %>%
+  gather(key = "Bioclim_var", value = "Estimate", -c(Longitude, Latitude, Continent))
+
+#Define stable colors
+#myColors = c("#ec9a29", "#0f8b8d", "#143642")
+#names(myColors) = levels(factor(dat$Continent))
+#colScale = scale_colour_manual(name = "Continent", values = myColors)
+#colScaleFill = scale_fill_manual(name = "Continent", values = myColors)
+
+ggplot(dat, aes(Estimate, fill =Continent, color =Continent)) +
+  geom_histogram(position = "stack") +
+  facet_wrap(.~Bioclim_var, scales = "free") +
+  theme_classic() + Color_Continent + Fill_Continent
+
+
+```
+
+Naturally, many of the variables investigated above are highly correlated. It is intuitive for example that the minimum temperature of the coldest month would be correlated to the average temperature of the coldest quarter! Here, I visualize these correlations.
+
+```{r correl climate var}
+
+#Correlogram
+
+Ccor = cor(climate_per_coordinates)
+corrplot(Ccor, type="lower", order="hclust",
+         col = mycolorsCorrel,
+         tl.col="black", tl.srt=45, tl.cex = 0.7)
+
+#Simple heatmap
+heatmap(x = Ccor, col = mycolorsCorrel, symm = TRUE)
+```
+
+
+__How to choose the best variables?__
+
+* Only keep one per "correlation block"?
+* Create composite variables with a PCA? Only meaningful if we can interpret the principal component.
+
+```{r PCA bioclim var}
+
+country_climate = Zt_meta %>%
+  #filter(!(ID_file %in% filtered_samples$ID_file)) %>% 
+  filter(!is.na(Longitude)) %>%
+  dplyr::select(Latitude, Longitude, Continent) %>% 
+  unique()
+bioclim.pca <- prcomp(climate_per_coordinates[,c(2:ncol(climate_per_coordinates))], scale. = TRUE)
+ggbiplot(bioclim.pca, obs.scale = 1, var.scale = 1,
+         group = country_climate$Continent, ellipse = TRUE) +
+  Color_Continent +
+  theme(legend.direction = 'horizontal', legend.position = 'top') +
+  xlim(-25, 10) + ylim(-15, 25)
+```
+
+
+```{r}
+
+
+tidy_cors <- climate_per_coordinates %>%
+  dplyr::select(everything(), -contains("uarter"), -Y, -X) %>%
+  correlate() %>%
+  stretch()
+
+graph_cors <- tidy_cors %>%
+  filter(abs(r) > .3) %>%
+  graph_from_data_frame(directed = FALSE)
+
+ggraph(graph_cors) +
+  geom_edge_link(aes(edge_alpha = .5, edge_width = abs(r), color = r)) +
+  guides(edge_alpha = "none", edge_width = "none") +
+  scale_edge_colour_gradientn(limits = c(-1, 1), colors = c("#0f8b8d", "#a8201a")) +
+  geom_node_point(color = "black", size = 3) +
+  geom_node_text(aes(label = name), repel = TRUE) +
+  theme_graph() +
+  labs(title = "Correlations between bioclimatic variables")
+
+
+```
+
+
+## GEA: genotype-environment association
+
+### Prepare and run GEA
+```{r standard Bioclim var}
+
+#Create standardized values for the environment variables
+
+climate_per_coord_standard = climate_per_coordinates %>%
+  pivot_longer(cols = -c(X, Y), names_to = "Variable_climate", values_to = "Value") %>%
+  group_by(Variable_climate) %>%
+  mutate(Standard_value = scale(Value)) %>%
+  dplyr::select(-Value) %>%
+  pivot_wider(names_from = Variable_climate, values_from = Standard_value)
+
+
+```
+
+
+```{r GEMMA prep climate file, eval = F}
+
+#The fam file should be same for all core chromosomes, hopefully. So I only have to create one to get the file format including the phenotypes. This can then be used for all chromosomes.
+
+temp2 = left_join(read_tsv(Zt_list, col_names = "ID_file") %>% mutate(ID2 = ID_file), 
+                            Zt_meta %>% dplyr::select(ID_file, Latitude, Longitude)) %>%
+  bind_cols(., tibble(X1 = rep(0, nrow(Zt_meta)), X2 = rep(0, nrow(Zt_meta)), X3 = rep(0, nrow(Zt_meta)))) %>%
+  left_join(., climate_per_coord_standard,
+                   by = c("Latitude" = "Y", "Longitude" = "X")) 
+
+dplyr::select(temp2, -Latitude, -Longitude) %>%
+ write_delim(., 
+              "~/Documents/Postdoc_Bruce/Projects/WW_project/5_GEA/Ztmeta.fam", 
+               delim = " ", col_names = F)
+
+#Transfer on the cluster
+#rsync -avP ~/Documents/Postdoc_Bruce/Projects/WW_project/5_GEA/Ztmeta.fam alice@130.125.25.244:/data2/alice/WW_project/5_GEA/Phenotypes_with_climatic_variables.fam
+
+#To run gemma on the cluster: conda activate env0
+#Commands are then in the format gemma -h 
+```
+
+
+### Identify variants significantly associated to bioclimatic variables
+```{r GEMMA results}
+results_GEMMA = list()
+Bioclim_var[length(Bioclim_var) + 1] = "Solar_rad"
+for (i in c(1:length(Bioclim_var) +1)) {
+  temp = list.files(path = GEA_dir, pattern = paste0("*_for_phenotype_", i,".assoc.txt")) %>% 
+    map_df(~read_tsv(file = paste0(GEA_dir, .), col_types = c("dcddccdddddd"))) %>%
+    unite(col = SNP, chr, ps, sep = "_", remove = F) %>%
+    dplyr::select(SNP, CHR = chr, BP = ps, P = p_wald, zscore = logl_H1) %>%
+    mutate(Phenotype = Bioclim_var[i], Nb = i)
+  results_GEMMA[[Bioclim_var[i]]] = temp
+}
+
+results_GEMMA = bind_rows(results_GEMMA)
+
+
+core_temperature_variable = c("Max Temperature of Warmest Month", "Min Temperature of Coldest Month")
+
+core_rain_variable = c("Precipitation of Wettest Month", "Precipitation of Driest Month")
+
+solar_var = c("Solar_rad")
+```
+
+To determine which variants are significant, we use the Bonferroni correction method, i.e. we divide the traditional threshold of significance of 0.05 by the number of variants that we tested. Based on this corrected threshold, we can then identify variants significantly associated with each environmental condition that we tested.
+```{r GWAS signif}
+head(results_GEMMA) 
+Bonferroni_threshold = results_GEMMA %>% dplyr::count(Nb) %>%
+  mutate(Bonferroni_threshold = 0.05/n) %>% summarize(average = mean(Bonferroni_threshold)) %>% pull()
+
+results_GEMMA %>% 
+  filter(P <= Bonferroni_threshold) %>% dplyr::count(Phenotype) 
+
+significant = results_GEMMA %>%
+  filter(P <= Bonferroni_threshold)  %>% group_by(SNP, CHR, BP) %>%
+  mutate(Count = n()) %>% mutate(SNP_type = "significant")
+
+significant %>% group_by(SNP, CHR, BP) %>%
+  summarize(Count = n()) %>%
+  ggplot(aes(x = SNP, y = Count)) + 
+    geom_point()
+
+temp = significant %>% ungroup() %>% pivot_wider(values_fill = 1, values_from = P, names_from = Phenotype) %>%
+  dplyr::select(-CHR, -BP, - zscore, -Nb)
+
+significant %>% 
+  ungroup() %>%
+  dplyr::select(CHR, BP) %>% 
+  distinct() %>%
+  write_delim(paste0(GEA_dir, "Significant_GEMMA.tsv"), delim = "\t", col_names = F)
+```
+
+To identify potentially more important variants amongst the significantly associated variants, we can predict the effect of the mutation on the protein sequence of genes. For this, I use SNPeff.
+```{bash}
+#../Software/vcftools_jydu/src/cpp/vcftools --gzvcf /data2/alice/WW_project/1_Variant_calling/4_Joint_calling/Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.ann.vcf.gz --positions /data2/alice/WW_project/5_GEA/Significant_GEMMA.tsv --out /data2/alice/WW_project/5_GEA/Significant_GEMMA.vcf --recode --recode-INFO-all
+
+#../Software/bcftools-1.10.2/bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t%INFO/ANN\n' /data2/alice/WW_project/5_GEA/Significant_GEMMA.vcf > /data2/alice/WW_project/5_GEA/Significant_GEMMA.ann.tsv
+
+#rsync -avP alice@130.125.25.244:/data2/alice/WW_project/5_GEA/Significant_GEMMA.ann.tsv ../5_GEA/
+```
+
+```{r signif annot}
+temp = read_tsv(paste0(GEA_dir, "Significant_GEMMA.ann.tsv"), col_names = c("CHR", "BP", "REF", "ALT", "ANN")) %>%
+  separate(ANN, sep = ",", 
+           into = c("ANN1", "ANN2", "ANN3", "ANN4", "ANN5", "ANN6", "ANN7", "ANN8", "ANN9", "ANN10", "ANN11",
+                    "ANN12", "ANN13", "ANN14", "ANN15", "ANN16", "ANN17"), 
+           extra = "warn")
+
+signif_ann = temp %>%
+  pivot_longer(cols = c(-CHR, -BP, -REF, -ALT), names_to = "ANN", values_to = "Annotation") %>%
+  filter(!is.na(Annotation)) %>%
+  separate(Annotation, into = c("ALT2", "Variant_type", "Effect_strength", "Gene", "Rest"), sep = "\\|", extra = "merge") %>%
+  filter(!str_detect(Gene, "-")) %>%
+  separate(Gene, into = c("temp", "Chrom", "Gene_nb"), remove = FALSE)  %>%
+  dplyr::select(-ANN, -ALT2, -temp) %>%
+  mutate(Gene_nb = as.numeric(Gene_nb))
+
+signif_ann %>% dplyr::count(CHR, Gene_nb, Effect_strength) %>%
+  pivot_wider(names_from = Effect_strength, values_from = n, values_fill = 0)
+
+
+pheno = "Max Temperature of Warmest Month"
+
+temp = results_GEMMA %>% filter(Phenotype == pheno) %>%
+  left_join(., significant %>% dplyr::filter(Phenotype == pheno) ) %>%
+  mutate(SNP_type = ifelse(is.na(SNP_type), "Other", SNP_type)) %>%
+  mutate(logP = -log10(P)) %>%
+  left_join(., signif_ann) %>%
+  filter(SNP_type == "significant")
+```
+
+
+We have several variables that could be interpreted the same way. For example, we expect the amount of rain during the driest month and the driest quarter to give us similar information related to drought tolerance. It could be useful to identify useful SNPs to find the ones that are significantly associated to all variables of the same type. Let's see if the p-values seem correlated between variables of the same types and what amount of significant variants are shared.
+```{r signif in all}
+reshape_GEMMA_results <- function(phenotype_list) {
+  temp = results_GEMMA %>%
+    filter(Phenotype %in% phenotype_list) %>%
+    mutate(logP = -log10(P)) %>%
+    filter(logP > 2) %>%
+    mutate(Phenotype_code = ifelse(Phenotype == phenotype_list[1], "Pheno1", "Pheno2"))%>%
+    dplyr::select(SNP, Phenotype_code, logP)
+  temp = temp %>% pivot_wider(values_from = logP, names_from = Phenotype_code) %>%
+    mutate(Signif_max = ifelse(Pheno1 >= -log10(Bonferroni_threshold), "1", "0"),
+           Signif_mean = ifelse(Pheno2 >= -log10(Bonferroni_threshold), "1", "0")) %>%
+    unite(Significant, Signif_max, Signif_mean, sep = "", remove = F) 
+  
+  temp[complete.cases(temp),] 
+}
+
+dot_plot_comparison <- function(reshaped_GEMMA_results, phenotype_list) {
+  ggplot(temp, aes(x = Pheno1, y = Pheno2, col = Significant)) +
+    geom_point() +
+    geom_hline(aes(yintercept=-log10(Bonferroni_threshold)),
+                 linetype = "dashed", color = "grey20")+
+    geom_vline(aes(xintercept=-log10(Bonferroni_threshold)),
+                 linetype = "dashed", color = "grey20") +
+    theme_classic() +
+    labs(x = phenotype_list[1], y = phenotype_list[1])
+}
+
+
+# Variables related to temperatures
+# _________________________
+warm_temp_var = c("Max Temperature of Warmest Month", "Mean Temperature of Warmest Quarter")
+cold_temp_var = c("Min Temperature of Coldest Month", "Mean Temperature of Coldest Quarter")
+
+#Significant for warm temperatures
+temp = reshape_GEMMA_results(warm_temp_var)
+table(temp[,"Significant"])
+p1 = dot_plot_comparison(temp, warm_temp_var)
+
+
+#Significant for cold temperatures
+temp = reshape_GEMMA_results(cold_temp_var)
+table(temp[,"Significant"])
+p2 = dot_plot_comparison(temp, cold_temp_var)
+
+cowplot::plot_grid(p1 +theme(legend.position = "none"), p2  + theme(legend.position = "none"))
+
+
+# Variables related to rain
+# _________________________
+drought_var = c("Precipitation of Driest Month", "Precipitation of Driest Quarter")
+rainy_var = c("Precipitation of Wettest Month", "Precipitation of Wettest Quarter")
+core_rain_variable
+#Significant for drought
+temp = reshape_GEMMA_results(drought_var)
+table(temp[,"Significant"])
+p1 = dot_plot_comparison(temp, drought_var)
+
+
+#Significant for high precipitation
+temp = reshape_GEMMA_results(rainy_var)
+table(temp[,"Significant"])
+p2 = dot_plot_comparison(temp, rainy_var)
+
+cowplot::plot_grid(p1 +theme(legend.position = "none"), p2  + theme(legend.position = "none"))
+
+```
+
+### GEA visualization
+Traditionally, GWAS results are represented as Manhattan plot. Let's create some for the main variables we are interested in. 
+
+```{r GEMMA prep plot}
+# Compute chromosome size and cumulative position of each chromosome
+results_GEMMA_for_plot <- results_GEMMA %>% 
+  group_by(CHR) %>% 
+  dplyr::summarise(chr_len=max(BP)) %>% 
+  mutate(tot=cumsum(chr_len)-chr_len) %>%
+  dplyr::select(-chr_len) 
+
+#EStimate middle of chromosome to center the labels
+axisdf = results_GEMMA_for_plot %>%
+  inner_join( ., results_GEMMA %>% filter(Nb == 1)) %>%
+  arrange(CHR, BP) %>%
+  mutate(BPcum = BP+tot) %>% 
+  group_by(CHR) %>% 
+  dplyr::summarise(center=( max(BPcum) + min(BPcum) ) / 2 )
+
+
+# Manhattan plot function
+Manhattan_one_pheno <- function(pheno, color_duo) {
+  
+  temp = results_GEMMA %>% filter(Phenotype == pheno) %>%
+    inner_join(., results_GEMMA_for_plot)  %>%
+    left_join(., significant %>% dplyr::filter(Phenotype == pheno) ) %>%
+    mutate(SNP_type = ifelse(is.na(SNP_type), "Other", SNP_type)) %>%
+    mutate(logP = -log10(P)) %>%
+    filter(CHR <= 13) %>%
+    filter(logP > 2) 
+  
+  ggplot(temp, aes(x=BP, y=logP)) +
+    geom_point( aes(color=SNP_type), alpha = 0.8, size=1.3) +
+    scale_color_manual(values = color_duo) +
+    geom_hline(aes(yintercept=-log10(Bonferroni_threshold)),
+               linetype = "dashed", color = "grey20") +
+    theme_bw() +
+    theme( legend.position="none", panel.border = element_blank(),
+      panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank(),
+      axis.title.x=element_blank(), axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+      strip.background = element_rect(colour="white", fill="white"),
+      plot.margin = unit(c(0, 0, 0, 0), "cm")) +
+      facet_grid(cols = vars(CHR), scales = "free_x") 
+}
+
+# Manhattan plot function 2
+Manhattan_faceted_pheno <- function(pheno_list, color_duo) {
+  results_GEMMA %>% filter(Phenotype %in% pheno_list) %>%
+    inner_join(., results_GEMMA_for_plot)  %>%
+    arrange(CHR, BP) %>%
+    mutate(BPcum = BP+tot) %>%
+    mutate(logP = -log10(P))%>%
+    filter(logP > 2) %>%
+    ggplot(., aes(x=BPcum, y=logP)) +
+      geom_point( aes(color=as.factor(CHR)), alpha=0.8, size=1.3) +
+      scale_color_manual(values = rep(color_duo, 22 )) +
+      scale_x_continuous( label = axisdf$CHR, breaks= axisdf$center ) +
+      geom_hline(aes(yintercept=-log10(Bonferroni_threshold)),
+                 linetype = "dashed", color = "grey20") +
+      theme_bw() +
+      theme(legend.position="none",
+        panel.border = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank()) +
+      labs(x = "", title = "Manhattan plots") +
+      facet_grid(rows = vars(Phenotype), scales = "free_y") 
+}
+```
+
+```{r GEMMA plot core temp}
+
+# Manhattan plot with both max and min temperature with mirrored effect
+p = Manhattan_one_pheno("Max Temperature of Warmest Month", c("#F5B9B3", "#F28482")) +
+  labs(y = str_wrap("Max Temperature of Warmest Month (-logP)", 25))
+
+q = Manhattan_one_pheno("Min Temperature of Coldest Month", c("#C4E7FD", "#0889D9")) +
+  scale_y_reverse() +
+  labs(y = str_wrap("Min Temperature of Coldest Month (-logP)", 25))
+
+cowplot::plot_grid(p, q, nrow = 2)
+
+ggsave(paste0(fig_dir, "GEA_Manhattan_temperature_main.pdf"), width = 18, height = 10, units = "cm")
+
+```
+
+```{r GEMMA core rain}
+#  Manhattan plot for core precipitation
+p = Manhattan_one_pheno("Precipitation of Driest Month", c("#FFD399", "#ff9f1c")) +
+  labs(y = str_wrap("Precipitation of Driest Month (-logP)", 25))
+
+q = Manhattan_one_pheno("Precipitation of Wettest Month", c("#cbf3f0", "#2ec4b6")) +
+  scale_y_reverse() +
+  labs(y = str_wrap("Precipitation of Wettest Month (-logP)", 25))
+
+cowplot::plot_grid(p, q, nrow = 2)
+
+ggsave(paste0(fig_dir, "GEA_Manhattan_temperature_main.pdf"), width = 18, height = 10, units = "cm")
+
+```
+```{r GEMMA core solar}
+#  Manhattan plot for solar radiation
+Manhattan_one_pheno("Solar_rad", c("#FFD399", "#ff9f1c")) +
+  labs(y = str_wrap("Solar radiation (-logP)", 25))
+```
+
+```{r GEMMA plots}
+#Yearly variables
+Manhattan_faceted_pheno(Bioclim_var[c(2, 3, 7)], c("grey", "skyblue")) +
+  labs(title = "Ranges bioclimatic variables")
+Manhattan_faceted_pheno(Bioclim_var[c(4, 15)], c("grey", "skyblue")) +
+  labs(title = "Seasonality bioclimatic variables")
+Manhattan_faceted_pheno(Bioclim_var[c(1, 12)], c("grey", "skyblue")) +
+  labs(title = "Annual rain and temperature")
+
+#Temperatures
+Manhattan_faceted_pheno(warm_temp_var, c("grey", "skyblue")) +
+  labs(title = "High temperatures")
+Manhattan_faceted_pheno(cold_temp_var, c("grey", "skyblue")) +
+  labs(title = "Cold temperatures")
+
+#Rain
+Manhattan_faceted_pheno(drought_var, c("grey", "skyblue")) +
+  labs(title = "Drought")
+Manhattan_faceted_pheno(rainy_var, c("grey", "skyblue")) +
+  labs(title = "Rain")
+
+#Mix rain and temperature
+Manhattan_faceted_pheno(Bioclim_var[c(8, 9, 17, 18)], c("grey", "skyblue")) +
+  labs(title = "Mix rain and temperature")
+
+```
+
+
+<br><br>
+
+
+# Fungicide resistance
+***
+
+This is based on the same scripts made for Fanny Hartmann's paper on the pairs of populations: looking for alleles already known to be involved in resistance to fungicide.
+
+```{r bar plot fung}
+genotypes_resistance = read_tsv(paste0(fung_dir, "genotypes_tidy_format.tab"),
+                                col_names = c("temp", "ID_file", "Allele")) %>%
+  separate(temp, into = c("Gene", "AA_change"), sep = "\\.") %>%
+   dplyr::mutate(AA_REF = str_sub(AA_change, 1, 1)) %>%
+  dplyr::mutate(Allele_type = ifelse(AA_REF == Allele, "Origin", "Mutant")) %>%
+  left_join(Zt_meta)
+
+
+genotypes_resistance %>%
+  dplyr::count(AA_change, Gene, Allele_type) %>%
+  ggplot(aes(x=n, y=AA_change, fill = Allele_type)) +
+  geom_barh(stat="identity") +
+  facet_grid(Gene ~ ., scales = "free_y", space = "free_y")
+
+
+
+```
+
+I suspect that there will be an effect of both geography and time on the frequency of these alleles and so I try to represent this here.
+
+
+```{r fungicides bubble plots}
+#CYP51
+temp = genotypes_resistance %>%
+  filter(Gene == "CYP51") %>%
+  dplyr::count(AA_change, Continent,Sampling_Date, Allele_type) %>%
+  pivot_wider(names_from = Allele_type, values_from = n, values_fill = list(n = 0)) %>%
+  mutate(prop_mutant = Mutant/(Mutant + Origin)) %>%
+  filter(!is.na(Sampling_Date)) %>%
+  filter(!is.na(Continent)) %>%
+  group_by(AA_change) %>%
+  dplyr::mutate(Somme = sum(Mutant)) %>%
+  filter(Somme > 0)
+
+temp %>%
+  ggplot(aes(x=Sampling_Date, y=Continent, size = prop_mutant, fill = prop_mutant)) +
+  geom_point(shape=21, alpha =0.7) + theme_bw() +
+  facet_wrap(.~AA_change) + 
+  scale_fill_gradient(low="white", high = "#16697a") +
+  labs(title = str_wrap(paste("Mutant proportion per known mutation",
+                              "in the gene CYP51"), width = 35),
+       subtitle = str_wrap(paste("This gene can mutate and cause resistance to azole fungicides."), width = 65),
+       fill = "Proportion of mutants",
+       size = "Proportion of mutants",
+       x = "Years", y = "")
+
+#Beta_tubulin
+genotypes_resistance %>%
+  filter(Gene == "beta_tubulin") %>%
+  dplyr::count(AA_change, Continent,Sampling_Date, Allele_type) %>%
+  pivot_wider(names_from = Allele_type, values_from = n, values_fill = list(n = 0)) %>%
+  mutate(Number_all = Mutant + Origin) %>%
+  mutate(prop_mutant = Mutant/Number_all) %>%
+  group_by(AA_change) %>%
+  dplyr::mutate(Somme = sum(Mutant)) %>%
+  filter(Somme > 0) %>%
+  ggplot(aes(x=Sampling_Date, y=Continent, size = prop_mutant, fill = prop_mutant)) +
+  geom_point(shape=21, alpha =0.7) + theme_bw() +
+  facet_wrap(.~AA_change) + scale_fill_gradient(low="white", high = "#16697a")+
+  labs(title = str_wrap(paste("Mutant proportion per known mutation",
+                              "in the beta tubuline gene"), width = 35),
+       subtitle = str_wrap(paste("This gene can mutate and cause resistance",
+                                 " to benzimidazole fungicides."), width = 65),
+       fill = "Proportion of mutants",
+       size = "Proportion of mutants",
+       x = "Years", y = "")
+
+# Mitochondrial_cytb
+genotypes_resistance %>%
+  filter(Gene == "mitochondrial_cytb") %>%
+  dplyr::count(AA_change, Continent,Sampling_Date, Allele_type) %>%
+  pivot_wider(names_from = Allele_type, values_from = n, values_fill = list(n = 0)) %>%
+  mutate(Number_all = Mutant + Origin) %>%
+  mutate(prop_mutant = Mutant/Number_all) %>%
+  group_by(AA_change) %>%
+  dplyr::mutate(Somme = sum(Mutant)) %>%
+  filter(Somme > 0) %>%
+  ggplot(aes(x=Sampling_Date, y=Continent, size = prop_mutant, fill = prop_mutant)) +
+  geom_point(shape=21, alpha =0.7) + theme_bw() +
+  facet_wrap(.~AA_change) + scale_fill_gradient(low="white", high = "#16697a") +
+  labs(title = str_wrap(paste("Mutant proportion per known mutation",
+                              "in the mitochondrial gene cytb"), width = 35),
+       subtitle = str_wrap(paste("This gene can mutate and cause resistance ",
+                                 "to QoI, or Quinone outside inhibitors."), width = 65),
+       fill = "Proportion of mutants",
+       size = "Proportion of mutants",
+       x = "Years", y = "")
+
+
+# SDH genes
+genotypes_resistance %>%
+  filter(grepl("SDH", Gene)) %>%
+  unite(Label, Gene, AA_change, remove = T) %>%
+  dplyr::count(Label, Continent, Sampling_Date, Allele_type) %>%
+  pivot_wider(names_from = Allele_type, values_from = n, values_fill = list(n = 0)) %>%
+  mutate(Number_all = Mutant + Origin) %>%
+  mutate(prop_mutant = Mutant/Number_all) %>%
+  group_by(Label) %>%
+  dplyr::mutate(Somme = sum(Mutant)) %>%
+  filter(Somme > 0) %>%
+  ggplot(aes(x=Sampling_Date, y=Continent, size = prop_mutant, fill = prop_mutant)) +
+  geom_point(shape=21, alpha =0.7) + theme_bw() +
+  facet_wrap(.~Label) + scale_fill_gradient(low="white", high = "#16697a")+
+  labs(title = str_wrap(paste("Mutant proportion per known mutation",
+                              "in one of the SDH genes"), width = 35),
+       subtitle = str_wrap(paste("This gene can mutate and cause resistance to SDHI fungicides."), width = 65),
+       fill = "Proportion of mutants",
+       size = "Proportion of mutants",
+       x = "Years", y = "")
+```
+
+
+
+<br><br>
+
+
+# Virulence to new varieties
+***
+
+## Thierry Marcel's virulence GWAS
+I use the alleles identified in the GWAS of Thierry Marcel and track them in the world-wide populations.
+```{r French GWAS Virulence}
+virulence_table = read_tsv(paste0(virulence_dir, "French_GWAS_virulence_alleles.tab")) %>%
+  separate(VIRULENCE_ALLELES, into = c("VIRULENCE_ALLELE1", "VIRULENCE_ALLELE2"), sep = ",")
+
+french_GWAS_variants = read_tsv(paste0(virulence_dir, "Positions_GWAS.short.vcf"),
+                                na = ".")  %>%
+  pivot_longer(-c(`#CHROM`, POS, REF, ALT), names_to = "ID_file", values_to = "Allele_nb") %>%
+  separate(ALT, into = c("ALT1", "ALT2"), sep = ",") %>%
+  mutate(Allele_ID = ifelse(Allele_nb == 0, REF, ifelse(Allele_nb == 1, ALT1, ALT2))) %>%
+  left_join(., virulence_table) %>%
+  mutate(virulence = ifelse(Allele_ID == NON_VIRULENT_ALLELES, "Non_virulent",
+                            ifelse(Allele_ID == VIRULENCE_ALLELE1 | Allele_ID == VIRULENCE_ALLELE2,
+                                   "Virulent", NA)))
+
+french_GWAS_variants = inner_join(french_GWAS_variants, Zt_meta)
+
+
+french_GWAS_variants %>%
+  tidyr::unite(position, `#CHROM`, POS) %>%
+  dplyr::count(position, Continent,Sampling_Date, virulence) %>%
+  pivot_wider(names_from = virulence, values_from = n, values_fill = list(n = 0)) %>%
+  mutate(Number_all = Virulent + Non_virulent) %>%
+  mutate(prop_virulent = Virulent/Number_all) %>%
+  ggplot(aes(x=Sampling_Date, y=Continent, size = prop_virulent, fill = prop_virulent)) +
+  geom_point(shape=21, alpha =0.7) + theme_bw() +
+  scale_fill_gradient(low="white", high = "#16697a")+
+  labs(title = str_wrap(paste("Virulence alleles",
+                              ""), width = 35),
+       subtitle = str_wrap(paste("These alleles were identified in a GWAS study",
+                                 " to increase either virulence or aggressiveness",
+                                 " on some wheat varieties."), width = 65),
+       fill = "Proportion of virulent",
+       size = "Proportion of virulent",
+       x = "Years", y = "") +
+  facet_wrap(vars(position))
+
+```
+Welll... Whatever...
+
+## Avr_Stb6
+```{bash, eval = F}
+#On the cluster: run blast
+while read sample ; do sh Detect_gene_blast.sh ./Directories_new.sh /data2/alice/WW_project/7_Virulence/Avr_Stb6.fasta ${sample} Illumina /data2/alice/WW_project/7_Virulence/${sample}_Avr_Stb6.blast.tab; done < list_Third_batch_Dec_2018.txt
+
+#On the cluster: Gather blast results
+cat /data2/alice/WW_project/7_Virulence/*Avr_Stb6.blast.tab > /data2/alice/WW_project/7_Virulence/Overall_results_blast_Avr_Stb6.txt
+
+#On the cluster: Gather blast results
+while read p ;
+ do
+sample=$(echo $p | cut -f 1 -d " " ) ;
+ chr=$(echo $p | cut -f 4 -d " ") ;
+ start=$(echo $p | cut -f 11 -d " ") ; end=$(echo $p | cut -f 12 -d " ") ;
+ echo $sample, $chr, $start, $end ;
+ order_start=$(echo -e "$start\n$end"  | sort -n | head -n1);
+ order_end=$(echo -e "$start\n$end"  | sort -nr | head -n1);
+ echo -e "${chr}\t${order_start}\t${order_end}" > temp.bed ;
+ ~/Software/bedtools getfasta \
+   -fi /data2/alice/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/0_Spades/${sample}.fasta\
+   -bed temp.bed | \
+   sed "s/>/>${sample}:/" >> \
+ /data2/alice/WW_project/7_Virulence/Overall_results_blast_Avr_Stb6.fasta ;
+done < /data2/alice/WW_project/7_Virulence/Overall_results_blast_Avr_Stb6.txt
+
+#And on the website, because laziness
+mafft --thread 8 --threadtb 5 --threadit 0 --reorder --adjustdirection --auto input > output
+```
+
+Here is the tree for the Avr_Stb6 gene. For reference, the allele carried by ST99CH_1A4 gives an avirulent phenotype, while the allele from ST99CH_1A5 is the virulent allele (from [Zhong et al. 2017](https://nph.onlinelibrary.wiley.com/doi/full/10.1111/nph.14434)).
+
+```{r AvrStb6 tree plots}
+#grep ">" ../7_Virulence/Overall_results_blast_Avr_Stb6.fasta | sed 's/>//' > ../7_Virulence/Overall_results_blast_Avr_Stb6.list
+
+temp2 = read_tsv(paste0(virulence_dir, "Overall_results_blast_Avr_Stb6.list"), col_names = "Fasta_header") %>%
+  separate(Fasta_header, into = c("ID_file", "chr", "coords"), sep=":", remove = F) %>%
+  mutate(contig2 = stringr::str_replace_all(Fasta_header, "[:.]", "_")) %>%
+  left_join(.,Zt_meta)
+
+#Read tree in
+#details from the mafft website about the tree
+#Size = 640 sequences × 319 sites
+#Method = Neighbor-Joining
+#Model = Jukes-Cantor
+#Bootstrap resampling = 0
+#Alignment id = .200930173318269H5fPcXaMbnDOkoF7E0Y3ilsfnormal
+
+
+tree_file = "Tree_Avr_Stb6.nwk"
+tree = as_tibble(treeio::read.tree(paste0(virulence_dir, tree_file))) %>%
+  mutate(label_copy = label) %>%
+  separate(label_copy, into = c("nb", "contig"), extra = "merge", remove =F) %>%
+  dplyr::mutate(nb = as.integer(nb)) %>%
+  dplyr::mutate(label_OG = label) %>%
+  dplyr::mutate(contig2 = stringr::str_replace(contig, "R_", "")) %>%
+  left_join(., temp2, by = c("contig2")) %>%
+  dplyr::mutate(label_temp = ifelse(is.na(ID_file), ifelse(is.na(contig), label, contig), ID_file)) %>%
+  unite(col = "label_new", nb, label_temp, sep = "_")
+
+tree2 = as_tibble(treeio::read.tree(paste0(virulence_dir, tree_file)))
+
+temp = tree %>%
+  mutate(original_vir = ifelse(ID_file == "ST99CH_1A5", "ST99CH_1A5",
+  ifelse(ID_file == "ST99CH_1E4", "ST99CH_1E4", NA))) %>%
+  dplyr::select(label, node, label_new, Continent, Sampling_Date, Collection, original_vir) %>%
+  filter(!is.na(label))
+
+#Find the outgroup!
+root_node = tree2 %>%
+  filter(grepl("Zp13", label)) %>%
+  dplyr::select(node) %>%
+  pull()
+
+
+rooted.tree <- ape::root(as.treedata(tree2), root_node)
+p <- ggtree(rooted.tree, layout = "rectangular") %<+% (temp %>% dplyr::select (-label))
+
+p2 <- p + geom_tippoint(aes(color = Continent), alpha = 0.7) +
+  theme(legend.position = "right") +
+  Color_Continent
+
+#p2
+
+p3 <- p + geom_tippoint(aes(color = original_vir)) +
+  theme(legend.position = "right")  +
+  scale_color_manual(values = c(mycolorsCorrel[1], mycolorsCorrel[20]))
+cowplot::plot_grid(p2, p3)
+
+
+p4 <- p + geom_tippoint(aes(color = Sampling_Date), alpha = 0.7) +
+  theme(legend.position = "right")
+cowplot::plot_grid(p4, p3)
+```
