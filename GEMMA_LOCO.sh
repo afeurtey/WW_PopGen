@@ -47,7 +47,7 @@ ${SOFTPATH}plink \
 
 cp ${Pheno_fam_file} ${GEA_dir}${PERCHR_VCFNAME}.fam
 
-for i in {1..19} ;
+for i in {1..20} ;
 do
 gemma \
   -bfile ${GEA_dir}${PERCHR_VCFNAME} \
