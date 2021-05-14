@@ -1,5 +1,5 @@
 ---
-title: "World-wide popgen Zt"
+title: "Detecting adapation"
 author: "Alice Feurtey"
 date: "5/5/2020"
 output:
@@ -47,6 +47,7 @@ library(ggbiplot)
 library(igraph)
 library(ggraph)
 library(ggtext)
+library("UpSetR")
 
 #Pop structure and pop genomic
 library(GenomicFeatures)
@@ -65,6 +66,7 @@ library(lsmeans)
 
 #GEA
 library(lfmm)
+library(GWASTools)
 
 #Statistics
 library(car)
@@ -108,6 +110,8 @@ vcf_name_nomaf="Ztritici_global_March2021.filtered-clean.AB_filtered.SNP.max-m-0
 vcf_name_mito = "Ztritici_global_March2021.genotyped.mt.filtered.clean.AB_filtered.variants.good_samples.max-m-80"
 Zt_list = paste0(lists_dir, "Ztritici_global_March2021.genotyped.good_samples.args")
 gff_file = paste0(data_dir, "Zymoseptoria_tritici.MG2.Grandaubert2015.no_CDS.gff3")
+effectors_annotation_file = "/Users/feurtey/Documents/Postdoc_Eva/Manuscripts/Accepted/Alice_Cecile_Comparative_genomics/Data_for_publication/Annotations_2018_genomes_for_publication.tab"
+eggnog_annotation = paste0(data_dir, "Zymoseptoria_tritici.MG2.Grandaubert2015.eggnog")
 ref_fasta_file = paste0(data_dir, "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa")
 metadata_name = "Main_table_from_SQL_Feb_2020"
 gene_annotation = read_tsv(paste0(data_dir, "Badet_GLOBAL_PANGENOME_TABLE.txt"))
@@ -199,31 +203,28 @@ Bioclim_var = c("Annual Mean Temperature", "Mean Diurnal Range ",
                 "Precipitation of Driest Month", "Precipitation Seasonality (Coefficient of Variation)",
                 "Precipitation of Wettest Quarter", "Precipitation of Driest Quarter",
                 "Precipitation of Warmest Quarter","Precipitation of Coldest Quarter")
+
+pheno_cat = tibble(Phenotype = c(
+                     "Max Temperature of Warmest Month", "Mean Temperature of Warmest Quarter",
+                     "Min Temperature of Coldest Month", "Mean Temperature of Coldest Quarter",
+                     "Precipitation of Driest Month", "Precipitation of Driest Quarter",
+                     "Precipitation of Wettest Month", "Precipitation of Wettest Quarter"),
+       Category = c("Warmth", "Warmth", "Cold", "Cold",
+                    "Drought", "Drought", "Rain", "Rain"))
+
+
+#Bioclim_var[c(2, 3, 7)] = "Ranges bioclimatic variables"
+#Bioclim_var[c(4, 15)] = "Seasonality bioclimatic variables"
+#Bioclim_var[c(1, 12) = "Annual rain and temperature"
+#Bioclim_var[c(8, 9, 17, 18)] = "Mix rain and temperature" 
+
 ```
 
-```{r}
-#myColors <- c("#DA4167", "grey", "#ffba0a", "#A20106", "#3F6E0C", "#129eba", "#8fa253" )
-
-myColors <- c("#DA4167", "grey", "#FFBA0A", "#EC6B09", "#8DDBE0", "#6F8B2D", "#0B7DA3" )
-
-names(myColors) = levels(factor(Zt_meta$Continent))
-Color_Continent = ggplot2::scale_colour_manual(name = "Continent", values = myColors)
-Fill_Continent = ggplot2::scale_fill_manual(name = "Continent", values = myColors)
-
-sum_temp %>%
-ggplot(aes(x=`Sampling year`, y =`Genome number`, fill = Continent)) +
-  geom_bar(stat = "identity") +
-  theme_bw() + theme(axis.title = element_blank(),
-                     axis.text.x = element_text(angle = 60, hjust = 1)) +
-  Fill_Continent
-```
-
-
-# Adaptation to local climatic conditions
+# GEA: genotype-environment association
 ***
 
 ## Geographic/environmental data
-I will use the sampling site of each isolate (as precisely as I can manage) to approximate environmental parameters such as temperature, precipitation or solar radiation. One possibility to find such data is this website, https://www.worldclim.org/data/worldclim21.html (published in Fick and Hijmans, 2017), which gives access to climate data for 1970-2018. These can be transformed into bioclimatic variables using the biovars function from the R package dismo (https://rdrr.io/cran/dismo/man/biovars.html).
+I will use the sampling site of each isolate (as precisely as I can manage) to approximate environmental parameters such as temperature, or precipitation. One possibility to find such data is this website, https://www.worldclim.org/data/worldclim21.html (published in Fick and Hijmans, 2017), which gives access to climate data for 1970-2018. These can be transformed into bioclimatic variables using the biovars function from the R package dismo (https://rdrr.io/cran/dismo/man/biovars.html).
 
 ```{r Get Bioclim data}
 
@@ -247,20 +248,7 @@ for (i in c(1:length(Bioclim_var))) {
   bio_list[[Bioclim_var[i]]] = raster::extract(rast_temp, sp)
 }
 
-#Adding solar radiations
-sol_list = list()
-for (i in c(1:12)) {
-  file_name=paste0(data_dir,"Climatic_data/wc2.1_10m_srad/wc2.1_10m_srad_", str_pad(i, 2, pad ="0"), ".tif")
-  rast_temp = raster(file_name)    
-  sol_list[[i]] = raster::extract(rast_temp, sp)
-}
-sol_months = cbind(temp, do.call(cbind, sol_list))
-sol_months$srad_max = apply(sol_months[, c(3:ncol(sol_months))], 1, max)
-sol_months = sol_months %>% dplyr::select(X,Y, srad_max)
-
-
-climate_per_coordinates = cbind(temp, do.call(cbind, bio_list)) %>%
-  full_join(., sol_months)
+climate_per_coordinates = cbind(temp, do.call(cbind, bio_list))
 
 ```
 
@@ -294,35 +282,18 @@ Naturally, many of the variables investigated above are highly correlated. It is
 
 #Correlogram
 
-Ccor = cor(climate_per_coordinates)
+Ccor = cor(climate_per_coordinates[, c(3:ncol(climate_per_coordinates))])
 corrplot(Ccor, type="lower", order="hclust",
          col = mycolorsCorrel,
          tl.col="black", tl.srt=45, tl.cex = 0.7)
 
 #Simple heatmap
 heatmap(x = Ccor, col = mycolorsCorrel, symm = TRUE)
+
+Ccor[abs(Ccor) <= 0.75] <-0
+heatmap(x = Ccor, col = mycolorsCorrel, symm = TRUE)
 ```
 
-
-__How to choose the best variables?__
-
-* Only keep one per "correlation block"?
-* Create composite variables with a PCA? Only meaningful if we can interpret the principal component.
-
-```{r PCA bioclim var}
-
-country_climate = Zt_meta %>%
-  #filter(!(ID_file %in% filtered_samples$ID_file)) %>% 
-  filter(!is.na(Longitude)) %>%
-  dplyr::select(Latitude, Longitude, Continent) %>% 
-  unique()
-bioclim.pca <- prcomp(climate_per_coordinates[,c(2:ncol(climate_per_coordinates))], scale. = TRUE)
-ggbiplot(bioclim.pca, obs.scale = 1, var.scale = 1,
-         group = country_climate$Continent, ellipse = TRUE) +
-  Color_Continent +
-  theme(legend.direction = 'horizontal', legend.position = 'top') +
-  xlim(-25, 10) + ylim(-15, 25)
-```
 
 
 ```{r}
@@ -331,28 +302,47 @@ ggbiplot(bioclim.pca, obs.scale = 1, var.scale = 1,
 tidy_cors <- climate_per_coordinates %>%
   dplyr::select(everything(), -contains("uarter"), -Y, -X) %>%
   correlate() %>%
-  stretch()
+  stretch() 
 
 graph_cors <- tidy_cors %>%
-  filter(abs(r) > .3) %>%
+  #filter(abs(r) > .2) %>%
   graph_from_data_frame(directed = FALSE)
 
 ggraph(graph_cors) +
-  geom_edge_link(aes(edge_alpha = .5, edge_width = abs(r), color = r)) +
+  geom_edge_link(aes(edge_alpha = .5, color = r)) +
   guides(edge_alpha = "none", edge_width = "none") +
-  scale_edge_colour_gradientn(limits = c(-1, 1), colors = c("#0f8b8d", "#a8201a")) +
-  geom_node_point(color = "black", size = 3) +
-  geom_node_text(aes(label = name), repel = TRUE) +
+  scale_edge_colour_gradientn(limits = c(-1, 1), colors = c("#0f8b8d", "white", "#a8201a")) +
+  #geom_node_point(color = "black", size = 3) +
+  geom_node_text(aes(label = name), size = 2) +
   theme_graph() +
   labs(title = "Correlations between bioclimatic variables")
 
+#
+tidy_cors <- climate_per_coordinates %>%
+  dplyr::select( -Y, -X) %>%
+  correlate() %>%
+  stretch() 
+
+graph_cors <- tidy_cors %>%
+  #filter(abs(r) > .75) %>%
+  mutate(r = ifelse(abs(r) <= 0.75, 0, r)) %>%
+  graph_from_data_frame(directed = FALSE)
+
+ggraph(graph_cors) +
+  geom_edge_link(aes(edge_alpha = .5, color = r)) +
+  guides(edge_alpha = "none", edge_width = "none") +
+  scale_edge_colour_gradientn(limits = c(-1, 1), colors = c("#0f8b8d", "white", "#a8201a")) +
+  #geom_node_point(color = "black", size = 3) +
+  geom_node_text(aes(label = name), size = 2) +
+  theme_graph() +
+  labs(title = "Correlations between bioclimatic variables")
 
 ```
 
 
-## GEA: genotype-environment association
 
-### Prepare and run GEA
+
+## Prepare and run GEA
 ```{r standard Bioclim var}
 
 #Create standardized values for the environment variables
@@ -383,6 +373,15 @@ dplyr::select(temp2, -Latitude, -Longitude) %>%
               "~/Documents/Postdoc_Bruce/Projects/WW_project/5_GEA/Ztmeta.fam", 
                delim = " ", col_names = F)
 
+left_join(read_tsv(Zt_list, col_names = "ID_file") %>% mutate(ID2 = ID_file), 
+                            Zt_meta %>% dplyr::select(ID_file, Latitude, Longitude)) %>%
+  bind_cols(., tibble(X1 = rep(0, nrow(Zt_meta)), X2 = rep(0, nrow(Zt_meta)), X3 = rep(0, nrow(Zt_meta)))) %>%
+  left_join(., climate_per_coordinates,
+                   by = c("Latitude" = "Y", "Longitude" = "X")) %>%
+  dplyr::select(-Latitude, -Longitude) %>%
+ write_delim(., 
+              "~/Documents/Postdoc_Bruce/Projects/WW_project/5_GEA/Ztmeta_non_standard.fam", 
+               delim = " ", col_names = F)
 #Transfer on the cluster
 #rsync -avP ~/Documents/Postdoc_Bruce/Projects/WW_project/5_GEA/Ztmeta.fam alice@130.125.25.244:/data2/alice/WW_project/5_GEA/Phenotypes_with_climatic_variables.fam
 
@@ -390,12 +389,11 @@ dplyr::select(temp2, -Latitude, -Longitude) %>%
 #Commands are then in the format gemma -h 
 ```
 
-
-### Identify variants significantly associated to bioclimatic variables
+## Identify variants significantly associated to bioclimatic variables
 ```{r GEMMA results}
+
 results_GEMMA = list()
-Bioclim_var[length(Bioclim_var) + 1] = "Solar_rad"
-for (i in c(1:length(Bioclim_var) +1)) {
+for (i in c(1:length(Bioclim_var))) {
   temp = list.files(path = GEA_dir, pattern = paste0("*_for_phenotype_", i,".assoc.txt")) %>% 
     map_df(~read_tsv(file = paste0(GEA_dir, .), col_types = c("dcddccdddddd"))) %>%
     unite(col = SNP, chr, ps, sep = "_", remove = F) %>%
@@ -411,8 +409,28 @@ core_temperature_variable = c("Max Temperature of Warmest Month", "Min Temperatu
 
 core_rain_variable = c("Precipitation of Wettest Month", "Precipitation of Driest Month")
 
-solar_var = c("Solar_rad")
 ```
+
+
+
+```{r checks GWAS}
+#Genomic Inflation Factor
+kable(results_GEMMA %>% 
+        group_by(Phenotype) %>%
+        summarize(Genomic_Inflation_Factor = median(qchisq(1-P,1))/qchisq(0.5,1)) %>%
+        arrange(Genomic_Inflation_Factor))
+
+#QQ-plots
+par(mfrow=c(3,3)) 
+for (i in c(1:length(Bioclim_var))){
+temp = results_GEMMA %>% filter(Phenotype == Bioclim_var[i]) %>% dplyr::sample_frac(size = .10) %>% dplyr::select(P) %>% pull()
+GWASTools::qqPlot(temp, thinThreshold = 2)
+}
+
+
+
+```
+
 
 To determine which variants are significant, we use the Bonferroni correction method, i.e. we divide the traditional threshold of significance of 0.05 by the number of variants that we tested. Based on this corrected threshold, we can then identify variants significantly associated with each environmental condition that we tested.
 ```{r GWAS signif}
@@ -420,35 +438,86 @@ head(results_GEMMA)
 Bonferroni_threshold = results_GEMMA %>% dplyr::count(Nb) %>%
   mutate(Bonferroni_threshold = 0.05/n) %>% summarize(average = mean(Bonferroni_threshold)) %>% pull()
 
-results_GEMMA %>% 
-  filter(P <= Bonferroni_threshold) %>% dplyr::count(Phenotype) 
+kable(results_GEMMA %>% 
+  filter(P <= Bonferroni_threshold) %>% 
+  dplyr::count(Phenotype) %>% 
+    arrange(n))
 
 significant = results_GEMMA %>%
   filter(P <= Bonferroni_threshold)  %>% group_by(SNP, CHR, BP) %>%
-  mutate(Count = n()) %>% mutate(SNP_type = "significant")
+  mutate(Count = n()) %>% mutate(SNP_type = "significant")%>% 
+  ungroup() 
 
-significant %>% group_by(SNP, CHR, BP) %>%
-  summarize(Count = n()) %>%
-  ggplot(aes(x = SNP, y = Count)) + 
-    geom_point()
+#temp = significant %>% ungroup() %>% pivot_wider(values_fill = 1, values_from = P, names_from = Phenotype) %>%
+#  dplyr::select(-CHR, -BP, - zscore, -Nb)
 
-temp = significant %>% ungroup() %>% pivot_wider(values_fill = 1, values_from = P, names_from = Phenotype) %>%
-  dplyr::select(-CHR, -BP, - zscore, -Nb)
-
-significant %>% 
-  ungroup() %>%
+significant %>%
   dplyr::select(CHR, BP) %>% 
   distinct() %>%
   write_delim(paste0(GEA_dir, "Significant_GEMMA.tsv"), delim = "\t", col_names = F)
 ```
 
+Identifying the variants which are significant is very useful already, but it is hard to work with so many "independent" positions. It also does not make sense conceptually, as nearby variants are probably picking up the exact same signal through linkage. So, here I gather variants together into "significant loci" if they are no bigger gaps than a certain threshold.
+```{r signif loci}
+#Distance between two significant SNPs to include them in the same region
+len_threshold = 20000L
+
+#For each phenotype and for each chromosome
+
+list_loci = list()
+for (j in c(1:length(Bioclim_var))) {
+  temp2 = list()
+  for (i in c(1:13)){
+    #Pull vector of position for the right chromosome and phenotype
+    v = filter(significant, CHR == i) %>% 
+      filter(Phenotype == Bioclim_var[j]) %>%
+      dplyr::select(CHR, BP) %>% 
+      distinct() %>% pull(BP) %>% sort()
+    
+    # Split the vectors into group based on the length threshold
+    temp = split(v, cumsum(c(TRUE, diff(v) >= len_threshold)))
+    
+    #Single value gets the column name "value" instead of a number
+    if (length(temp) == 1) {
+      temp_tibble = as.tibble(sapply(temp, '[', seq(max(sapply(temp, length)))))
+      colnames(temp_tibble) <- 1
+    } else {
+      temp_tibble = as.tibble(sapply(temp, '[', seq(max(sapply(temp, length)))))
+    }
+    
+    # Transform to store relevant info in tidy format
+    temp2[[i]] = temp_tibble %>% 
+      pivot_longer(cols =everything(), names_to = "Locus_nb", values_to = "BP") %>%
+      filter(complete.cases(.)) %>%
+      mutate(CHR = i, Phenotype = Bioclim_var[j]) %>% 
+      ungroup()
+  }
+list_loci[[j]] = bind_rows(temp2)
+}
+
+#Adding loci info to the table
+significant = bind_rows(list_loci) %>%
+  full_join(significant, .)
+
+significant %>% dplyr::select(Locus_nb, Phenotype) %>%
+  distinct() %>% 
+  dplyr::count(Phenotype)
+```
+
+
 To identify potentially more important variants amongst the significantly associated variants, we can predict the effect of the mutation on the protein sequence of genes. For this, I use SNPeff.
 ```{bash}
-#../Software/vcftools_jydu/src/cpp/vcftools --gzvcf /data2/alice/WW_project/1_Variant_calling/4_Joint_calling/Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.ann.vcf.gz --positions /data2/alice/WW_project/5_GEA/Significant_GEMMA.tsv --out /data2/alice/WW_project/5_GEA/Significant_GEMMA.vcf --recode --recode-INFO-all
+#rsync -avP ../5_GEA/Significant_GEMMA.tsv alice@130.125.25.244:/data2/alice/WW_project/5_GEA/Significant_GEMMA.tsv
+
+#../Software/vcftools_jydu/src/cpp/vcftools --gzvcf /data2/alice/WW_project/1_Variant_calling/4_Joint_calling/Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.ann.vcf.gz --positions /data2/alice/WW_project/5_GEA/Significant_GEMMA.tsv --out /data2/alice/WW_project/5_GEA/Significant_GEMMA --recode --recode-INFO-all
 
 #../Software/bcftools-1.10.2/bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t%INFO/ANN\n' /data2/alice/WW_project/5_GEA/Significant_GEMMA.vcf > /data2/alice/WW_project/5_GEA/Significant_GEMMA.ann.tsv
 
 #rsync -avP alice@130.125.25.244:/data2/alice/WW_project/5_GEA/Significant_GEMMA.ann.tsv ../5_GEA/
+
+#grep "#CHROM" /data2/alice/WW_project/5_GEA/Significant_GEMMA.vcf | cut -f 1,2,4,5,10- | sed 's/#//' > /data2/alice/WW_project/5_GEA/Significant_GEMMA.ann.tab
+#../Software/bcftools-1.10.2/bcftools query -f '%CHROM\t%POS\t%REF\t%ALT[\t%GT]\n' /data2/alice/WW_project/5_GEA/Significant_GEMMA.vcf >> /data2/alice/WW_project/5_GEA/Significant_GEMMA.ann.tab
+#rsync -avP alice@130.125.25.244:/data2/alice/WW_project/5_GEA/Significant_GEMMA.ann.tab ../5_GEA/
 ```
 
 ```{r signif annot}
@@ -465,7 +534,10 @@ signif_ann = temp %>%
   filter(!str_detect(Gene, "-")) %>%
   separate(Gene, into = c("temp", "Chrom", "Gene_nb"), remove = FALSE)  %>%
   dplyr::select(-ANN, -ALT2, -temp) %>%
-  mutate(Gene_nb = as.numeric(Gene_nb))
+  mutate(Gene_nb = as.numeric(Gene_nb)) %>%
+  left_join(., read_tsv(effectors_annotation_file) %>% 
+              filter(Sample == "Zt09") %>% 
+              mutate(Gene = str_replace(Protein_ID, "_chr", "")))
 
 signif_ann %>% dplyr::count(CHR, Gene_nb, Effect_strength) %>%
   pivot_wider(names_from = Effect_strength, values_from = n, values_fill = 0)
@@ -482,8 +554,10 @@ temp = results_GEMMA %>% filter(Phenotype == pheno) %>%
 ```
 
 
+
+## Compare results between phenotypes
 We have several variables that could be interpreted the same way. For example, we expect the amount of rain during the driest month and the driest quarter to give us similar information related to drought tolerance. It could be useful to identify useful SNPs to find the ones that are significantly associated to all variables of the same type. Let's see if the p-values seem correlated between variables of the same types and what amount of significant variants are shared.
-```{r signif in all}
+```{r pairwise_signif}
 reshape_GEMMA_results <- function(phenotype_list) {
   temp = results_GEMMA %>%
     filter(Phenotype %in% phenotype_list) %>%
@@ -509,6 +583,7 @@ dot_plot_comparison <- function(reshaped_GEMMA_results, phenotype_list) {
     theme_classic() +
     labs(x = phenotype_list[1], y = phenotype_list[1])
 }
+
 
 
 # Variables related to temperatures
@@ -550,7 +625,107 @@ cowplot::plot_grid(p1 +theme(legend.position = "none"), p2  + theme(legend.posit
 
 ```
 
-### GEA visualization
+Instead of comparing the results based on a priori knowledge of the underlying wheather/climate patterns for each variables, it is possible tosimply look at the correlation between all pairs of variables. This yields a matrix that is similar to the one shown in the previous section but this time it takes into account the p-values in each test and not the values of the bioclimatic variables themselves.
+```{r correl climate assoc}
+# Keep only variants significant in at least one association test
+temp = results_GEMMA %>%
+  ungroup() %>%
+  dplyr::select(-CHR, -BP, -Nb, -zscore) %>%
+  distinct() %>%
+  pivot_wider(names_from = Phenotype, values_from = P) %>%
+  dplyr::select(-SNP) %>%
+  filter(rowSums(. <= Bonferroni_threshold) >= 1)
+
+#Correlation
+Ccor = cor(temp)
+
+#Correlogram
+corrplot.mixed(Ccor, upper = "ellipse",
+         #col = mycolorsCorrel,
+         tl.col="black", tl.cex = 0.5, number.cex = .5)
+
+#Simple heatmap
+heatmap(x = Ccor, col = mycolorsCorrel, symm = TRUE)
+```
+
+It is also possible that some genes or some variants could be associated to different phenotypes. Here, we can use upset plots to visualise different comparisons:
+
+ * How many genes are found associated between the different phenotypes tested? The genes are identified through the SnpEff pipeline.
+ * How many variants are significantly associated to several phenotypes tested?
+ * Amongst the variants which are found to be significant to all phenotypes belonging to the same category, how many are found to be common between phenotypes?
+ * Amongst the variants which are found to be significant in at least one of the phenotype belonging to the same category, how many are found to be common between phenotypes?
+```{r upset}
+# Per gene and per phenotype
+gene_detected = inner_join(pheno_cat, significant) %>%
+  mutate(logP = -log10(P)) %>%
+  left_join(., signif_ann) %>% 
+  mutate(Present = 1) %>%
+  ungroup() %>%
+  dplyr::select(Phenotype, Gene, Present) %>%
+  distinct() %>%
+  filter(!is.na(Gene)) %>%
+  pivot_wider(names_from = Phenotype, values_from = Present, values_fill = 0)
+
+for_upset = as.data.frame(gene_detected[,-1])
+rownames(for_upset) = pull(gene_detected[,1])
+
+upset(for_upset, sets = names(for_upset), 
+      order.by = "freq", mb.ratio = c(0.5, 0.5), 
+      mainbar.y.label = "Gene numbers")
+
+#Per variant and per phenotype
+temp = inner_join(pheno_cat, significant) 
+
+temp2 = mutate(temp, Present = 1) %>%
+  ungroup() %>%
+  dplyr::select(Phenotype, SNP, Present) %>%
+  distinct() %>%
+  pivot_wider(names_from = Phenotype, values_from = Present, values_fill = 0)
+  
+for_upset = as.data.frame(temp2[,-1])
+rownames(for_upset) = pull(temp2[,1])
+upset(for_upset, sets = names(for_upset), 
+      order.by = "freq", mb.ratio = c(0.5, 0.5),
+      mainbar.y.label = "Variant numbers")
+
+#Category: found in both
+n_count = temp %>% group_by(Category) %>%
+  dplyr::count(SNP)
+
+signif_in_pairs = inner_join(temp, n_count %>% filter(n == 2))  %>%
+  mutate(Present = ifelse(n == 2, 1, 0)) %>%
+  dplyr::select(Category, SNP, Present) %>%
+  distinct() %>%
+  pivot_wider(names_from = Category, values_from = Present, values_fill = 0)
+
+for_upset = as.data.frame(signif_in_pairs[,-1])
+rownames(for_upset) = pull(signif_in_pairs[,1])
+
+upset(for_upset, sets = names(for_upset), order.by = "freq", empty.intersections = "on" ,
+      mainbar.y.label = "Variant numbers found in all phenotypes")
+
+
+#Per category: found in at least one
+signif_in_pairs = inner_join(temp, n_count) %>% 
+  mutate(Present = ifelse(n == 2, 1, 1)) %>%
+  dplyr::select(Category, SNP, Present) %>%
+  distinct() %>%
+  pivot_wider(names_from = Category, values_from = Present, values_fill = 0)
+
+for_upset = as.data.frame(signif_in_pairs[,-1])
+rownames(for_upset) = pull(signif_in_pairs[,1])
+
+upset(for_upset, sets = names(for_upset), 
+      order.by = "freq", empty.intersections = "on", 
+      mainbar.y.label = "Variant numbers found in at least one phenotype" )
+
+
+
+```
+
+
+
+## Manhattan plots
 Traditionally, GWAS results are represented as Manhattan plot. Let's create some for the main variables we are interested in. 
 
 ```{r GEMMA prep plot}
@@ -590,7 +765,7 @@ Manhattan_one_pheno <- function(pheno, color_duo) {
     theme( legend.position="none", panel.border = element_blank(),
       panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank(),
       axis.title.x=element_blank(), axis.text.x=element_blank(),
-        axis.ticks.x=element_blank(),
+      axis.ticks.x=element_blank(),
       strip.background = element_rect(colour="white", fill="white"),
       plot.margin = unit(c(0, 0, 0, 0), "cm")) +
       facet_grid(cols = vars(CHR), scales = "free_x") 
@@ -615,11 +790,53 @@ Manhattan_faceted_pheno <- function(pheno_list, color_duo) {
         panel.border = element_blank(),
         panel.grid.major.x = element_blank(),
         panel.grid.minor.x = element_blank()) +
-      labs(x = "", title = "Manhattan plots") +
       facet_grid(rows = vars(Phenotype), scales = "free_y") 
 }
+
+
+# Top SNPs
+top_SNPs_density <- function(pheno, min_length_locus, custom_colors){
+  temp = significant %>% 
+    filter(Phenotype == pheno) %>% 
+    group_by(CHR, Locus_nb) %>%
+    mutate(Locus_length = 1 + max(BP) - min(BP)) %>%
+    filter(Locus_length >= min_length_locus) %>%
+    mutate(Rank = rank(P)) %>%
+    arrange(Rank) %>%
+    ungroup() %>%
+    filter(Rank == 1) %>%
+    dplyr::select(SNP, CHR, BP)
+  
+  relevant_climate = climate_per_coordinates %>%
+    pivot_longer(-c(X,Y), names_to = "phenotype", values_to = "Bioclim") %>%
+    filter(phenotype == pheno) %>%
+    left_join(., Zt_meta %>% dplyr::select(ID_file, Latitude, Longitude), 
+              by = c("X" = "Longitude", "Y" = "Latitude"))
+  
+  temp = read_tsv(paste0(GEA_dir, "Significant_GEMMA.ann.tab"), na = ".") %>%
+    inner_join(temp, by = c("CHROM" = "CHR", "POS" = "BP")) %>%
+    pivot_longer(-c(CHROM, POS, REF, ALT, SNP), 
+                 names_to = "ID_file", values_to = "Allele") %>%
+    inner_join(., relevant_climate) %>%
+    filter(Allele != "NA")
+  
+  temp %>%
+    ggplot(aes(Bioclim, fill = as.factor(Allele), col = as.factor(Allele))) +
+    geom_density(alpha = .4) + 
+    facet_wrap(vars(CHROM, POS), scales = "free") +
+    theme_bw() +
+    scale_color_manual(values = custom_colors) +
+    scale_fill_manual(values = custom_colors)
+  
+  #temp %>% dplyr::count(SNP, Allele) %>%
+  #  pivot_wider(names_from = Allele, values_from = n)
+
+}
+
 ```
 
+
+I want to have a main plot for temperature and for precipitation. First, I choose the maximum and minimum temperature. 
 ```{r GEMMA plot core temp}
 
 # Manhattan plot with both max and min temperature with mirrored effect
@@ -627,15 +844,18 @@ p = Manhattan_one_pheno("Max Temperature of Warmest Month", c("#F5B9B3", "#F2848
   labs(y = str_wrap("Max Temperature of Warmest Month (-logP)", 25))
 
 q = Manhattan_one_pheno("Min Temperature of Coldest Month", c("#C4E7FD", "#0889D9")) +
-  scale_y_reverse() +
-  labs(y = str_wrap("Min Temperature of Coldest Month (-logP)", 25))
+  labs(y = str_wrap("Min Temperature of Coldest Month (-logP)", 25)) +
+  scale_y_reverse() + theme(strip.text.x = element_blank())
 
 cowplot::plot_grid(p, q, nrow = 2)
 
 ggsave(paste0(fig_dir, "GEA_Manhattan_temperature_main.pdf"), width = 18, height = 10, units = "cm")
 
+top_SNPs_density("Max Temperature of Warmest Month", 2000, c("#F5B9B3", "#F28482", "grey"))
+top_SNPs_density("Min Temperature of Coldest Month", 2000, c("#C4E7FD", "#0889D9", "grey"))
 ```
 
+Then, for precipitation, I choose the precipitation of the driest and of the wettest month.
 ```{r GEMMA core rain}
 #  Manhattan plot for core precipitation
 p = Manhattan_one_pheno("Precipitation of Driest Month", c("#FFD399", "#ff9f1c")) +
@@ -650,12 +870,9 @@ cowplot::plot_grid(p, q, nrow = 2)
 ggsave(paste0(fig_dir, "GEA_Manhattan_temperature_main.pdf"), width = 18, height = 10, units = "cm")
 
 ```
-```{r GEMMA core solar}
-#  Manhattan plot for solar radiation
-Manhattan_one_pheno("Solar_rad", c("#FFD399", "#ff9f1c")) +
-  labs(y = str_wrap("Solar radiation (-logP)", 25))
-```
 
+
+I also want to have a Manhattan plot for all possible environmental variable. I do try to classify them, grouping conceptually similar variables together.
 ```{r GEMMA plots}
 #Yearly variables
 Manhattan_faceted_pheno(Bioclim_var[c(2, 3, 7)], c("grey", "skyblue")) +
@@ -682,6 +899,8 @@ Manhattan_faceted_pheno(Bioclim_var[c(8, 9, 17, 18)], c("grey", "skyblue")) +
   labs(title = "Mix rain and temperature")
 
 ```
+
+
 
 
 <br><br>
