@@ -48,13 +48,11 @@ library(igraph)
 library(ggraph)
 library(ggtext)
 library("UpSetR")
+library(scatterpie)
+
 
 #Pop structure and pop genomic
 library(GenomicFeatures)
-library(SNPRelate) #PCA
-library(LEA) #Clustering
-library(pophelper)
-library(PopGenome) #Summary statistics
 library(gridExtra)
 
 library(ggtree)
@@ -67,6 +65,7 @@ library(lsmeans)
 #GEA
 library(lfmm)
 library(GWASTools)
+library(topGO)
 
 #Statistics
 library(car)
@@ -211,6 +210,13 @@ pheno_cat = tibble(Phenotype = c(
                      "Precipitation of Wettest Month", "Precipitation of Wettest Quarter"),
        Category = c("Warmth", "Warmth", "Cold", "Cold",
                     "Drought", "Drought", "Rain", "Rain"))
+pheno_table = tibble(BIO_ID = paste0("BIO", c(1:19)),
+                     Phenotype = Bioclim_var,
+                     Category = c("Temperature", "Temperature range", "Temperature range", "Temperature range",
+                                  "Temperature", "Temperature", "Temperature range", "Temperature/rain",
+                                  "Temperature/rain", "Temperature", "Temperature", "Precipitation",
+                                  "Precipitation", "Precipitation", "Precipitation range", "Precipitation",
+                                  "Precipitation", "Temperature/rain", "Temperature/rain"))
 
 
 #Bioclim_var[c(2, 3, 7)] = "Ranges bioclimatic variables"
@@ -390,6 +396,7 @@ left_join(read_tsv(Zt_list, col_names = "ID_file") %>% mutate(ID2 = ID_file),
 ```
 
 ## Identify variants significantly associated to bioclimatic variables
+First, I read the results that I got from running GEMMA with a LOCO strategy (i.e., leave-one-chromosome-out). 
 ```{r GEMMA results}
 
 results_GEMMA = list()
@@ -538,6 +545,7 @@ signif_ann = temp %>%
   left_join(., read_tsv(effectors_annotation_file) %>% 
               filter(Sample == "Zt09") %>% 
               mutate(Gene = str_replace(Protein_ID, "_chr", "")))
+  
 
 signif_ann %>% dplyr::count(CHR, Gene_nb, Effect_strength) %>%
   pivot_wider(names_from = Effect_strength, values_from = n, values_fill = 0)
@@ -551,6 +559,8 @@ temp = results_GEMMA %>% filter(Phenotype == pheno) %>%
   mutate(logP = -log10(P)) %>%
   left_join(., signif_ann) %>%
   filter(SNP_type == "significant")
+
+
 ```
 
 
@@ -722,6 +732,43 @@ upset(for_upset, sets = names(for_upset),
 
 
 ```
+```{r GO enrichment}
+library(topGO)
+
+pheno = "Temperature"
+gene_detected = inner_join(pheno_table, significant) %>%
+  mutate(logP = -log10(P)) %>%
+  left_join(., signif_ann) %>%
+  filter(Effect_strength %in% c("HIGH", "MODERATE"))
+
+geneNames = read_tsv(gff_file, 
+               col_names = c("CHR", "X1", "mRNA", "Start", "Stop", "X2", "X3", "X4", "Annot"))  %>%
+  filter(mRNA == "mRNA") %>%
+  separate(col = Annot, into = c("ID", "Parent", "Name"), sep = ";") %>%
+  mutate(Name = str_remove(Name, "Name=")) %>%
+  pull(Name)
+
+myInterestingGenes <- gene_detected %>%
+  filter(Category == pheno) %>% 
+  pull(Gene) %>% unique()
+geneList <- factor(as.integer(geneNames %in% myInterestingGenes))
+names(geneList) <- geneNames
+str(geneList)
+geneID2GO = readMappings(paste0(data_dir, "GO_Zt09.map"))
+
+GOdata <- new("topGOdata", ontology = "MF", allGenes = geneList,
+ annot = annFUN.gene2GO, gene2GO = geneID2GO)
+
+resultFisher <- runTest(GOdata, algorithm = "classic", statistic = "fisher")
+resultKS <- runTest(GOdata, algorithm = "classic", statistic = "ks")
+resultKS.elim <- runTest(GOdata, algorithm = "elim", statistic = "ks")
+
+allRes <- GenTable(GOdata, classicFisher = resultFisher,
+                   classicKS = resultKS, elimKS = resultKS.elim,
+                   orderBy = "elimKS", ranksOf = "classicFisher", topNodes = 10)
+allRes
+showSigOfNodes(GOdata, score(resultKS.elim), firstSigNodes = 5, useInfo = 'all')
+```
 
 
 
@@ -801,7 +848,7 @@ top_SNPs_density <- function(pheno, min_length_locus, custom_colors){
     group_by(CHR, Locus_nb) %>%
     mutate(Locus_length = 1 + max(BP) - min(BP)) %>%
     filter(Locus_length >= min_length_locus) %>%
-    mutate(Rank = rank(P)) %>%
+    mutate(Rank = rank(P, ties.method = "first")) %>%
     arrange(Rank) %>%
     ungroup() %>%
     filter(Rank == 1) %>%
@@ -833,6 +880,51 @@ top_SNPs_density <- function(pheno, min_length_locus, custom_colors){
 
 }
 
+
+# Gene/TE tracks plot
+plot_gff <- function(gff_name, chromosome, min_coord, max_coord, genes_to_highlight, col = "black") {
+  gff = read_tsv(gff_name, 
+               col_names = c("CHR", "X1", "mRNA", "Start", "Stop", "X2", "X3", "X4", "Annot"))  %>%
+  separate(col = Annot, into = c("ID", "Parent", "Name"), sep = ";") %>%
+  mutate(ID = str_remove(ID, "ID=")) %>% 
+  filter(CHR == chromosome) %>%
+  filter(Start >= min_coord) %>%
+  filter(Stop <= max_coord) %>%
+  mutate(y_value = rank(Start)) %>%
+  arrange(Start)
+
+## If too many genes, organize them
+if (nrow(gff) > 5) {
+  temp = ceiling(nrow(gff)/5)
+  gff = gff %>% mutate(y_value = rep(c(1:5), temp)[1:nrow(gff)])
+}
+
+## Make plot
+c = gff %>%
+  ggplot() +
+  geom_segment(mapping = aes(x = Start, xend = Stop, y = y_value, yend = y_value), size = 2, col = col) +
+  theme_bw() + 
+  theme(axis.title.y = element_blank(), axis.text.y = element_blank(), 
+        axis.title.x = element_blank(), axis.ticks.y = element_blank(), 
+        panel.grid.minor.y = element_blank(), panel.grid.major.y = element_blank()) +
+  coord_cartesian(xlim = c(min_coord, max_coord), ylim = c(min(gff$y_value) - 0.5, max(gff$y_value) + 0.5))
+
+## Highlight interesting genes
+temp = match(genes_to_highlight, gff$ID)
+if ( sum(!is.na(temp)) > 0 ){
+  c = c + geom_segment(data = filter(gff, ID == genes_to_highlight),
+                   mapping = aes(x = Start, xend = Stop, y = y_value, yend = y_value), 
+                   size = 3, col = "blue")
+}
+## If there are a reasonable number of genes, 
+# I will also add their name on the plot
+if (nrow(gff) <= 15) {
+  c = c + geom_text(aes(x = Stop + (max_coord - min_coord)*0.05 , y = y_value, label = ID), size = 2) 
+}
+
+c
+}
+
 ```
 
 
@@ -840,8 +932,8 @@ I want to have a main plot for temperature and for precipitation. First, I choos
 ```{r GEMMA plot core temp}
 
 # Manhattan plot with both max and min temperature with mirrored effect
-p = Manhattan_one_pheno("Max Temperature of Warmest Month", c("#F5B9B3", "#F28482")) +
-  labs(y = str_wrap("Max Temperature of Warmest Month (-logP)", 25))
+p = Manhattan_one_pheno("Mean Temperature of Warmest Quarter", c("#F5B9B3", "#F28482")) +
+  labs(y = str_wrap("Mean Temperature of Warmest Quarter (-logP)", 25))
 
 q = Manhattan_one_pheno("Min Temperature of Coldest Month", c("#C4E7FD", "#0889D9")) +
   labs(y = str_wrap("Min Temperature of Coldest Month (-logP)", 25)) +
@@ -851,7 +943,7 @@ cowplot::plot_grid(p, q, nrow = 2)
 
 ggsave(paste0(fig_dir, "GEA_Manhattan_temperature_main.pdf"), width = 18, height = 10, units = "cm")
 
-top_SNPs_density("Max Temperature of Warmest Month", 2000, c("#F5B9B3", "#F28482", "grey"))
+top_SNPs_density("Mean Temperature of Warmest Quarter", 2000, c("#F5B9B3", "#F28482", "grey"))
 top_SNPs_density("Min Temperature of Coldest Month", 2000, c("#C4E7FD", "#0889D9", "grey"))
 ```
 
@@ -867,8 +959,10 @@ q = Manhattan_one_pheno("Precipitation of Wettest Month", c("#cbf3f0", "#2ec4b6"
 
 cowplot::plot_grid(p, q, nrow = 2)
 
-ggsave(paste0(fig_dir, "GEA_Manhattan_temperature_main.pdf"), width = 18, height = 10, units = "cm")
+ggsave(paste0(fig_dir, "GEA_Manhattan_rain_main.pdf"), width = 18, height = 10, units = "cm")
 
+top_SNPs_density("Precipitation of Driest Month", 2000, c("#FFD399", "#ff9f1c", "grey"))
+top_SNPs_density("Precipitation of Wettest Month", 2000, c("#cbf3f0", "#2ec4b6", "grey"))
 ```
 
 
@@ -900,6 +994,129 @@ Manhattan_faceted_pheno(Bioclim_var[c(8, 9, 17, 18)], c("grey", "skyblue")) +
 
 ```
 
+```{r map allele}
+i=10
+#SNP_name = "3_444010"
+#SNP_name = "7_1449518"
+SNP_name = "10_460207"
+temp2 = raster(paste0(data_dir,"Climatic_data/wc2.1_10m_bio/wc2.1_10m_bio_", i, ".tif"))
+temp = as.data.frame(rasterToPoints(temp2, xy = TRUE))
+colnames(temp) <- c("X", "Y", "Bioclim_var")
+
+map1 = ggplot() +
+  geom_raster(data = temp , 
+              aes(x = X, y = Y, 
+                  fill = Bioclim_var)) + 
+  theme_void() +
+  scale_fill_viridis("inferno") +
+  theme(panel.border  = element_rect(fill=NA, colour = "grey",size = 0.5, linetype = 1))
+#panel.background = element_rect(fill = "aliceblue"))
+p1 = map1 + coord_cartesian(xlim=c(-20, 60), ylim=c(20, 70))
+p2 = map1 + coord_cartesian(xlim=c(-160, -40), ylim=c(-80, 80))
+p3 = map1 + coord_cartesian(xlim=c(105, 175), ylim=c(-65, 10))
+aus_map = cowplot::plot_grid(p3 + theme(legend.position = "None"), get_legend(p1), ncol = 2, rel_widths = c(1.1, 1))
+ligne = cowplot::plot_grid(p1 + theme(legend.position = "None"), aus_map, ncol = 1,  rel_heights = c(1, 0.7))
+cowplot::plot_grid(p2 + theme(legend.position = "None"), ligne, ncol = 2, rel_widths = c(0.7, 1)) 
+ggsave(paste0(fig_dir, "Map_BIO", i, ".pdf"), width = 18, height = 10, units = "cm")
+
+allele = significant %>% 
+    filter(Phenotype == Bioclim_var[i]) %>% 
+    filter(SNP == SNP_name) %>%
+    dplyr::select(SNP, CHR, BP) %>%
+    inner_join(., read_tsv(paste0(GEA_dir, "Significant_GEMMA.ann.tab"), na = "."), by = c("CHR" = "CHROM", "BP" = "POS")) %>%
+    pivot_longer(-c(CHR, BP, REF, ALT, SNP), 
+                 names_to = "ID_file", values_to = "Allele") %>%
+    inner_join(., Zt_meta %>% dplyr::select(ID_file, Latitude, Longitude)) %>%
+    mutate(Latitude = round(Latitude/2)*2, Longitude = round(Longitude/2)*2)%>%
+    mutate(Allele = ifelse(Allele == 0, "REF", ifelse(Allele == 1, "ALT1", "ALT2"))) %>%
+    group_by(Allele, Longitude, Latitude) %>%
+    dplyr::count() %>%
+    pivot_wider(names_from = Allele, values_from = n, values_fill = 0) %>%
+    filter(!is.na(Longitude)) %>%
+    mutate(Radius = 2) 
+
+#Add if column alt2
+if ("ALT2" %in% colnames(allele)) {
+  allele = allele
+} else {
+  allele = allele %>% mutate(ALT2 = 0)
+}
+
+p1 = ggplot() + coord_cartesian(xlim=c(-20, 60), ylim=c(20, 70)) + 
+  geom_scatterpie(data = allele, mapping = aes(x=Longitude, y=Latitude, r = Radius), 
+                  cols = c("REF", "ALT1", "ALT2"), color=NA, alpha=.8) +
+  theme(panel.background = element_rect(fill = "transparent"), # bg of the panel
+    plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
+    panel.grid.major = element_blank(), # get rid of major grid
+    panel.grid.minor = element_blank(), # get rid of minor grid
+    legend.background = element_rect(fill = "transparent"), # get rid of legend bg
+    legend.box.background = element_rect(fill = "transparent"))
+
+p2 = ggplot() + coord_cartesian(xlim=c(-160, -40), ylim=c(-80, 80)) + 
+  geom_scatterpie(data = allele, mapping = aes(x=Longitude, y=Latitude, r = Radius*2), 
+                  cols = c("REF", "ALT1", "ALT2"), color=NA, alpha=.8)+
+  theme(panel.background = element_rect(fill = "transparent"), # bg of the panel
+    plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
+    panel.grid.major = element_blank(), # get rid of major grid
+    panel.grid.minor = element_blank(), # get rid of minor grid
+    legend.background = element_rect(fill = "transparent"), # get rid of legend bg
+    legend.box.background = element_rect(fill = "transparent"))
+
+p3 = ggplot() + coord_cartesian(xlim=c(105, 175), ylim=c(-65, 10)) + 
+  geom_scatterpie(data = allele, mapping = aes(x=Longitude, y=Latitude, r = Radius*2), 
+                  cols = c("REF", "ALT1", "ALT2"), color=NA, alpha=.8)+
+  theme(panel.background = element_rect(fill = "transparent"), # bg of the panel
+    plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
+    panel.grid.major = element_blank(), # get rid of major grid
+    panel.grid.minor = element_blank(), # get rid of minor grid
+    legend.background = element_rect(fill = "transparent"), # get rid of legend bg
+    legend.box.background = element_rect(fill = "transparent"))
+
+#Plotting all the maps together! 
+aus_map = cowplot::plot_grid(p3 + theme(legend.position = "None"), get_legend(p1), ncol = 2, rel_widths = c(1.1, 1))
+ligne = cowplot::plot_grid(p1 + theme(legend.position = "None"), aus_map, ncol = 1,  rel_heights = c(1, 0.7))
+cowplot::plot_grid(p2 + theme(legend.position = "None"), ligne, ncol = 2, rel_widths = c(0.7, 1)) 
+ggsave(paste0(fig_dir, "Allele_", SNP_name,"_BIO", i, ".pdf"), width = 18, height = 10, units = "cm")
+
+```
+
+```{r plot GWAS locus}
+
+
+#Set parameters for the plot
+chromosome = 7
+min_coord = 1094086
+max_coord = 1892455
+#pheno = "Precipitation of Driest Month"
+pheno = "Precipitation of Warmest Quarter"
+genes_to_highlight = c("Zt09_model_5_00004")
+TE_gff = "/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/Cecile_IPO323_refTEs_match.gff"
+gene_gff = "/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/Zymoseptoria_tritici.MG2.Grandaubert2015.mRNA.gff3"
+
+# Prepare the gene section of the plot
+c = plot_gff(TE_gff, chromosome, min_coord, max_coord, genes_to_highlight, "grey50")
+d = plot_gff(gene_gff, chromosome, min_coord, max_coord, genes_to_highlight)
+
+# Prepare the GWAS section of the plot for the first phenotype
+b = results_GEMMA %>%
+  filter(Phenotype == pheno) %>%
+  filter(CHR == chromosome) %>%
+  filter(BP >= min_coord) %>%
+  filter(BP <= max_coord) %>%
+  mutate(logP = -log10(P)) %>%
+  ggplot() +
+  geom_point(aes(x = BP, y = logP, col = logP)) +
+    geom_hline(aes(yintercept=-log10(Bonferroni_threshold)),
+               linetype = "dashed", color = "grey20") +
+  theme_bw() +
+  labs(title = paste0("GWAS: ", pheno),
+       subtitle = paste0("The region is on the chromosome ", chromosome, 
+                           " from ", min_coord, "bp to ", max_coord, "bp.")) +
+  theme(axis.title.x = element_blank())
+
+cowplot::plot_grid(b, c, d, ncol = 1, align = 'v', axis = 'lr', rel_heights = c(1, 0.3, 0.3))
+
+```
 
 
 
