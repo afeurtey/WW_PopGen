@@ -25,13 +25,6 @@ logo: /Users/feurtey/Documents/Postdoc_Bruce/Communication/Logo_WWZt.png
 library(knitr)
 library(reticulate)
 
-#Spatial analyses packages
-library(raster)
-library(sp)
-library(rgdal)
-library(maps)
-library(geosphere)
-
 #Data wrangling and data viz
 library(tidyverse)
 library(purrr)
@@ -40,38 +33,25 @@ library(plotly)
 library(cowplot)
 library(GGally)
 library(corrplot)
-library(pheatmap)
 library(ggstance)
 library('pophelper')
 library(ggbiplot)
 library(igraph)
 library(ggraph)
 library(ggtext)
+library(scatterpie)
 
-#Pop structure and pop genomic
-library(GenomicFeatures)
-library(SNPRelate) #PCA
-library(LEA) #Clustering
-library(pophelper)
-library(PopGenome) #Summary statistics
-library(gridExtra)
 
 library(ggtree)
 library(tidytree)
 library(multcomp)
 library(lsmeans)
 
-
-
-#GEA
-library(lfmm)
-
 #Statistics
 library(car)
 library(corrr)
 library(lsmeans)
 library(multcomp)
-
 
 #Variables
 world <- map_data("world")
@@ -87,6 +67,7 @@ fig_dir = "/Users/feurtey/Documents/Postdoc_Bruce/Manuscripts/Feurtey_WW_Zt/Draf
 #-___________________
 VAR_dir = paste0(project_dir, "1_Variant_calling/")
   depth_per_window_dir = paste0(VAR_dir, "1_Depth_per_window/")
+  depth_per_gene_dir = paste0(VAR_dir, "2_Depth_per_gene/")
   vcf_dir = paste0(VAR_dir, "4_Joint_calling/")
   mito_SV = paste0(VAR_dir, "6_Mito_SV/")
 PopStr_dir = paste0(project_dir, "2_Population_structure/")
@@ -102,11 +83,14 @@ virulence_dir = paste0(project_dir, "7_Virulence/")
 sel_dir = paste0(project_dir, "8_Selection/")
   gene_list_dir = paste0(sel_dir, "0_Lists_unique_copy/")
 
+
 #Files
 vcf_name="Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.biall_SNP.max-m-1.maf-0.05.thin-1000bp"
 vcf_name_nomaf="Ztritici_global_March2021.filtered-clean.AB_filtered.SNP.max-m-0.8.thin-1000bp"
 vcf_name_mito = "Ztritici_global_March2021.genotyped.mt.filtered.clean.AB_filtered.variants.good_samples.max-m-80"
 Zt_list = paste0(lists_dir, "Ztritici_global_March2021.genotyped.good_samples.args")
+effectors_annotation_file = "/Users/feurtey/Documents/Postdoc_Eva/Manuscripts/Accepted/Alice_Cecile_Comparative_genomics/Data_for_publication/Annotations_2018_genomes_for_publication.tab"
+eggnog_annotation = paste0(data_dir, "Zymoseptoria_tritici.MG2.Grandaubert2015.eggnog")
 gff_file = paste0(data_dir, "Zymoseptoria_tritici.MG2.Grandaubert2015.no_CDS.gff3")
 ref_fasta_file = paste0(data_dir, "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa")
 metadata_name = "Main_table_from_SQL_Feb_2020"
@@ -1435,12 +1419,15 @@ Badet_pan_table %>%
 
 ### On Illumina samples
 ```{R}
-temp = inner_join(sum_dim2_blast, duplicated_genes, by = c("sample" = "ID_file", "Continent")) %>%
-  filter(Nb_duplicated_genes < 400)
+
+core_duplicated_genes = read_tsv(paste0(depth_per_gene_dir, "Sabina_gcnv_event.filtered.core_chr.per_sample.tsv"))
+
+temp = inner_join(sum_dim2_blast, core_duplicated_genes, by = c("sample" = "Sample")) %>%
+  filter(M < 150)
 
 
 p1 = ggplot(temp, aes(as.numeric(Composite_median),
-                      Nb_duplicated_genes,
+                      M,
                       color = Continent,
                       shape = Collection))+
   geom_point() + Color_Continent +
@@ -1452,7 +1439,7 @@ p1 = ggplot(temp, aes(as.numeric(Composite_median),
                       width = 20))
 
 p2 = ggplot(temp, aes(pident_wm,
-                      Nb_duplicated_genes,
+                      M,
                       color = Continent,
                       shape = Collection))+
   geom_point() + Color_Continent +
@@ -1462,21 +1449,57 @@ p2 = ggplot(temp, aes(pident_wm,
          y = str_wrap("Number of duplicated genes",
                       width = 20))
 
-legend_b <- get_legend(
-  p1 +
-    theme(legend.position = "right")
-)
-top = cowplot::plot_grid(p1+ theme(legend.position = "none"), p2, ncol = 1)
+legend_b <- get_legend(p1 + theme(legend.position = "right"))
+
+top = cowplot::plot_grid(p1 + theme(legend.position = "none"), p2, ncol = 1)
 cowplot::plot_grid(top, legend_b, nrow = 1)
+
+ggplot(temp, aes(as.numeric(Composite_median),
+                      M,
+                      color = Continent,
+                      shape = Collection))+
+  geom_point() + Color_Continent +
+  theme_bw()  +
+    labs(x = str_wrap(paste("RIP composite index", " (median per isolate)"),
+                      width = 20),
+         y = str_wrap("Number of duplicated genes", width = 20)) +
+  facet_wrap(vars(Continent), scales = "free")
 ```
+
+
 
 # GWAS
 ```{r prep pheno GWAS}
 
-#Create standardized values for the environment variables
+#Number of accessory chromsomes
+Lthres = 0.25
+Hthres = 1.75
+# Reading in the summarized data
+core_depth = read_tsv(paste0(depth_per_window_dir, "Depth_per_sample_core_chr_summary.q30.txt")) %>%
+  mutate(Median_core = Median) 
 
-stand = TE_RIP %>% 
-  dplyr::select(ID_file, Percent_TE_Reads, Composite_median, Composite_mean) %>%
+chrom_depth = read_tsv(paste0(depth_per_window_dir, "Depth_per_chromosome_summary.q30.txt")) %>%
+  left_join(., core_depth %>% dplyr::select(Sample, Median_core)) %>%
+  mutate(Relative_depth = as.numeric(Median)/(0.001 + as.numeric(Median_core))) %>%
+  filter(CHROM != "mt") %>%
+  dplyr::mutate(Depth_is = ifelse(Relative_depth > Hthres, "High",ifelse(Relative_depth < Lthres, "Low", "Normal"))) %>%
+  dplyr::mutate(PAV = ifelse(as.numeric(Relative_depth) > 0.5, "P", "D"))
+
+temp = chrom_depth %>%
+  filter(as.numeric(CHROM) > 13) %>%
+  dplyr::count(Sample, PAV) %>%
+  pivot_wider(names_from = PAV, values_from = n, values_fill = 0) %>%
+  dplyr::select(ID_file = Sample, Acc_chr = P)
+
+#Number of duplicated genes
+duplicated_loci = core_duplicated_genes %>%
+  dplyr::select(ID_file = Sample, Duplicated_genes = M) %>% 
+  full_join(., temp)
+
+
+#Create standardized values for the environment variables
+stand = left_join(TE_RIP, duplicated_loci) %>% 
+  dplyr::select(ID_file, Percent_TE_Reads, Composite_median, Composite_mean, Acc_chr, Duplicated_genes) %>%
   pivot_longer(cols = -c(ID_file), names_to = "Variable", values_to = "Value") %>%
   group_by(Variable) %>%
   mutate(Standard_value = scale(Value)) %>%
@@ -1503,10 +1526,11 @@ dplyr::select(temp2, -Latitude, -Longitude) %>%
 ```
 
 ```{r GEMMA results}
-phenotypes = c("TE", "RIP_med", "RIP_mean")
+phenotypes = c("TE", "RIP_med", "RIP_mean", "Accessory_chr", "Duplicated_genes")
+
 
 results_GWAS = list()
-for (i in c(1:3)) {
+for (i in c(1:length(phenotypes))) {
   temp = list.files(path = paste0(TE_RIP_dir, "2_GWAS/"), 
                     pattern = paste0("*_for_phenotype_", i,".assoc.txt")) %>% 
     map_df(~read_tsv(file = paste0(paste0(TE_RIP_dir, "2_GWAS/"), .), 
@@ -1519,6 +1543,9 @@ for (i in c(1:3)) {
 
 results_GWAS = bind_rows(results_GWAS)
 
+#left_join(TE_RIP, duplicated_loci) %>% 
+#  dplyr::select(ID_file, Percent_TE_Reads, Composite_median, Composite_mean, Acc_chr, Duplicated_genes) %>%
+#  pivot_longer(cols = -c(ID_file), names_to = "Variable", values_to = "Value")
 
 ```
 
@@ -1538,6 +1565,7 @@ GWASTools::qqPlot(temp, thinThreshold = 2)
 
 
 ```
+
 ```{r GWAS signif}
 
 head(results_GWAS) 
@@ -1570,7 +1598,7 @@ len_threshold = 20000L
 #For each phenotype and for each chromosome
 
 list_loci = list()
-for (j in c(1:3)) {
+for (j in c(1:length(phenotypes))) {
   temp2 = list()
   for (i in c(1:13)){
     #Pull vector of position for the right chromosome and phenotype
@@ -1581,7 +1609,7 @@ for (j in c(1:3)) {
     
     # Split the vectors into group based on the length threshold
     temp = split(v, cumsum(c(TRUE, diff(v) >= len_threshold)))
-    print(paste(c(phenotypes[j], i, length(temp)), sep = " "))
+    #print(paste(c(phenotypes[j], i, length(temp)), sep = " "))
     
     #Single value gets the column name "value" instead of a number
     if (length(temp) == 1) {
@@ -1612,58 +1640,70 @@ significant_TE %>% dplyr::select(CHR, Locus_nb, Phenotype) %>%
   pivot_wider(names_from = Phenotype, values_from = n, values_fill = 0)
 ```
 
-```{bash}
+```{bash signif var effect}
 #rsync -avP ../4_TE_RIP/2_GWAS/Significant_TE.tsv alice@130.125.25.244:/data2/alice/WW_project/4_TE_RIP/2_GWAS/
 
-#./Software/vcftools_jydu/src/cpp/vcftools --gzvcf /data2/alice/WW_project/1_Variant_calling/4_Joint_calling/Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.ann.vcf.gz --positions /data2/alice/WW_project/4_TE_RIP/2_GWAS/Significant_TE.tsv --out /data2/alice/WW_project/4_TE_RIP/2_GWAS/Significant_TE --recode --recode-INFO-all
+#../Software/vcftools_jydu/src/cpp/vcftools --gzvcf /data2/alice/WW_project/1_Variant_calling/4_Joint_calling/Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.ann.vcf.gz --positions /data2/alice/WW_project/4_TE_RIP/2_GWAS/Significant_TE.tsv --out /data2/alice/WW_project/4_TE_RIP/2_GWAS/Significant_TE --recode --recode-INFO-all
 
-#./Software/bcftools-1.10.2/bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t%INFO/ANN\n' /data2/alice/WW_project/4_TE_RIP/2_GWAS/Significant_TE.recode.vcf > /data2/alice/WW_project/4_TE_RIP/2_GWAS/Significant_TE.ann.tsv
-
-#rsync -avP alice@130.125.25.244:/data2/alice/WW_project/4_TE_RIP/2_GWAS/Significant_TE.ann.tsv ../4_TE_RIP/2_GWAS
+#../Software/bcftools-1.10.2/bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t%INFO/ANN\n' /data2/alice/WW_project/4_TE_RIP/2_GWAS/Significant_TE.recode.vcf > /data2/alice/WW_project/4_TE_RIP/2_GWAS/Significant_TE.ann.tsv
 
 #grep "#CHROM" /data2/alice/WW_project/4_TE_RIP/2_GWAS/Significant_TE.recode.vcf | cut -f 1,2,4,5,10- | sed 's/#//' > /data2/alice/WW_project/4_TE_RIP/2_GWAS/Significant_TE.ann.tab
-#./Software/bcftools-1.10.2/bcftools query -f '%CHROM\t%POS\t%REF\t%ALT[\t%GT]\n' /data2/alice/WW_project/4_TE_RIP/2_GWAS/Significant_TE.recode.vcf >> /data2/alice/WW_project/4_TE_RIP/2_GWAS/Significant_TE.ann.tab
-#rsync -avP alice@130.125.25.244:/data2/alice/WW_project/4_TE_RIP/2_GWAS/Significant_TE.ann.tab ../4_TE_RIP/2_GWAS/
+#../Software/bcftools-1.10.2/bcftools query -f '%CHROM\t%POS\t%REF\t%ALT[\t%GT]\n' /data2/alice/WW_project/4_TE_RIP/2_GWAS/Significant_TE.recode.vcf >> /data2/alice/WW_project/4_TE_RIP/2_GWAS/Significant_TE.ann.tab
+
+#rsync -avP alice@130.125.25.244:/data2/alice/WW_project/4_TE_RIP/2_GWAS/Significant_TE.ann.t* ../4_TE_RIP/2_GWAS/
 ```
 
 For each region, I would like to be able to get more information about the variants: what is the distribution of the alleles compared to the phenotype with which this position was significantly associated? What is the minor allele frequency at this locus? Since it is impossible to represent all thousands of associated variants, I chose one position in particular for each significant locus identified previously. 
-```{r}
+```{r one pos per locus}
 i=2
 min_length_locus = 2000
-temp = significant_TE %>% 
-  filter(Phenotype == phenotypes[i]) %>% 
-  group_by(CHR, Locus_nb) %>%
-  mutate(Locus_length = 1 + max(BP) - min(BP)) %>%
-  filter(Locus_length >= min_length_locus) %>%
-  mutate(Rank = rank(P)) %>%
-  arrange(Rank) %>%
-  ungroup() %>%
-  filter(Rank == 1) %>%
-  dplyr::select(SNP, CHR, BP)
 
-relevant_pheno = TE_RIP %>% 
-  dplyr::select(ID_file, Percent_TE_Reads, Composite_median, Composite_mean) %>%
-  pivot_longer(cols = -c(ID_file), names_to = "Phenotype", values_to = "Value") %>%
-  filter(Phenotype == "Composite_median")
-temp = read_tsv(paste0(TE_RIP_dir, "2_GWAS/Significant_TE.ann.tab"), na = ".") %>%
-  inner_join(temp, by = c("CHROM" = "CHR", "POS" = "BP")) %>%
-  pivot_longer(-c(CHROM, POS, REF, ALT, SNP), 
-               names_to = "ID_file", values_to = "Allele") %>%
-  inner_join(., relevant_pheno) %>%
-  filter(Allele != "NA")
+whatever <- function(min_length_locus, pheno, expected_output){
+  temp = significant_TE %>% 
+    filter(Phenotype == pheno) %>% 
+    group_by(CHR, Locus_nb) %>%
+    mutate(Locus_length = 1 + max(BP) - min(BP)) %>%
+    filter(Locus_length >= min_length_locus) %>%
+    mutate(Rank = rank(P)) %>%
+    arrange(Rank) %>%
+    ungroup() %>%
+    filter(Rank == 1) %>%
+    dplyr::select(SNP, CHR, BP)
+  
+  relevant_pheno = TE_RIP %>% 
+    dplyr::select(ID_file, TE = Percent_TE_Reads, RIP_med = Composite_median, RIP_mean = Composite_mean) %>%
+    pivot_longer(cols = -c(ID_file), names_to = "Phenotype", values_to = "Value") %>%
+    filter(Phenotype == pheno)
+  
+  temp = read_tsv(paste0(TE_RIP_dir, "2_GWAS/Significant_TE.ann.tab"), na = ".") %>%
+    inner_join(temp, by = c("CHROM" = "CHR", "POS" = "BP")) %>%
+    pivot_longer(-c(CHROM, POS, REF, ALT, SNP), 
+                 names_to = "ID_file", values_to = "Allele") %>%
+    inner_join(., relevant_pheno) %>%
+    filter(Allele != "NA")
+  
+  if (expected_output == "plot"){
+  temp  %>%
+    ggplot(aes(Value, fill = as.factor(Allele), col = as.factor(Allele))) +
+    geom_density(alpha = .4) + 
+    facet_wrap(vars(SNP), scales = "free") +
+    theme_bw() +
+    labs(title = paste0("Top associated SNPs for each locus and phenotype: ", pheno))}
+  else{
+  temp %>% dplyr::count(SNP, Allele) %>%
+    pivot_wider(names_from = Allele, values_from = n)
+  }
+}
 
-temp  %>%
-  ggplot(aes(Value, fill = as.factor(Allele), col = as.factor(Allele))) +
-  geom_density(alpha = .4) + 
-  facet_wrap(vars(SNP), scales = "free") +
-  theme_bw()
+whatever(min_length_locus, phenotypes[1], "plot")
+whatever(min_length_locus, phenotypes[1], "table")
 
-temp %>% dplyr::count(SNP, Allele) %>%
-  pivot_wider(names_from = Allele, values_from = n)
+whatever(min_length_locus, phenotypes[2], "plot")
+whatever(min_length_locus, phenotypes[2], "table")
 ```
 
-
 ```{r}
+#Find genes and corresponding effects
 temp = read_tsv(paste0(TE_RIP_dir, "2_GWAS/Significant_TE.ann.tsv"), col_names = c("CHR", "BP", "REF", "ALT", "ANN")) %>%
   separate(ANN, sep = ",", 
            into = c("ANN1", "ANN2", "ANN3", "ANN4", "ANN5", "ANN6", "ANN7", "ANN8", "ANN9", "ANN10", "ANN11",
@@ -1707,7 +1747,7 @@ Manhattan_one_pheno <- function(pheno, color_duo) {
   
   temp = results_GWAS %>% filter(Phenotype == pheno) %>%
     inner_join(., results_GWAS_for_plot)  %>%
-    left_join(., significant %>% dplyr::filter(Phenotype == pheno) ) %>%
+    left_join(., significant_TE %>% dplyr::filter(Phenotype == pheno) ) %>%
     mutate(SNP_type = ifelse(is.na(SNP_type), "Other", SNP_type)) %>%
     mutate(logP = -log10(P)) %>%
     filter(CHR <= 13) %>%
@@ -1727,29 +1767,9 @@ Manhattan_one_pheno <- function(pheno, color_duo) {
       plot.margin = unit(c(0, 0, 0, 0), "cm")) +
       facet_grid(cols = vars(CHR), scales = "free_x") 
 }
-```
 
-```{r}
-temp = tibble(CHR = c(5, 6), Gene = c("rid", "dnmt5"), Pos = c(82000, 2527000))
 
-p = Manhattan_one_pheno("TE", c("#FFD399", "#ff9f1c")) +
-  labs(y = str_wrap("TE content (-logP)", 25)) + 
-  geom_vline(data = temp, aes(xintercept = Pos), alpha =.4, col = "grey20")
-
-q = Manhattan_one_pheno("RIP_med", c("#cbf3f0", "#2ec4b6")) +
-  labs(y = str_wrap("RIP (-logP)", 25)) + 
-  geom_vline(data = temp, aes(xintercept = Pos), alpha =.4, col = "grey20") +
-      geom_text(data = temp, aes(label = Gene, x= Pos), 
-                y = -5, # Set the position of the text to always be at '14.25'
-                size = 4, angle = 90,
-                vjust = 0, hjust = 0) +
-      coord_cartesian(ylim = c(-3.8, 27), # This focuses the x-axis on the range of interest
-                      clip = 'off')
-
-cowplot::plot_grid(p, q, ncol = 1)
-```
-
-```{r}
+#Plot from gff
 plot_gff <- function(gff_name, chromosome, min_coord, max_coord, genes_to_highlight, col = "black") {
   gff = read_tsv(gff_name, 
                col_names = c("CHR", "X1", "mRNA", "Start", "Stop", "X2", "X3", "X4", "Annot"))  %>%
@@ -1791,10 +1811,32 @@ c
 ```
 
 ```{r}
+temp = tibble(CHR = c(5, 6), Gene = c("rid", "dnmt5"), Pos = c(82000, 2527000))
+
+p = Manhattan_one_pheno("TE", c("#FFD399", "#ff9f1c")) +
+  labs(y = str_wrap("TE content (-logP)", 25)) + 
+  geom_vline(data = temp, aes(xintercept = Pos), alpha =.4, col = "grey20")
+
+q = Manhattan_one_pheno("RIP_med", c("#cbf3f0", "#2ec4b6")) +
+  labs(y = str_wrap("RIP (-logP)", 25)) + 
+  geom_vline(data = temp, aes(xintercept = Pos), alpha =.4, col = "grey20") +
+      geom_text(data = temp, aes(label = Gene, x= Pos), 
+                y = -5, # Set the position of the text to always be at '14.25'
+                size = 4, angle = 90,
+                vjust = 0, hjust = 0) +
+      coord_cartesian(ylim = c(-3.8, 27), # This focuses the x-axis on the range of interest
+                      clip = 'off')
+
+cowplot::plot_grid(p, q, ncol = 1)
+
+```
+
+
+```{r}
 #Set parameters for the plot
 chromosome = 5
 min_coord = 68000
-max_coord = 98000
+max_coord = 95000
 genes_to_highlight = c("Zt09_model_5_00004")
 TE_gff = "/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/Cecile_IPO323_refTEs_match.gff"
 gene_gff = "/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/Zymoseptoria_tritici.MG2.Grandaubert2015.mRNA.gff3"
@@ -1817,7 +1859,8 @@ b = results_GWAS %>% filter(CHR == chromosome) %>%
   labs(title = "GWAS based on RIP composite index median",
        subtitle = paste0("The region is on the chromosome ", chromosome, 
                            " from ", min_coord, "bp to ", max_coord, "bp.")) +
-  theme(axis.title.x = element_blank())
+  theme(axis.title.x = element_blank()) + 
+  coord_cartesian(xlim = c(min_coord, max_coord))
 
 cowplot::plot_grid(b, c, d, ncol = 1, align = 'v', axis = 'lr', rel_heights = c(1, 0.3, 0.3))
 
@@ -1836,15 +1879,103 @@ b = results_GWAS %>% filter(CHR == chromosome) %>%
   labs(title = "GWAS based on proportion of TE reads",
        subtitle = paste0("The region is on the chromosome ", chromosome, 
                            " from ", min_coord, "bp to ", max_coord, "bp.")) +
-  theme(axis.title.x = element_blank())
-
-cowplot::plot_grid(b, c, d, ncol = 1, align = 'v', axis = 'lr', rel_heights = c(1, 0.3, 0.3))
+  theme(axis.title.x = element_blank()) + 
+  coord_cartesian(xlim = c(min_coord, max_coord))
+cowplot::plot_grid(b,  d, c, ncol = 1, align = 'v', axis = 'lr', rel_heights = c(1, 0.3, 0.3))
 ```
 
+```{r}
+SNP_name = "5_69389"
+#SNP_name = "5_90258"
+#SNP_name = "6_820378"
+#SNP_name = "1_758601"
+pheno = "RIP_med"
+
+
+allele = significant_TE %>% 
+    filter(Phenotype == pheno) %>% 
+    filter(SNP == SNP_name) %>%
+    dplyr::select(SNP, CHR, BP) %>%
+    inner_join(., read_tsv(paste0(TE_RIP_dir, "2_GWAS/Significant_TE.ann.tab"), na = "."), 
+               by = c("CHR" = "CHROM", "BP" = "POS")) %>%
+    pivot_longer(-c(CHR, BP, REF, ALT, SNP), 
+                 names_to = "ID_file", values_to = "Allele") %>%
+    inner_join(., Zt_meta %>% dplyr::select(ID_file, Latitude, Longitude)) %>%
+    mutate(Latitude = round(Latitude/2)*2, Longitude = round(Longitude/2)*2)%>%
+    mutate(Allele = ifelse(Allele == 0, "REF", ifelse(Allele == 1, "ALT1", "ALT2"))) %>%
+    group_by(Allele, Longitude, Latitude) %>%
+    dplyr::count() %>%
+    pivot_wider(names_from = Allele, values_from = n, values_fill = 0) %>%
+    filter(!is.na(Longitude)) %>%
+    mutate(Radius = 1.5) 
+
+#Add if column alt2
+if ("ALT2" %in% colnames(allele)) {
+  allele = allele
+} else {
+  allele = allele %>% mutate(ALT2 = 0)
+}
+
+
+map1 = ggplot() + 
+  theme_void() +
+  geom_polygon(data = map_data("world"), aes(x=long, y = lat, group = group), fill="#ede7e3")  +
+  theme(legend.position = "None", 
+        panel.border  = element_rect(fill=NA, colour = "grey",size = 0.5, linetype = 1)) +
+    scale_fill_manual(values = c("grey", K_colors) )
+p1 = map1 + coord_cartesian(xlim=c(-20, 60), ylim=c(20, 70)) + 
+  geom_scatterpie(data = allele, mapping = aes(x=Longitude, y=Latitude, r = Radius), 
+                  cols = c("REF", "ALT1", "ALT2"), color=NA, alpha=.8) +
+  theme(panel.background = element_rect(fill = "transparent"), # bg of the panel
+    plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
+    panel.grid.major = element_blank(), # get rid of major grid
+    panel.grid.minor = element_blank(), # get rid of minor grid
+    legend.background = element_rect(fill = "transparent"), # get rid of legend bg
+    legend.box.background = element_rect(fill = "transparent"))
+
+p2 = map1 + coord_cartesian(xlim=c(-160, -40), ylim=c(-80, 80)) + 
+  geom_scatterpie(data = allele, mapping = aes(x=Longitude, y=Latitude, r = Radius*2), 
+                  cols = c("REF", "ALT1", "ALT2"), color=NA, alpha=.8)+
+  theme(panel.background = element_rect(fill = "transparent"), # bg of the panel
+    plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
+    panel.grid.major = element_blank(), # get rid of major grid
+    panel.grid.minor = element_blank(), # get rid of minor grid
+    legend.background = element_rect(fill = "transparent"), # get rid of legend bg
+    legend.box.background = element_rect(fill = "transparent"))
+
+p3 = map1 + coord_cartesian(xlim=c(105, 175), ylim=c(-65, 10)) + 
+  geom_scatterpie(data = allele, mapping = aes(x=Longitude, y=Latitude, r = Radius*2), 
+                  cols = c("REF", "ALT1", "ALT2"), color=NA, alpha=.8)+
+  theme(panel.background = element_rect(fill = "transparent"), # bg of the panel
+    plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
+    panel.grid.major = element_blank(), # get rid of major grid
+    panel.grid.minor = element_blank(), # get rid of minor grid
+    legend.background = element_rect(fill = "transparent"), # get rid of legend bg
+    legend.box.background = element_rect(fill = "transparent"))
+
+#Plotting all the maps together! 
+aus_map = cowplot::plot_grid(p3 + theme(legend.position = "None"), get_legend(p1), ncol = 2, rel_widths = c(1.1, 1))
+ligne = cowplot::plot_grid(p1 + theme(legend.position = "None"), aus_map, ncol = 1,  rel_heights = c(1, 0.7))
+cowplot::plot_grid(p2 + theme(legend.position = "None"), ligne, ncol = 2, rel_widths = c(0.7, 1)) 
+ggsave(paste0(fig_dir, "Allele_", SNP_name,"_", pheno, ".pdf"), width = 18, height = 10, units = "cm")
+
+```
 
 
 <br><br>
 
 
 
+```{r}
+p = Manhattan_one_pheno("Duplicated_genes", c("#FFD399", "#ff9f1c")) +
+  labs(y = str_wrap("Duplicated genes(-logP)", 25)) 
+
+q = Manhattan_one_pheno("Accessory_chr", c("#cbf3f0", "#2ec4b6")) +
+  labs(y = str_wrap("Accessory chromosome number (-logP)", 25)) +
+      coord_cartesian(ylim = c(-3.8, 27), # This focuses the x-axis on the range of interest
+                      clip = 'off')
+
+cowplot::plot_grid(p, q, ncol = 1)
+
+```
 
