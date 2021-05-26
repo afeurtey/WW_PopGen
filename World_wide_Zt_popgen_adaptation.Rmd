@@ -486,10 +486,10 @@ for (j in c(1:length(Bioclim_var))) {
     
     #Single value gets the column name "value" instead of a number
     if (length(temp) == 1) {
-      temp_tibble = as.tibble(sapply(temp, '[', seq(max(sapply(temp, length)))))
+      temp_tibble = as_tibble(sapply(temp, '[', seq(max(sapply(temp, length)))))
       colnames(temp_tibble) <- 1
     } else {
-      temp_tibble = as.tibble(sapply(temp, '[', seq(max(sapply(temp, length)))))
+      temp_tibble = as_tibble(sapply(temp, '[', seq(max(sapply(temp, length)))))
     }
     
     # Transform to store relevant info in tidy format
@@ -502,9 +502,12 @@ for (j in c(1:length(Bioclim_var))) {
 list_loci[[j]] = bind_rows(temp2)
 }
 
-#Adding loci info to the table
+#Adding locus info to the table
 significant = bind_rows(list_loci) %>%
-  full_join(significant, .)
+  full_join(significant, .) %>% 
+  group_by(CHR, Locus_nb) %>%
+  mutate(Locus_length = 1 + max(BP) - min(BP)) %>%
+  ungroup()
 
 significant %>% dplyr::select(Locus_nb, Phenotype) %>%
   distinct() %>% 
@@ -512,19 +515,66 @@ significant %>% dplyr::select(Locus_nb, Phenotype) %>%
 ```
 
 
-To identify potentially more important variants amongst the significantly associated variants, we can predict the effect of the mutation on the protein sequence of genes. For this, I use SNPeff.
+To identify potentially more important variants amongst the significantly associated variants, we can predict the effect of the mutation on the protein sequence of genes. For this, I use SNPeff. I also extract the genotype information to get values such as the MAF.
 ```{bash}
 #rsync -avP ../5_GEA/Significant_GEMMA.tsv alice@130.125.25.244:/data2/alice/WW_project/5_GEA/Significant_GEMMA.tsv
 
 #../Software/vcftools_jydu/src/cpp/vcftools --gzvcf /data2/alice/WW_project/1_Variant_calling/4_Joint_calling/Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.ann.vcf.gz --positions /data2/alice/WW_project/5_GEA/Significant_GEMMA.tsv --out /data2/alice/WW_project/5_GEA/Significant_GEMMA --recode --recode-INFO-all
 
-#../Software/bcftools-1.10.2/bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t%INFO/ANN\n' /data2/alice/WW_project/5_GEA/Significant_GEMMA.vcf > /data2/alice/WW_project/5_GEA/Significant_GEMMA.ann.tsv
+#../Software/bcftools-1.10.2/bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t%INFO/ANN\n' /data2/alice/WW_project/5_GEA/Significant_GEMMA.recode.vcf > /data2/alice/WW_project/5_GEA/Significant_GEMMA.ann.tsv
 
-#rsync -avP alice@130.125.25.244:/data2/alice/WW_project/5_GEA/Significant_GEMMA.ann.tsv ../5_GEA/
+#grep "#CHROM" /data2/alice/WW_project/5_GEA/Significant_GEMMA.recode.vcf | cut -f 1,2,4,5,10- | sed 's/#//' > /data2/alice/WW_project/5_GEA/Significant_GEMMA.ann.tab
+#../Software/bcftools-1.10.2/bcftools query -f '%CHROM\t%POS\t%REF\t%ALT[\t%GT]\n' /data2/alice/WW_project/5_GEA/Significant_GEMMA.recode.vcf >> /data2/alice/WW_project/5_GEA/Significant_GEMMA.ann.tab
 
-#grep "#CHROM" /data2/alice/WW_project/5_GEA/Significant_GEMMA.vcf | cut -f 1,2,4,5,10- | sed 's/#//' > /data2/alice/WW_project/5_GEA/Significant_GEMMA.ann.tab
-#../Software/bcftools-1.10.2/bcftools query -f '%CHROM\t%POS\t%REF\t%ALT[\t%GT]\n' /data2/alice/WW_project/5_GEA/Significant_GEMMA.vcf >> /data2/alice/WW_project/5_GEA/Significant_GEMMA.ann.tab
-#rsync -avP alice@130.125.25.244:/data2/alice/WW_project/5_GEA/Significant_GEMMA.ann.tab ../5_GEA/
+#rsync -avP alice@130.125.25.244:/data2/alice/WW_project/5_GEA/Significant_GEMMA.ann.t* ../5_GEA/  
+#Download files with both tab and tsv extensions
+```
+
+```{r Add MAF}
+
+temp = read_tsv(paste0(GEA_dir, "Significant_GEMMA.ann.tab"), na = ".") %>%
+  unite(col = SNP, CHROM, POS) %>%
+  pivot_longer(-c(REF, ALT, SNP), names_to = "ID_file", values_to = "Allele") %>%
+  group_by(SNP) %>%  
+  mutate(Allele = ifelse(Allele == 0, "REF", "ALT")) %>%
+  filter(Allele != "NA") %>%
+  dplyr::count(Allele) %>%
+  pivot_wider(names_from = Allele, values_from = n, values_fill = 0) %>%
+  mutate(Nb_genotypes = ALT + REF,
+         REF_prop = REF/Nb_genotypes, ALT_prop = ALT/Nb_genotypes, 
+         MAF = min(REF_prop, ALT_prop)) %>%
+  dplyr::select(-ALT, -REF)
+
+
+significant = full_join(significant, temp)
+```
+
+```{r plot MAF}
+ggplot(data = significant, aes(x = Phenotype, y = MAF, col = Phenotype, fill = Phenotype)) +
+  geom_violin(alpha = .5) +
+  theme_bw() + 
+  theme(legend.position = "none") +
+  coord_flip() #, axis.text.x = element_text(angle = 40, hjust = 1, vjust = 1))
+
+filter(significant, MAF < 0.1) %>%
+ggplot(aes(x = Phenotype, y = MAF, col = Phenotype, fill = Phenotype)) +
+  geom_violin(alpha = .5) +
+  theme_bw() + 
+  theme(legend.position = "none") +
+  coord_flip() #, axis.text.x = element_text(angle = 40, hjust = 1, vjust = 1))
+
+data <- significant %>% 
+  mutate(group = ifelse(MAF < 0.05, "1to5%_MAF", "Higher_MAF")) %>%
+  filter(!is.na(group))
+
+# Basic piechart
+ggplot(data, aes(x=Phenotype, fill=group)) +
+  geom_bar(position = "fill") +
+  coord_flip() +
+  theme_bw() +
+  scale_fill_manual(values = c("#EDE7E3", "#82c0cc")) +
+  labs(y = "Proportion", fill = "MAF category", x = "")
+
 ```
 
 ```{r signif annot}
@@ -552,14 +602,6 @@ signif_ann %>% dplyr::count(CHR, Gene_nb, Effect_strength) %>%
 
 
 pheno = "Max Temperature of Warmest Month"
-
-temp = results_GEMMA %>% filter(Phenotype == pheno) %>%
-  left_join(., significant %>% dplyr::filter(Phenotype == pheno) ) %>%
-  mutate(SNP_type = ifelse(is.na(SNP_type), "Other", SNP_type)) %>%
-  mutate(logP = -log10(P)) %>%
-  left_join(., signif_ann) %>%
-  filter(SNP_type == "significant")
-
 
 ```
 
@@ -736,6 +778,7 @@ upset(for_upset, sets = names(for_upset),
 
 
 
+
 ## Manhattan plots
 Traditionally, GWAS results are represented as Manhattan plot. Let's create some for the main variables we are interested in. 
 
@@ -763,12 +806,14 @@ Manhattan_one_pheno <- function(pheno, color_duo) {
     inner_join(., results_GEMMA_for_plot)  %>%
     left_join(., significant %>% dplyr::filter(Phenotype == pheno) ) %>%
     mutate(SNP_type = ifelse(is.na(SNP_type), "Other", SNP_type)) %>%
+    mutate(MAF_type = ifelse(is.na(MAF), 0.5, ifelse(MAF < 0.05, 0.7, 1))) %>%
     mutate(logP = -log10(P)) %>%
     filter(CHR <= 13) %>%
     filter(logP > 2) 
+
   
   ggplot(temp, aes(x=BP, y=logP)) +
-    geom_point( aes(color=SNP_type), alpha = 0.8, size=1.3) +
+    geom_point( aes(color=SNP_type, alpha = MAF_type), size=1.3) +
     scale_color_manual(values = color_duo) +
     geom_hline(aes(yintercept=-log10(Bonferroni_threshold)),
                linetype = "dashed", color = "grey20") +
@@ -785,13 +830,15 @@ Manhattan_one_pheno <- function(pheno, color_duo) {
 # Manhattan plot function 2
 Manhattan_faceted_pheno <- function(pheno_list, color_duo) {
   results_GEMMA %>% filter(Phenotype %in% pheno_list) %>%
-    inner_join(., results_GEMMA_for_plot)  %>%
+    inner_join(., results_GEMMA_for_plot)   %>%
+    left_join(., significant %>% dplyr::filter(Phenotype %in% pheno_list) ) %>%
+    mutate(MAF_type = ifelse(is.na(MAF), 0.5, ifelse(MAF < 0.05, 0.5, 1))) %>%
     arrange(CHR, BP) %>%
     mutate(BPcum = BP+tot) %>%
     mutate(logP = -log10(P))%>%
     filter(logP > 2) %>%
     ggplot(., aes(x=BPcum, y=logP)) +
-      geom_point( aes(color=as.factor(CHR)), alpha=0.8, size=1.3) +
+      geom_point( aes(color=as.factor(CHR), alpha= MAF_type), size=1.3) +
       scale_color_manual(values = rep(color_duo, 22 )) +
       scale_x_continuous( label = axisdf$CHR, breaks= axisdf$center ) +
       geom_hline(aes(yintercept=-log10(Bonferroni_threshold)),
@@ -810,8 +857,6 @@ top_SNPs_density <- function(pheno, min_length_locus, custom_colors){
   temp = significant %>% 
     filter(Phenotype == pheno) %>% 
     group_by(CHR, Locus_nb) %>%
-    mutate(Locus_length = 1 + max(BP) - min(BP)) %>%
-    filter(Locus_length >= min_length_locus) %>%
     mutate(Rank = rank(P, ties.method = "first")) %>%
     arrange(Rank) %>%
     ungroup() %>%
@@ -838,9 +883,6 @@ top_SNPs_density <- function(pheno, min_length_locus, custom_colors){
     theme_bw() +
     scale_color_manual(values = custom_colors) +
     scale_fill_manual(values = custom_colors)
-  
-  #temp %>% dplyr::count(SNP, Allele) %>%
-  #  pivot_wider(names_from = Allele, values_from = n)
 
 }
 
@@ -907,8 +949,8 @@ cowplot::plot_grid(p, q, nrow = 2)
 
 ggsave(paste0(fig_dir, "GEA_Manhattan_temperature_main.pdf"), width = 18, height = 10, units = "cm")
 
-top_SNPs_density("Mean Temperature of Warmest Quarter", 2000, c("#F5B9B3", "#F28482", "grey"))
-top_SNPs_density("Min Temperature of Coldest Month", 2000, c("#C4E7FD", "#0889D9", "grey"))
+top_SNPs_density("Mean Temperature of Warmest Quarter", 5000, c("#F5B9B3", "#F28482", "grey"))
+top_SNPs_density("Min Temperature of Coldest Month", 10000, c("#C4E7FD", "#0889D9", "grey"))
 ```
 
 Then, for precipitation, I choose the precipitation of the driest and of the wettest month.
@@ -933,27 +975,27 @@ top_SNPs_density("Precipitation of Wettest Month", 2000, c("#cbf3f0", "#2ec4b6",
 I also want to have a Manhattan plot for all possible environmental variable. I do try to classify them, grouping conceptually similar variables together.
 ```{r GEMMA plots}
 #Yearly variables
-Manhattan_faceted_pheno(Bioclim_var[c(2, 3, 7)], c("grey", "skyblue")) +
+Manhattan_faceted_pheno(Bioclim_var[c(2, 3, 7)], c("grey", "#82c0cc")) +
   labs(title = "Ranges bioclimatic variables")
-Manhattan_faceted_pheno(Bioclim_var[c(4, 15)], c("grey", "skyblue")) +
+Manhattan_faceted_pheno(Bioclim_var[c(4, 15)], c("grey", "#82c0cc")) +
   labs(title = "Seasonality bioclimatic variables")
-Manhattan_faceted_pheno(Bioclim_var[c(1, 12)], c("grey", "skyblue")) +
+Manhattan_faceted_pheno(Bioclim_var[c(1, 12)], c("grey", "#82c0cc")) +
   labs(title = "Annual rain and temperature")
 
 #Temperatures
-Manhattan_faceted_pheno(warm_temp_var, c("grey", "skyblue")) +
+Manhattan_faceted_pheno(warm_temp_var, c("grey", "#82c0cc")) +
   labs(title = "High temperatures")
-Manhattan_faceted_pheno(cold_temp_var, c("grey", "skyblue")) +
+Manhattan_faceted_pheno(cold_temp_var, c("grey", "#82c0cc")) +
   labs(title = "Cold temperatures")
 
 #Rain
-Manhattan_faceted_pheno(drought_var, c("grey", "skyblue")) +
+Manhattan_faceted_pheno(drought_var, c("grey", "#82c0cc")) +
   labs(title = "Drought")
-Manhattan_faceted_pheno(rainy_var, c("grey", "skyblue")) +
+Manhattan_faceted_pheno(rainy_var, c("grey", "#82c0cc")) +
   labs(title = "Rain")
 
 #Mix rain and temperature
-Manhattan_faceted_pheno(Bioclim_var[c(8, 9, 18, 19)], c("grey", "skyblue")) +
+Manhattan_faceted_pheno(Bioclim_var[c(8, 9, 18, 19)], c("grey", "#82c0cc")) +
   labs(title = "Mix rain and temperature")
 
 ```
@@ -963,21 +1005,38 @@ It is clear from the Manhattan plots that some significant loci are shared betwe
 
 ```{r Heatmaps}
 pheno_category = "Precipitation"
+#top_SNPs_density("Precipitation of Driest Month", 2000, c("#FFD399", "#ff9f1c", "grey"))
+#top_SNPs_density("Precipitation of Wettest Month", 2000, c("#cbf3f0", "#2ec4b6", "grey"))
+
+color_heatmap = colorRampPalette(c("#ff9f1c","white","#2ec4b6"))(30)
 temp = full_join(significant, pheno_table) %>%
   filter(Category == pheno_category) %>%
-  group_by(CHR, Locus_nb) %>%
+  group_by(CHR, Locus_nb, Phenotype) %>%
   mutate(Rank = rank(P, ties.method = "first")) %>%
   arrange(Rank) %>%
   ungroup() %>%
   filter(Rank == 1) %>%
-  dplyr::select(SNP, CHROM =CHR, POS = BP) %>%
-  distinct() %>%
+  dplyr::select(SNP, CHROM = CHR, POS = BP, Phenotype) %>%
+  #distinct() %>%
   inner_join(., read_tsv(paste0(GEA_dir, "Significant_GEMMA.ann.tab"), na = ".")) %>%
-  pivot_longer(-c(CHROM, POS, REF, ALT, SNP), 
+  pivot_longer(-c(CHROM, POS, REF, ALT, SNP, Phenotype), 
                  names_to = "ID_file", values_to = "Allele") %>%
   inner_join(., Zt_meta %>% dplyr::select(ID_file, Latitude, Longitude, Continent)) %>%
   mutate(Latitude = round(Latitude/2)*2, Longitude = round(Longitude/2)*2) 
 
+med_bioclim_per_allele = climate_per_coordinates %>%
+    pivot_longer(-c(X,Y), names_to = "Phenotype", values_to = "Bioclim") %>%
+    full_join(., Zt_meta  %>% dplyr::select(ID_file, Latitude, Longitude, Continent), 
+              by = c("X" = "Longitude", "Y" = "Latitude"))%>%
+    full_join(., temp) %>%
+    filter(!is.na(Allele)) %>%
+    group_by(Phenotype, SNP, Allele) %>%
+    dplyr::summarize(Median_bioclim = median(Bioclim, na.rm = T))  %>%
+    mutate(Phenotype_hilow = ifelse(Median_bioclim == max(Median_bioclim), "High", "Low"))
+
+color_by = "Phenotypic_value"
+if (color_by == "REF/ALT"){
+#For figure with REF/ALT as colors
 temp2 = ungroup(temp) %>% 
   dplyr::select(SNP, Longitude, Latitude, Allele, Continent) %>%
   filter(!is.na(Allele)) %>%
@@ -994,14 +1053,35 @@ ggplot(temp2, aes(y = Place, x = SNP, fill = REF)) +
   geom_tile() +
   theme_bw() 
 
-
+#Pretty heatmap with clustering
 temp3 = temp2 %>%
   dplyr::select(Place, SNP, REF) %>%
-  pivot_wider(names_from = Place, values_from = REF, values_fill = 0) 
+  pivot_wider(names_from = Place, values_from = REF, values_fill = 0) %>%
+  filter_at(vars(-SNP), any_vars(. <= 0.2))
+
+} else{
+  temp3 = ungroup(inner_join(temp, med_bioclim_per_allele)) %>% 
+  dplyr::select(Phenotype, ID_file, SNP, Longitude, Latitude, Allele, Continent, Phenotype_hilow) %>%
+  filter(!is.na(Allele))%>%
+  group_by(Phenotype, SNP, Continent, Longitude, Latitude, Phenotype_hilow) %>%
+  dplyr::count(Phenotype_hilow)  %>%
+  pivot_wider(names_from = Phenotype_hilow, values_from = n, values_fill = 0) %>%
+  mutate(sum = High + Low,
+         High = High/sum) %>%
+  filter(sum > 5) %>%
+  unite(col = "Place", c(Continent, Longitude, Latitude))%>%
+  dplyr::select(Place, SNP, High) %>%
+  pivot_wider(names_from = Place, values_from = High, values_fill = 0) %>%
+  filter_at(vars(-SNP), any_vars(. <= 0.2)) %>%
+    ungroup() %>%
+    dplyr::select(-Phenotype) %>%
+    distinct()
+}
+
 
 for_pheatmap = as.matrix(temp3[,-1])
 rownames(for_pheatmap) = pull(temp3[,1])
-pheatmap(for_pheatmap, angle_col = "45", fontsize = 8)
+pheatmap(for_pheatmap, angle_col = "45", fontsize = 8, color = color_heatmap)
 ```
 
 
@@ -1150,16 +1230,16 @@ geneNames = read_tsv(gff_file,
   mutate(Name = str_remove(Name, "Name=")) %>%
   pull(Name)
 geneID2GO = readMappings(paste0(data_dir, "GO_Zt09.map"))
-
+gene_detected = inner_join(pheno_table, significant) %>%
+    mutate(logP = -log10(P)) %>%
+    left_join(., signif_ann)# %>%
+  #  filter(Effect_strength %in% c("HIGH", "MODERATE"))
 
 enrich_results = list()
 phenotypes = unique(pheno_table$Category)
 par(mfrow = c(3, 2))
 for (pheno in phenotypes) {
-  gene_detected = inner_join(pheno_table, significant) %>%
-    mutate(logP = -log10(P)) %>%
-    left_join(., signif_ann)# %>%
-  #  filter(Effect_strength %in% c("HIGH", "MODERATE"))
+  
   
   myInterestingGenes <- gene_detected %>%
     filter(Category == pheno) %>% 
@@ -1179,7 +1259,7 @@ for (pheno in phenotypes) {
   allRes <- GenTable(GOdata, classicFisher = resultFisher,
                      classicKS = resultKS, elimKS = resultKS.elim,
                      orderBy = "elimKS", ranksOf = "classicFisher", topNodes = 10)
-  enrich_results[[pheno]] =  as.tibble(allRes) %>% mutate(Phenotype = pheno)
+  enrich_results[[pheno]] =  as_tibble(allRes) %>% mutate(Phenotype = pheno)
   
   #Make automatic plot
   showSigOfNodes(GOdata, score(resultKS.elim), firstSigNodes = 5, useInfo = 'all')
@@ -1257,32 +1337,34 @@ dplyr::group_by(temp, SNP, Effect_strength) %>%
   labs(x = "Effect of the mutation on protein (snpEff)",
        y = "Maximum -log10(p-value) in any GEA") 
 
+table(temp$Effect_strength)
 ```
 
-**TODO**: what about top SNPs instead of all significant? 
+Using only the top variants for each locus and each bioclimatic variables, lower the number of variants to the point that there are only 6 high effect variant left...
 ```{r snpeff topSNP}
 #Translating SnpEff effects in a numerical scale
-gene_detected = gene_detected %>% 
+gene_detected = inner_join(pheno_table, significant) %>%
+    mutate(logP = -log10(P)) %>%
+    left_join(., signif_ann) %>% 
   mutate(Ranked_effect_strength = Effect_strength)
 gene_detected$Ranked_effect_strength[gene_detected$Ranked_effect_strength == "HIGH"] = 1
 gene_detected$Ranked_effect_strength[gene_detected$Ranked_effect_strength == "MODERATE"] = 2
 gene_detected$Ranked_effect_strength[gene_detected$Ranked_effect_strength == "LOW"] = 3
 gene_detected$Ranked_effect_strength[gene_detected$Ranked_effect_strength == "MODIFIER"] = 4
-gene_detected$Ranked_effect_strength[is.na(gene_detected$Ranked_effect_strength)] = 5
+gene_detected$Ranked_effect_strength[is.na(gene_detected$Effect_strength)] = 5
 gene_detected$Effect_strength[is.na(gene_detected$Effect_strength)] = "NO_EFFECT"
 
 #For each variant, 
 #selecting the highest effect 
 temp = gene_detected %>%
-  group_by(BIO_ID, Locus_nb, SNP, Effect_strength, Ranked_effect_strength) %>% 
-  mutate(ranktemp = rank(logP, ties.method = "random")) %>%
-  filter(ranktemp == 1) 
-  
-  group_by(SNP, Effect_strength, Ranked_effect_strength) %>% 
-  summarize(logP = max(logP)) %>% 
-  group_by(SNP) %>% 
+  group_by(BIO_ID, SNP) %>% 
   mutate(ranktemp = rank(Ranked_effect_strength, ties.method = "random")) %>%
-  filter(ranktemp == 1) 
+  filter(ranktemp == 1)  %>%
+  dplyr::select(BIO_ID, CHR, Locus_nb, SNP, Effect_strength, Ranked_effect_strength, ranktemp, logP) %>%
+  group_by(BIO_ID, CHR, Locus_nb) %>% 
+  mutate(ranktemp = rank(-logP, ties.method = "random")) %>%
+  filter(ranktemp == 1) %>%
+  distinct()
 
 #Statistical test
 #One-way ANOVA with blocks
@@ -1324,7 +1406,7 @@ dplyr::group_by(temp, SNP, Effect_strength) %>%
   labs(x = "Effect of the mutation on protein (snpEff)",
        y = "Maximum -log10(p-value) in any GEA") 
 
-
+table(temp$Effect_strength)
 ```
 
 **TODO**: compare distributions of effects in significant vs all variants. Are there more high effect variants in the significant variants than expected at random? 
