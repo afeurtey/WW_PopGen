@@ -173,7 +173,7 @@ cowplot::plot_grid(heatmap_depth, bottom_row, labels = c('A', ''), label_size = 
 
 # Depth per window and GC bias
 I have used the bedtools nuc option to estimate the GC content per 1kb-window for the whole reference IPO323 genome 
-```{r}
+```{r depth ref}
 GC_per_window = read_tsv(paste0(data_dir, "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.1kb_windows.nuc_GC.tab")) %>%
   mutate(GC = round(`5_pct_gc`, 2)) %>%
   filter( !is.na(`#1_usercol`))
@@ -263,18 +263,13 @@ GC_bias = GC_coverage %>%
   left_join(., metadata_file %>% select(ID_file, Collection, Continent, Country, Region, 
                                         Sampling_Date, Latitude, Longitude))
 
-
 write_tsv(GC_bias, paste0(depth_per_window_dir, "GC_bias_per_sample.txt"))
+
 
 ggplot(GC_bias, aes(GC_bias_slope)) +
   geom_density() +
   theme_bw()
 
-temp = GC_bias %>%
-  filter(Collection != "\\N") %>%
-  group_by(Collection) %>%
-  count() %>%
-  filter(n >= 20) 
 
 #GC bias illustration
 GC_coverage %>%
@@ -291,6 +286,12 @@ GC_coverage %>%
          subtitle = "I use the slope of a linear model to infer the GC bias.")
 
 #GC bias per collection
+temp = GC_bias %>%
+  filter(Collection != "\\N") %>%
+  group_by(Collection) %>%
+  count() %>%
+  filter(n >= 20) 
+
 GC_bias_violins = inner_join(temp, GC_bias) %>%
   group_by(Collection) %>%
   mutate(Median = median(GC_bias_slope)) %>%
@@ -608,40 +609,117 @@ summary_filtered %>%
 ```
 
 ```{bash}
- awk -v threshold=${threshold_QS} 'BEGIN { FS = "," } $9 > threshold {print} ' \
+ awk -v threshold=${threshold_QS} 'BEGIN {FS = ","; OFS = "\t"} $9 > threshold {print $1,($2 + $3)/2,$4,$5,$15 } ' \
     ${DEPTHGENEDIR}Sabina_gcnv_event.csv \
-    > ${DEPTHGENEDIR}Sabina_gcnv_event.filtered.csv
+    > ${DEPTHGENEDIR}Sabina_gcnv_event.filtered.tsv
+```
+
+```{r}
+  
+#temp = read_tsv(file = paste0(depth_per_gene_dir, "Sabina_gcnv_event.filtered.tsv"),
+#                        col_names = c("CHROM", "POS", "Gene", "Sample", "Allele"), skip = 1) %>%
+#  pivot_wider(names_from = Sample, values_from = Allele, values_fill = ".")
+
+variant_list = read_tsv(file = paste0(depth_per_gene_dir, "Sabina_gcnv_event.filtered.tsv"),
+                        col_names = c("CHROM", "POS", "Gene", "Sample", "Allele"), skip = 1) %>%
+  filter(Sample %in% Zt_list$ID_file) %>%
+  mutate(POS = round(POS)) %>%
+  group_by(CHROM, POS, Gene) %>%
+  dplyr::count(Allele) %>%
+  mutate(Nb_allele = n()) %>%
+  pivot_wider(names_from = Allele, values_from = n, values_fill = 0) %>%
+  mutate(max = max(M, P, D, PD, PM), sum = sum(M, P, D, PD, PM)) 
+
+
+temp = depth_per_gene %>% filter(Sample %in% Zt_list$ID_file) %>% 
+  mutate(Norm_median_depth = as.numeric(Norm_median_depth)) %>%
+  mutate(Allele = ifelse(Norm_median_depth < 0.25, "D", 
+                                                ifelse(Norm_median_depth > 1.75, "M", "P"))) %>%
+ group_by(CHROM, Name) %>% dplyr::count(Allele) %>% mutate(Nb_allele = n()) %>%
+  pivot_wider(names_from = Allele, values_from = n, values_fill = 0) %>%
+  mutate(max = max(M, P, D), sum = sum(M, P, D)) 
+
+table(temp$Nb_allele)
+table(variant_list$Nb_allele)
+bind_rows(temp %>% mutate(Method = "Alice"), variant_list %>% mutate(Method = "Sabina"))  %>%
+  filter(Nb_allele > 1) %>% 
+  ggplot(aes(x = max, fill = Method, col = Method)) + 
+     geom_density(alpha = 0.4) + 
+     theme_bw()
+
+  
+
+
+Alice_CNV_per_sample = depth_per_gene %>% filter(Sample %in% Zt_list$ID_file) %>% 
+  mutate(Norm_median_depth = as.numeric(Norm_median_depth)) %>%
+  mutate(Allele = ifelse(Norm_median_depth < 0.25, "D", 
+                                                ifelse(Norm_median_depth > 1.25, "M", "P"))) %>%
+  filter(CHROM < 14) %>%
+  group_by(Sample) %>% dplyr::count(Allele) %>%
+  pivot_wider(names_from = Allele, values_from = n, values_fill = 0) %>%
+  mutate(max = max(M, D), sum = sum(M, D)) %>% 
+  mutate(Method = "Alice")
+
+Sabina_CNV_per_sample = read_tsv(file = paste0(depth_per_gene_dir, "Sabina_gcnv_event.filtered.tsv"),
+                        col_names = c("CHROM", "POS", "Gene", "Sample", "Allele"), skip = 1) %>%
+  filter(Sample %in% Zt_list$ID_file) %>%
+  filter(CHROM < 14) %>%
+  mutate(POS = round(POS)) %>%
+  group_by(Sample) %>% dplyr::count(Allele) %>%
+  pivot_wider(names_from = Allele, values_from = n, values_fill = 0) %>%
+  mutate(max = max(M, D, PD, PM), sum = sum(M, D, PD, PM)) %>% 
+  mutate(Method = "Sabina")
+
+write_tsv(Sabina_CNV_per_sample, 
+          file = paste0(depth_per_gene_dir, "Sabina_gcnv_event.filtered.core_chr.per_sample.tsv"))
+
+bind_rows(Alice_CNV_per_sample, Sabina_CNV_per_sample) %>%
+  ggplot(aes(x = sum, col = Method, fill = Method)) +
+  geom_density(alpha =.4) +
+  theme_bw()
+
+full_join(Alice_CNV_per_sample %>% dplyr::select(Sample, variant_Alice = sum),
+          Sabina_CNV_per_sample %>% dplyr::select(Sample, variant_Sabina = sum)) %>%
+  ggplot(aes(x = variant_Alice, y = variant_Sabina)) +
+    geom_point() +
+    theme_bw() +
+      geom_abline(intercept = 0, slope = 1)
+
+bind_rows(Alice_CNV_per_sample, Sabina_CNV_per_sample) %>% dplyr::select(-sum, -max, -P) %>% pivot_longer(-c(Sample, Method), names_to = "Variant_type", values_to = "Count") %>% ggplot(aes(fill = Method, col = Method, x = Variant_type, y = log2(Count))) + geom_violin(alpha = .4) + theme_bw()
 ```
 
 
-```{r}
+```{r CNV effectors}
 
 annot = read_tsv(paste0(data_dir, "Annotations_2018_genomes_for_publication.tab")) %>%
   filter(Sample == "Zt09")
 
 effectors = annot %>% filter(Effector == "Effector") %>% select(Protein_ID) %>% pull()
   
-effector_CNV = read_tsv(paste0(depth_per_gene_dir, "Sabina_gcnv_event.filtered.simplified.tsv")) %>%
-  filter(ref_gene %in% effectors)
+effector_CNV = read_tsv(file = paste0(depth_per_gene_dir, "Sabina_gcnv_event.filtered.tsv"),
+                        col_names = c("CHROM", "POS", "Gene", "Sample", "Allele")) %>%
+  mutate(Gene = str_replace(Gene, "TU", "chr")) %>%
+  filter(Gene %in% effectors)
 #  inner_join(., effectors, by = c("ref_gene" = "Protein_ID"))
 
-ggplot(effector_CNV, aes(x = ref_gene, y = sample, fill = event)) +
+ggplot(effector_CNV, aes(x = Gene, y = Sample, fill = Allele)) +
   geom_tile() +
   theme_cowplot() +
   theme()
 
-temp = left_join(effector_CNV, metadata_file, by = c("sample" = "ID_file")) %>%
-  mutate(sample = fct_reorder(sample, Sampling_Date)) %>%
-  mutate(sample = fct_reorder(sample, Country)) %>%
-  mutate(sample = fct_reorder(sample, Continent)) 
+temp = left_join(effector_CNV, metadata_file, by = c("Sample" = "ID_file")) %>%
+  mutate(Sample = fct_reorder(Sample, Sampling_Date)) %>%
+  mutate(Sample = fct_reorder(Sample, Country)) %>%
+  mutate(Sample = fct_reorder(Sample, Continent)) 
 
 heatmap_CNV = temp %>%
-  ggplot(aes(x = ref_gene, y = sample, fill = event)) +
+  ggplot(aes(x = Gene, y = Sample, fill = Allele)) +
   geom_tile() + 
   theme(axis.text.y = element_blank(), axis.ticks.y=element_blank(), axis.title.y = element_blank(),
-        axis.text.x = element_blank(), axis.ticks.x=element_blank()) 
+        axis.text.x = element_blank(), axis.ticks.x=element_blank()) +
+  scale_fill_manual(values = c("gold", "darkred", "grey90", "yellow", "red"))
 
-plot_continent = ggplot(data = temp, aes(x = 1, y=sample, fill=Continent)) +
+plot_continent = ggplot(data = temp, aes(x = 1, y=Sample, fill=Continent)) +
   geom_tile(aes(width = 2))  +
   theme_classic() +
   theme(axis.text.y = element_blank(), axis.ticks.y=element_blank(),
@@ -652,6 +730,38 @@ plot_continent = ggplot(data = temp, aes(x = 1, y=sample, fill=Continent)) +
 
 plot_grid(plot_continent, heatmap_CNV, rel_widths = c(2, 5))
 
+```
+```{r}
+
+CAZymes = annot %>% filter(CAZyme_family != "-") %>% select(Protein_ID) %>% pull()
+
+CAZymes_CNV = read_tsv(paste0(depth_per_gene_dir, "Sabina_gcnv_event.filtered.simplified.tsv")) %>%
+  filter(ref_gene %in% CAZymes)
+#  inner_join(., effectors, by = c("ref_gene" = "Protein_ID"))
+
+temp = left_join(CAZymes_CNV, metadata_file, by = c("sample" = "ID_file")) %>%
+  ungroup() %>%
+  #mutate(sample = fct_reorder(sample, Sampling_Date)) %>%
+  #mutate(sample = fct_reorder(sample, Country)) %>%
+  mutate(sample = fct_reorder(sample, Continent)) 
+
+heatmap_CNV2 = temp %>%
+  ggplot(aes(x = ref_gene, y = reorder(sample, Continent), fill = event)) +
+  geom_tile() + 
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(), axis.title.y = element_blank(),
+        axis.text.x = element_blank(), axis.ticks.x = element_blank()) 
+
+plot_continent = ggplot(data = temp, aes(x = 1, y = reorder(sample, Continent), fill = reorder(sample, Continent))) +
+  geom_tile(aes(width = 2))  +
+  theme_classic() +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(),
+        legend.position ="left",
+        axis.text.x = element_text(colour = "white")) +
+  scale_fill_brewer(palette = "Dark2") +
+    labs(y = "Isolate") 
+plot_continent
+
+plot_grid(plot_continent, heatmap_CNV2, rel_widths = c(2, 5))
 ```
 
 
@@ -770,7 +880,7 @@ p2 = ggplot(temp, aes(x = Value, fill = Assembly_type, col = Assembly_type)) +
        y = element_blank(), 
        subtitle = str_wrap(paste0(sum(temp$Value <= length_thr1 | temp$Value  >= length_thr2), 
                          " bad quality / ", 
-                         sum(temp$Value > length_thr &temp$Value  <= length_thr2), " good quality"), 
+                         sum(temp$Value > length_thr1 &temp$Value  <= length_thr2), " good quality"), 
                          width = 60))+
     scale_fill_manual(values = c("#FF9F1C"))  +
     scale_color_manual(values = c("#FF9F1C"))
