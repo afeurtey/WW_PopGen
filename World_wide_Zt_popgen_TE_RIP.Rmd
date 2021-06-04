@@ -178,7 +178,7 @@ blues=c("#08386E", "#1C89C9", "#28A7C0", "#B0DFE8", "grey")
 ```{bash Importation from cluster, eval = F}
 # Uploading commands from the cluster to my computer.
 
-# 4 - TE and RIP
+# TE and RIP
 rsync -avP \
   alice@130.125.25.244:/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/Nb_reads* \
   /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/0_RIP_estimation/
@@ -190,23 +190,13 @@ rsync -avP \
 rsync -avP   alice@130.125.25.244:/data2/alice/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/1_Blast_dim2_deRIPped/ \
  /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/
   
-  
-# 5 - GEA
-rsync -avP alice@130.125.25.244:/data2/alice/WW_project/5_GEA/output/* ~/Documents/Postdoc_Bruce/Projects/WW_project/5_GEA/
+ 
 
-
-# 6 - Fungicides
-rsync -avP alice@130.125.25.244:/data2/alice/WW_project/6_Fungicide_resistance/genotypes_tidy_format.tab ~/Documents/Postdoc_Bruce/Projects/WW_project/6_Fungicide_resistance/
 ```
 
 # Repeat-induced point mutations and transposable elements
 ***
-Previously, based on the study of TE and RIP in 9 *Z.tritici* genomes, a hypothesis was drawn.
-![Repeat Induced Point (RIP) mutations in transposons of Zymoseptoria spp.](/Users/feurtey/Documents/Postdoc_Eva/Manuscripts/Cecile_TE_annot/Lorrain_TE_09032020/Figure_4.png)
-**Figure from Lorrain et al. 2020: Repeat Induced Point (RIP) mutations in transposons of Zymoseptoria spp.** Histograms of Composite RIP index (CRI) frequencies of transposons estimated using a 50bp sliding windows approach as follows: CRI =(TpA/ ApT) – (CpA + TpG/ ApC + GpT) for A) Z. passerinii, Z. ardabiliae, Z. brevis and Z. pseudotritici, and B) Iranian Z. tritici isolates and C) European Z. tritici isolates. Vertical dash lines exhibit the threshold (0) above which CRI values indicate a RIP signature.
-
-
-The lower RIP in TEs of European samples, as compared to Iranian isolates, could indicate a loss of RIP in *Z.tritici* when it spread out of its area of origin. Here, I would like to investigate this possibility in the different pop.
+Previously, based on the study of TE and RIP in fully-assembled *Z.tritici* genomes, a hypothesis was drawn. The lower RIP in TEs of European samples, as compared to Iranian isolates, could indicate a loss of RIP in *Z.tritici* when it spread out of its area of origin. Here, I would like to investigate this possibility in the different pop.
 
 
 ## RIP and TE content between populations
@@ -1514,15 +1504,26 @@ temp2 = left_join(read_tsv(Zt_list, col_names = "ID_file") %>% mutate(ID2 = ID_f
   left_join(., stand) 
 
 dplyr::select(temp2, -Latitude, -Longitude) %>%
- write_delim(., 
-              "~/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/Phenotypes_for_GWAS.fam", 
-               delim = " ", col_names = F)
+ write_delim(., paste0(TE_RIP_dir, "Phenotypes_for_GWAS.fam"), delim = " ", col_names = F)
+
+#Adding PC info as covariates
+left_join(read_tsv(Zt_list, col_names = "ID_file"), read_tsv(paste0(PopStr_dir, vcf_name, ".PCA_results.tab"))) %>%
+  mutate(Intercept = 1) %>%
+  dplyr::select(Intercept, PC1, PC2, PC3, PC4) %>%
+  write_delim(., paste0(TE_RIP_dir, "PC_for_correction.cov"), delim = " ", col_names = F)
+
 
 #Transfer on the cluster
 #rsync -avP ~/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/Phenotypes_for_GWAS.fam alice@130.125.25.244:/data2/alice/WW_project/4_TE_RIP/Phenotypes_for_GWAS.fam
-
+#rsync -avP ~/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/PC_for_correction.cov alice@130.125.25.244:/data2/alice/WW_project/4_TE_RIP/2_GWAS/PC_for_correction.cov
+  
 #To run gemma on the cluster: conda activate env0
 #Commands are then in the format gemma -h 
+
+ 
+# GWAS
+#rsync -avP alice@130.125.25.244:/data2/alice/WW_project/4_TE_RIP/2_GWAS/output/Results_genomics_characteristics_* ~/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/2_GWAS/
+
 ```
 
 ```{r GEMMA results}
@@ -1656,7 +1657,7 @@ significant_TE %>% dplyr::select(CHR, Locus_nb, Phenotype) %>%
 For each region, I would like to be able to get more information about the variants: what is the distribution of the alleles compared to the phenotype with which this position was significantly associated? What is the minor allele frequency at this locus? Since it is impossible to represent all thousands of associated variants, I chose one position in particular for each significant locus identified previously. 
 ```{r one pos per locus}
 i=2
-min_length_locus = 2000
+min_length_locus = 1000
 
 whatever <- function(min_length_locus, pheno, expected_output){
   temp = significant_TE %>% 

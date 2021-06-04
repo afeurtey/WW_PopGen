@@ -361,7 +361,7 @@ for ( min_number in c(6, 10) ) {
                mapping = aes(x=Longitude2, y=Latitude2, size=Number_genomes),
                alpha = 0.6, color = "#16697a")
   
-  aus_map = cowplot::plot_grid(p3, get_legend(isolate_map), ncol = 2, rel_widths = c(1, 0.9))
+  aus_map = cowplot::plot_grid(p3, get_legend(p3), ncol = 2, rel_widths = c(1, 0.9))
   ligne = cowplot::plot_grid(p1, aus_map, ncol = 1,  rel_heights = c(1, 0.7))
   cowplot::plot_grid(p2, ligne, ncol = 2, rel_widths = c(0.7, 1)) 
   
@@ -637,11 +637,19 @@ pca2 = pca2 %>%
   unite(sample_id, Country, col = "for_display", remove = F) %>%
   filter(!is.na(PC1))
 
+#Writing table to store PCA results
+pca2 %>%
+dplyr::select(ID_file = sample_id, PC1, PC2, PC3, PC4, PC5, PC6, 
+              Collection, Continent, Country, Latitude, Longitude) %>%
+write_tsv(., file = paste0(PopStr_dir, vcf_name, ".PCA_results.tab"),
+            col_names = T)
+
+#
 as.tibble(pca$eigenval[!is.na(pca$eigenval)]) %>%
   ggplot(aes(x = c(1:length(pca$eigenval[!is.na(pca$eigenval)])),
-             y =value)) + geom_point() +
+             y =value)) + 
+  geom_point() +
   theme_bw()
-
 
 eigen_sum = sum(pca$eigenval[!is.na(pca$eigenval)])
 p = ggplot(pca2, aes(x = PC1, y= PC2, text = for_display)) +
@@ -907,6 +915,9 @@ In the case of our analysis, we do not have a very clear-cut minimum value for t
 #These values are chosen based on the plot above
 chosen_K = 11
 
+write_tsv(snmf_results_per_K %>% filter(K == chosen_K), 
+          file = paste0(PopStr_dir, vcf_name, ".snmf_results_chosen_K.tab"))
+
 #Table
 kable(snmf_results_per_K %>%
   filter(K == chosen_K) %>%
@@ -1089,6 +1100,8 @@ temp = chosen_coef  %>%
   summarize(average_coef = mean(Admix_coef), number_of_isolates = n()) %>%
   filter(!is.na(Latitude))
 
+write_tsv(temp, file = paste0(PopStr_dir, vcf_name, ".chosen_coef_pies.tab"))
+
 #Transforming to fit the scatter pie requirements
 pies  = temp %>% #filter(number_of_isolates > 2) %>%
   mutate(Cluster2 = ifelse(average_coef < 0.1, "Other", Cluster)) %>%
@@ -1123,7 +1136,7 @@ p3 = map1 + coord_cartesian(xlim=c(115, 175), ylim=c(-65, 10)) +
                            "V2", "V8", "V11", "V5", "V4"), color=NA, alpha=.8)
 
 #Plotting all the maps together! 
-aus_map = cowplot::plot_grid(p3, get_legend(isolate_map), ncol = 2, rel_widths = c(1, 0.9))
+aus_map = cowplot::plot_grid(p3, get_legend(p1), ncol = 2, rel_widths = c(1, 0.9))
 ligne = cowplot::plot_grid(p1, aus_map, ncol = 1,  rel_heights = c(1, 0.7))
 cowplot::plot_grid(p2, ligne, ncol = 2, rel_widths = c(0.7, 1)) 
 
@@ -1261,7 +1274,7 @@ threepop -i ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix.gz -k 500 | grep "^V" >
 ```
 
 ```{r}
-kibble(read_delim(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.treemix.3pop.tab"), delim = " ", 
+kable(read_delim(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.treemix.3pop.tab"), delim = " ", 
            col_names = c("populations", "f3 statistic", "standard error", "Z-score")) %>%
   filter(`f3 statistic` < 0))
 ```

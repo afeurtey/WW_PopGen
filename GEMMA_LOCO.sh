@@ -43,7 +43,8 @@ ${SOFTPATH}plink \
   --vcf ${vcf_dir}${PERCHR_VCFNAME}.recode.vcf.gz \
   --make-bed \
   --out ${GEA_dir}${PERCHR_VCFNAME} \
-  --double-id 
+  --double-id \
+  --maf 0.05
 
 cp ${Pheno_fam_file} ${GEA_dir}${PERCHR_VCFNAME}.fam
 
