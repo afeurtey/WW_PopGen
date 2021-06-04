@@ -2,8 +2,8 @@
 
 source $1
 
-if [ "${SLURM_ARRAY_TASK_ID}" -eq 0 ] ; 
-then 
+if [ "${SLURM_ARRAY_TASK_ID}" -eq 0 ] ;
+then
   CHR="mt";
 else
   CHR=${SLURM_ARRAY_TASK_ID} ;
@@ -26,7 +26,7 @@ ${SOFTPATH}plink \
   --vcf ${GEA_dir}${VCFNAME}.thin-200bp.wo_${CHR}.recode.vcf \
   --make-bed \
   --out ${GEA_dir}For_kinship_${CHR} \
-  --double-id 
+  --double-id --biallelic-only strict
 
 cd ${GEA_dir}
 cp ${Pheno_fam_file} For_kinship_${CHR}.fam
@@ -44,8 +44,10 @@ ${SOFTPATH}plink \
   --make-bed \
   --out ${GEA_dir}${PERCHR_VCFNAME} \
   --double-id \
-  --maf 0.05
+  --biallelic-only strict \
+  --maf 0.01
 
+#Association with standardized values
 cp ${Pheno_fam_file} ${GEA_dir}${PERCHR_VCFNAME}.fam
 
 for i in {1..20} ;
@@ -53,7 +55,21 @@ do
 gemma \
   -bfile ${GEA_dir}${PERCHR_VCFNAME} \
   -lmm 1 \
+  -c ${WWTERIP_DIR}2_GWAS/PC_for_correction.cov \
   -k output/Kinship_for_chr${CHR}.cXX.txt \
   -o Kinship_for_chr${CHR}_for_phenotype_${i} \
+  -n ${i}
+done
+
+# Association with non standardized values
+cp ${Pheno_fam_file.fam}_non_standard.fam ${GEA_dir}${PERCHR_VCFNAME}.fam
+for i in {1..20} ;
+do
+gemma \
+  -bfile ${GEA_dir}${PERCHR_VCFNAME} \
+  -lmm 1 \
+  -k output/Kinship_for_chr${CHR}.cXX.txt \
+  -c ${WWTERIP_DIR}2_GWAS/PC_for_correction.cov \
+  -o GEMMA_results_for_chr${CHR}_for_phenotype_${i}_non_standardized \
   -n ${i}
 done
