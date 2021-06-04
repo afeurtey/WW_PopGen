@@ -15,6 +15,7 @@ GATK_PATH=${SOFTPATH}gatk-4.1.4.1/gatk #Matching Daniel's
 BCFTOOLS_PATH=${SOFTPATH}bcftools-1.10.2/bcftools
 VCFTOOLS_PATH=${SOFTPATH}vcftools_jydu/src/cpp/vcftools
 TABIX_PATH=${SOFTPATH}htslib-1.10.2/tabix
+SNPEFF_PATH=${SOFTPATH}snpEff/
 
 # Files directories
 #------------------
