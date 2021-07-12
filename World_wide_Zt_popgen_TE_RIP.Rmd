@@ -6,13 +6,13 @@ output:
   html_document:
     toc: yes
     toc_float: yes
-    css: /Users/feurtey/Documents/epur_css.css
+    css: ~/Documents/epur_css.css
     number_sections: no
     code_folding: hide
   #html_document:
    # toc: yes
    # df_print: paged
-logo: /Users/feurtey/Documents/Postdoc_Bruce/Communication/Logo_WWZt.png
+logo: ~/Documents/Postdoc_Bruce/Communication/Logo_WWZt.png
 ---
 
 
@@ -55,13 +55,13 @@ library(multcomp)
 
 #Variables
 world <- map_data("world")
-project_dir="/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/"
-lists_dir = "/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/WW_PopGen/Keep_lists_samples/"
+project_dir="~/Documents/Postdoc_Bruce/Projects/WW_project/"
+lists_dir = "~/Documents/Postdoc_Bruce/Projects/WW_project/WW_PopGen/Keep_lists_samples/"
 
 #Data directories
 data_dir=paste0(project_dir, "0_Data/")
 metadata_dir=paste0(project_dir, "Metadata/")
-fig_dir = "/Users/feurtey/Documents/Postdoc_Bruce/Manuscripts/Feurtey_WW_Zt/Draft_figures/"
+fig_dir = "~/Documents/Postdoc_Bruce/Manuscripts/Feurtey_WW_Zt/Draft_figures/"
 
 #Analysis directories
 #-___________________
@@ -89,7 +89,7 @@ vcf_name="Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.var
 vcf_name_nomaf="Ztritici_global_March2021.filtered-clean.AB_filtered.SNP.max-m-0.8.thin-1000bp"
 vcf_name_mito = "Ztritici_global_March2021.genotyped.mt.filtered.clean.AB_filtered.variants.good_samples.max-m-80"
 Zt_list = paste0(lists_dir, "Ztritici_global_March2021.genotyped.good_samples.args")
-effectors_annotation_file = "/Users/feurtey/Documents/Postdoc_Eva/Manuscripts/Accepted/Alice_Cecile_Comparative_genomics/Data_for_publication/Annotations_2018_genomes_for_publication.tab"
+effectors_annotation_file = "~/Documents/Postdoc_Eva/Manuscripts/Accepted/Alice_Cecile_Comparative_genomics/Data_for_publication/Annotations_2018_genomes_for_publication.tab"
 eggnog_annotation = paste0(data_dir, "Zymoseptoria_tritici.MG2.Grandaubert2015.eggnog")
 gff_file = paste0(data_dir, "Zymoseptoria_tritici.MG2.Grandaubert2015.no_CDS.gff3")
 ref_fasta_file = paste0(data_dir, "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa")
@@ -146,6 +146,11 @@ Zt_meta = read_tsv(paste0(metadata_dir, metadata_name, "_with_collection.tab"),
   mutate(Country = ifelse(Country == "CH", "Switzerland", Country)) %>%
   mutate(Latitude2 = round(Latitude, 2), Longitude2 = round(Longitude, 2))
 
+temp = read_tsv(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.tsv")) %>%
+  dplyr::select(ID_file = Sample, Cluster)
+
+Zt_meta = full_join(Zt_meta, temp)
+
 #genotyped_samples %>%
 #  filter(!(ID_file %in% filtered_samples$ID_file)) %>%
 #    write_tsv(Zt_list, col_names = F)
@@ -181,14 +186,14 @@ blues=c("#08386E", "#1C89C9", "#28A7C0", "#B0DFE8", "grey")
 # TE and RIP
 rsync -avP \
   alice@130.125.25.244:/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/Nb_reads* \
-  /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/0_RIP_estimation/
+  ~/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/0_RIP_estimation/
 # Nb_reads_per_TE.txt
 # Nb_reads.txt
 rsync -avP \
   alice@130.125.25.244:/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/Composite_index.txt \
-  /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/0_RIP_estimation/
+  ~/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/0_RIP_estimation/
 rsync -avP   alice@130.125.25.244:/data2/alice/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/1_Blast_dim2_deRIPped/ \
- /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/
+ ~/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/
   
  
 
@@ -270,22 +275,171 @@ CLD$.group=gsub(" ", "", CLD$.group)
 TE_prop +
   geom_text(data = CLD, aes(x = Continent, label = .group, y = 34), color   = "black")
 
-TE_qty %>%
-  filter(!is.na(Continent)) %>%
-  filter(Collection != "Hartmann_FstQst_2015") %>%
-  ggplot(aes(x = Continent, y = Percent_TE_Reads, fill = Continent)) +
-  geom_hline(aes(yintercept = world_avg),
-             color = "gray30", size = 0.6, linetype = "dashed") +
-    geom_violin(alpha = .8) +
-  stat_summary(fun = mean, geom = "point", size = 2, color = "grey30") +
-    theme_classic() + Fill_Continent + Color_Continent +
-  theme_cowplot()  +
-    theme(axis.text.x = element_text(angle = 40, hjust = 1)) +
-  labs (x = "", y = str_wrap("Percentage of reads", width = 30),
-        title = "Amount of reads mapping on TE consensus per continent",
-        subtitle = str_wrap(paste(""), width = 70))
+```
+
+At this stage, I have three different TE quantity measure: the percentage of reads that mapped on the consensus reads and the number of  insertions (both reference and non-reference) identified by ngs_te_mapper2. Let's see how they compare.
+```{r method comparison}
+TE_qty = full_join(read_delim(paste0(TE_RIP_dir, "Non-ref_TE_numbers.txt"), 
+                                     col_names = c("ID_file", "Non_ref_insertions"),
+                                     delim = " "),
+                          read_delim(paste0(TE_RIP_dir, "Ref_TE_numbers.txt"), 
+                                     col_names = c("ID_file", "Ref_insertions"),
+                                     delim = " ")) %>%
+  left_join(TE_qty) %>%
+  mutate(Total_insertions = Ref_insertions + Non_ref_insertions)
+
+
+p1 = TE_qty %>%
+  ggplot(aes(x = Non_ref_insertions, y = Ref_insertions, col = Continent)) +
+    geom_point(alpha = .8) +
+    theme_bw() +
+    Color_Continent +
+    theme(legend.position = "None")
+
+p2 = TE_qty %>%
+  ggplot(aes(x = Percent_TE_Reads, y = Total_insertions, col = Continent)) +
+    geom_point(alpha = .8) +
+    theme_bw() +
+    Color_Continent +
+    theme(legend.position = "None")
+
+p3 = TE_qty %>%
+  ggplot(aes(x = Percent_TE_Reads, y = Ref_insertions, col = Continent)) +
+    geom_point(alpha = .8) +
+    theme_bw() +
+    Color_Continent +
+    theme(legend.position = "None")
+
+p4 = TE_qty %>%
+  ggplot(aes(x = Percent_TE_Reads, y = Non_ref_insertions, col = Continent)) +
+    geom_point(alpha = .8) +
+    theme_bw() +
+    Color_Continent +
+    theme(legend.position = "None")
+
+cowplot::plot_grid(p1, p2, p3, p4, ncol = 2, nrow = 2)
+```
+
+
+```{r collec bias}
+#Collections comparisons
+ggplot(TE_qty, aes(x = Total_insertions, y = Percent_TE_Reads, col = Collection)) +
+  geom_point(alpha = .8) +
+  theme_bw() 
+p1 = ggplot(TE_qty, aes(x = Percent_TE_Reads, col = Collection, fill = Collection)) +
+  geom_density(alpha = .4) +
+  theme_bw() 
+p2 = ggplot(TE_qty, aes(x = Ref_insertions, col = Collection, fill = Collection)) +
+  geom_density(alpha = .4) +
+  theme_bw() 
+p3 = ggplot(TE_qty, aes(x = Non_ref_insertions, col = Collection, fill = Collection)) +
+  geom_density(alpha = .4) +
+  theme_bw() 
+
+cowplot::plot_grid(p1+
+    theme(legend.position = "None"), p2+
+    theme(legend.position = "None"), p3+
+    theme(legend.position = "None"), get_legend(p1 + theme(legend.position = "bottom")),
+    ncol = 1, nrow = 4, rel_heights = c(1, 1, 1, .5))
+
+temp = TE_qty %>% filter(!is.na(Continent))%>% filter(!is.na(Collection))
+model1 = lm(Non_ref_insertions ~  Collection,
+          data=temp)
+summary(model1)
+model2 = lm(Ref_insertions ~  Collection,
+          data=temp)
+summary(model2)
+model3 = lm(Percent_TE_Reads ~  Collection,
+          data=temp)
+summary(model3)
 
 ```
+Comparing the 3 models, it is clear that the reference insertions estimation is the most biased of the 3 methods (when taking the sequencing batch into account). The non-reference insertions does not look too bad. 
+
+I now want to see if adding the continent information on top of the collection one to the model brings a significant improvement or not.
+```{r model comparison}
+model11 = lm(Non_ref_insertions ~  Collection + Continent,
+          data=temp)
+summary(model11)
+model31 = lm(Percent_TE_Reads ~  Collection + Continent,
+          data=temp)
+summary(model31)
+
+#Comparison of simple vs complex models
+anova(model1, model11)
+anova(model3, model31)
+
+temp = TE_qty %>% filter(!is.na(Continent))%>% filter(!is.na(Collection)) %>% filter(!is.na(Cluster))
+model11 = lm(Non_ref_insertions ~  Collection + Continent,
+          data=temp)
+model31 = lm(Percent_TE_Reads ~  Collection + Continent,
+          data=temp)
+model12 = lm(Non_ref_insertions ~  Collection + Continent + Cluster,
+          data=temp)
+summary(model12)
+model32 = lm(Percent_TE_Reads ~  Collection + Continent + Cluster,
+          data=temp)
+summary(model32)
+
+anova(model11, model12)
+anova(model31, model32)
+```
+The fit is indeed improved by adding the collection information, with both TE quantity estimations. 
+
+```{r plots te insertions}
+
+#Check collections on plot
+model = lm(Non_ref_insertions ~  Collection, data=TE_qty)
+CLD = cld(lsmeans(model, ~ Collection),  alpha   = 0.05, Letters = letters, adjust  = "tukey") 
+CLD$.group=gsub(" ", "", CLD$.group)
+
+TE_qty %>%
+  filter(!is.na(Collection)) %>%
+  ggplot(aes(x = Collection, y = Non_ref_insertions, fill = Collection)) +
+    geom_violin(alpha = .8)  +
+  theme_cowplot()  +
+    theme(axis.text.x = element_text(angle = 40, hjust = 1)) +
+  labs (x = "", y = str_wrap("Non-reference insertions", width = 30),
+        title = "TE insertions per collection",
+        subtitle = str_wrap(paste(""), width = 70)) +
+  geom_text(data = CLD, aes(x = Collection, label = .group, y = 430), color   = "black")
+
+
+#Continents
+model = lm(Non_ref_insertions ~  Continent, data=TE_qty)
+CLD = cld(lsmeans(model, ~ Continent), alpha   = 0.05, Letters = letters, adjust  = "tukey")
+CLD$.group=gsub(" ", "", CLD$.group)
+
+TE_qty %>%
+  filter(!is.na(Continent)) %>%
+  ggplot(aes(x = Continent, y = Non_ref_insertions, fill = Continent)) +
+    geom_violin(alpha = .8)  +
+  Fill_Continent + Color_Continent +
+  theme_cowplot()  +
+    theme(axis.text.x = element_text(angle = 40, hjust = 1)) +
+  labs (x = "", y = str_wrap("Non-reference insertions", width = 30),
+        title = "TE insertions per continent",
+        subtitle = str_wrap(paste(""), width = 70)) +
+  geom_text(data = CLD, aes(x = Continent, label = .group, y = 430), color   = "black")
+
+#Cluster
+model = lm(Non_ref_insertions ~  Cluster, data=TE_qty)
+CLD = cld(lsmeans(model, ~ Cluster), alpha   = 0.05, Letters = letters, adjust  = "tukey")
+CLD$.group=gsub(" ", "", CLD$.group)
+
+TE_qty %>%
+  filter(!is.na(Cluster)) %>%
+  ggplot(aes(x = Cluster, y = Non_ref_insertions, fill = Cluster)) +
+    geom_violin(alpha = .8)  +
+  theme_cowplot()  +
+    theme(axis.text.x = element_text(angle = 40, hjust = 1)) +
+  labs (x = "", y = str_wrap("Non-reference insertions", width = 30),
+        title = "TE insertions per cluster",
+        subtitle = str_wrap(paste(""), width = 70)) +
+  geom_text(data = CLD, aes(x = Cluster, label = .group, y = 430), color   = "black")
+
+```
+
 ```{r TE content estimation plots woHOG}
 
 #Reading in the data
@@ -330,7 +484,6 @@ summary(model2)   ### Will show overall p-value and r-squared
 Anova(model2,type = "II")  
 summary(model2)
 
-hist(residuals(model2), col="darkgray")
 
 #Post-hoc analysis:  mean separation tests
 marginal = lsmeans(model2, ~ Continent)
@@ -1296,7 +1449,7 @@ temp2 = dim2_blast_results %>%
 #Model = Jukes-Cantor
 #Bootstrap resampling = 100
 
-tree = as_tibble(treeio::read.tree("/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/Essai_dim2_tree.nwk")) %>%
+tree = as_tibble(treeio::read.tree("~/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/Essai_dim2_tree.nwk")) %>%
   mutate(label_copy = label) %>%
   separate(label_copy, into = c("nb", "contig"), extra = "merge", remove =F) %>%
   dplyr::mutate(nb = as.integer(nb)) %>%
@@ -1306,7 +1459,7 @@ tree = as_tibble(treeio::read.tree("/Users/feurtey/Documents/Postdoc_Bruce/Proje
   dplyr::mutate(label_temp = ifelse(is.na(sample), ifelse(is.na(contig), label, contig), sample)) %>%
   unite(col = "label_new", nb, label_temp, sep = "_")
 
-tree2 = as_tibble(treeio::read.tree("/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/Essai_dim2_tree.nwk"))
+tree2 = as_tibble(treeio::read.tree("~/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/Essai_dim2_tree.nwk"))
 
 temp = tree %>%
   dplyr::select(label, node, label_new, Continent, Composite_median, Collection) %>%
@@ -1582,7 +1735,7 @@ results_GWAS = results_GWAS %>% mutate(SNP_type = ifelse(P <= Bonferroni_thresho
 
 significant_TE = results_GWAS %>%
   filter(P <= Bonferroni_threshold)  %>% group_by(SNP, CHR, BP) %>%
-  mutate(Count = n()) %>% mutate(SNP_type = "significant")%>% 
+  dplyr::mutate(Count = n()) %>% mutate(SNP_type = "significant")%>% 
   ungroup() 
 
 significant_TE %>%
@@ -1606,27 +1759,16 @@ for (j in c(1:length(phenotypes))) {
     v = filter(significant_TE, CHR == i) %>% 
       filter(Phenotype == phenotypes[j]) %>%
       dplyr::select(CHR, BP) %>% 
-      distinct() %>% pull(BP) %>% sort()
+      distinct() %>% 
+      pull(BP) %>% sort()
     
     # Split the vectors into group based on the length threshold
     temp = split(v, cumsum(c(TRUE, diff(v) >= len_threshold)))
     #print(paste(c(phenotypes[j], i, length(temp)), sep = " "))
     
-    #Single value gets the column name "value" instead of a number
-    if (length(temp) == 1) {
-      temp_tibble = as.tibble(sapply(temp, '[', seq(max(sapply(temp, length)))))
-      colnames(temp_tibble) <- 1
-      print(temp_tibble)
-    } else {
-      temp_tibble = as.tibble(sapply(temp, '[', seq(max(sapply(temp, length)))))
-    }
-    
-    # Transform to store relevant info in tidy format
-    temp2[[i]] = temp_tibble %>% 
-      pivot_longer(cols =everything(), names_to = "Locus_nb", values_to = "BP") %>%
-      filter(complete.cases(.)) %>%
-      mutate(CHR = i, Phenotype = phenotypes[j]) %>% 
-      ungroup()
+    temp2[[i]] = temp %>% map_df(enframe, .id = 'Locus_nb') %>% 
+      dplyr::rename(BP = value)%>%
+      mutate(CHR = i)
   }
 list_loci[[j]] = bind_rows(temp2)
 }
@@ -1812,7 +1954,7 @@ c
 ```
 
 ```{r}
-temp = tibble(CHR = c(5, 6), Gene = c("rid", "dnmt5"), Pos = c(82000, 2527000))
+temp = tibble(CHR = c(5, 6), Gene = c("rid", "dnmt5"), Pos = c(255000, 2527000))
 
 p = Manhattan_one_pheno("TE", c("#FFD399", "#ff9f1c")) +
   labs(y = str_wrap("TE content (-logP)", 25)) + 
@@ -1836,11 +1978,18 @@ cowplot::plot_grid(p, q, ncol = 1)
 ```{r}
 #Set parameters for the plot
 chromosome = 5
-min_coord = 68000
-max_coord = 95000
-genes_to_highlight = c("Zt09_model_5_00004")
-TE_gff = "/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/Cecile_IPO323_refTEs_match.gff"
-gene_gff = "/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/Zymoseptoria_tritici.MG2.Grandaubert2015.mRNA.gff3"
+min_coord = 220000
+max_coord = 270000
+#chromosome = 13
+#min_coord = 800048
+#max_coord = 1129645
+
+#chromosome = 3
+#min_coord = 3210000
+#max_coord = 3216000
+genes_to_highlight = c("Zt09_model_5_00047")
+TE_gff = "~/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/Cecile_IPO323_refTEs_match.gff"
+gene_gff = "~/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/Zymoseptoria_tritici.MG2.Grandaubert2015.mRNA.gff3"
 
 # Prepare the gene section of the plot
 c = plot_gff(TE_gff, chromosome, min_coord, max_coord, genes_to_highlight, "grey50")
@@ -1886,12 +2035,13 @@ cowplot::plot_grid(b,  d, c, ncol = 1, align = 'v', axis = 'lr', rel_heights = c
 ```
 
 ```{r}
-SNP_name = "5_69389"
+#SNP_name = "5_69389"
+SNP_name = "5_245550"
 #SNP_name = "5_90258"
 #SNP_name = "6_820378"
 #SNP_name = "1_758601"
-pheno = "RIP_med"
-
+#pheno = "RIP_med"
+pheno = "TE"
 
 allele = significant_TE %>% 
     filter(Phenotype == pheno) %>% 

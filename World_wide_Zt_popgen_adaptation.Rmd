@@ -3,14 +3,14 @@ title: "Detecting adapation"
 author: "Alice Feurtey"
 date: "5/5/2020"
 output:
-  pdf_document:
-    toc: yes
   html_document:
     toc: yes
     toc_float: yes
     css: ~/Documents/epur_css.css
     number_sections: no
     code_folding: hide
+  pdf_document:
+    toc: yes
 logo: ~/Documents/Postdoc_Bruce/Communication/Logo_WWZt.png
 ---
 
@@ -111,7 +111,7 @@ vcf_name_mito = "Ztritici_global_March2021.genotyped.mt.filtered.clean.AB_filter
 Zt_list = paste0(lists_dir, "Ztritici_global_March2021.genotyped.good_samples.args")
 gff_file = paste0(data_dir, "Zymoseptoria_tritici.MG2.Grandaubert2015.no_CDS.gff3")
 effectors_annotation_file = "~/Documents/Postdoc_Eva/Manuscripts/Accepted/Alice_Cecile_Comparative_genomics/Data_for_publication/Annotations_2018_genomes_for_publication.tab"
-eggnog_annotation = paste0(data_dir, "Zymoseptoria_tritici.MG2.Grandaubert2015.eggnog")
+#eggnog_annotation = paste0(data_dir, "Zymoseptoria_tritici.MG2.Grandaubert2015.eggnog")
 ref_fasta_file = paste0(data_dir, "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa")
 metadata_name = "Main_table_from_SQL_Feb_2020"
 gene_annotation = read_tsv(paste0(data_dir, "Badet_GLOBAL_PANGENOME_TABLE.txt"))
@@ -169,6 +169,7 @@ Zt_meta = read_tsv(paste0(metadata_dir, metadata_name, "_with_collection.tab"),
 #genotyped_samples %>%
 #  filter(!(ID_file %in% filtered_samples$ID_file)) %>%
 #    write_tsv(Zt_list, col_names = F)
+eggnog_functions = read_tsv(paste0(data_dir, "eggnog_mapper/query_seqs.fa.emapper.annotations"), col_names = read_tsv(paste0(data_dir, "eggnog_mapper/column_names.tab"), col_names =  c("Ignore", "Names")) %>% pull(Names), comment = "#")
 
 
 
@@ -217,7 +218,12 @@ pheno_table = tibble(BIO_ID = paste0("BIO", c(1:19)),
                                   "Temperature", "Temperature", "Temperature range", "Temperature/rain",
                                   "Temperature/rain", "Temperature", "Temperature", "Precipitation",
                                   "Precipitation", "Precipitation", "Precipitation range", "Precipitation",
-                                  "Precipitation", "Temperature/rain", "Temperature/rain"))
+                                  "Precipitation", "Temperature/rain", "Temperature/rain"),
+                     Sub_category = c("Annual", "Annual", NA, "Annual",
+                                      "High", "Low", "Annual", NA,
+                                      NA, "High", "Low", "Annual",
+                                      "High", "Low", "Annual", "High",
+                                      "Low", NA, NA))
 
 
 #Bioclim_var[c(2, 3, 7)] = "Ranges bioclimatic variables"
@@ -360,8 +366,6 @@ climate_per_coord_standard = climate_per_coordinates %>%
   mutate(Standard_value = scale(Value)) %>%
   dplyr::select(-Value) %>%
   pivot_wider(names_from = Variable_climate, values_from = Standard_value)
-
-
 ```
 
 
@@ -418,16 +422,16 @@ ggplot(data = filter(temp, !is.na(Phenotype)), aes(x = Phenotype, y = n, fill = 
                            width = 60))
 
 #Write subset files
-for (bio_var in c(5, 10, 6, 11, 13, 16, 14, 17)){
-temp = inner_join(filtering_extreme_climate, pheno_table) %>%
-  filter(BIO_ID == paste0("BIO", bio_var)) %>%
-  filter(to_filter == "Keep") %>%
-  mutate(ID2 = ID_file) %>% 
-  dplyr::select(ID_file, ID2, Value) 
-bind_cols(temp, tibble(X1 = rep(0, nrow(temp)), X2 = rep(0, nrow(temp)), X3 = rep(0, nrow(temp)))) %>%
-  dplyr::select(ID_file, ID2, X1, X2, X3, Value) %>%
-  write_tsv(path = paste0(GEA_dir, "Phenotypes_with_climatic_variables_BIO", bio_var, ".fam"), col_names = F)
-
+#for (bio_var in c(5, 10, 6, 11, 13, 16, 14, 17)){
+for (bio_var in c(1,2,3,4,7,8,9,12,15,18,19)){
+  temp = inner_join(filtering_extreme_climate, pheno_table) %>%
+    filter(BIO_ID == paste0("BIO", bio_var)) %>%
+    left_join(read_tsv(Zt_list, col_names = "ID_file") %>% mutate(ID2 = ID_file),.) %>%
+    filter(to_filter == "Keep") %>%
+    dplyr::select(ID_file, ID2, Value) 
+  bind_cols(temp, tibble(X1 = rep(0, nrow(temp)), X2 = rep(0, nrow(temp)), X3 = rep(0, nrow(temp)))) %>%
+    dplyr::select(ID_file, ID2, X1, X2, X3, Value) %>%
+    write_tsv(path = paste0(GEA_dir, "Phenotypes_with_climatic_variables_BIO", bio_var, ".fam"), col_names = F)
 }
 #Transfer on the cluster
 #rsync -avP ~/Documents/Postdoc_Bruce/Projects/WW_project/5_GEA/Phenotypes_with_climatic_variables_BIO* alice@130.125.25.244:/data2/alice/WW_project/5_GEA/
@@ -470,20 +474,35 @@ First, I read the results that I got from running GEMMA with a LOCO strategy (i.
 
 results_GEMMA = list()
 for (i in c(1:length(Bioclim_var))) {
-  temp = list.files(path = paste0(GEA_dir, "Wo_PC/"), pattern = paste0("*_for_phenotype_", i,".assoc.txt")) %>% 
-    map_df(~read_tsv(file = paste0(GEA_dir, "Wo_PC/", .), col_types = c("dcddccdddddd"))) %>%
+  temp = list.files(path = paste0(GEA_dir, "0_Basic/"), pattern = paste0("*phenotype_", i,".subset_ALL.assoc.txt")) %>% 
+    map_df(~read_tsv(file = paste0(GEA_dir, "0_Basic/", .), col_types = c("dcddccdddddd"))) %>%
     unite(col = SNP, chr, ps, sep = "_", remove = F) %>%
     dplyr::select(SNP, CHR = chr, BP = ps, P = p_wald, zscore = logl_H1) %>%
-    mutate(Phenotype = Bioclim_var[i], Nb = i)
+    mutate(Phenotype = Bioclim_var[i], Nb = i, Subset = "ALL")
+  
   results_GEMMA[[Bioclim_var[i]]] = temp
 }
 
+#subset_BIO = c(5, 6, 10, 11, 13, 14, 16, 14, 17)
+
+#results_GEMMA_wo_extr = list()
+#TODO: merge both
+#for (i in subset_BIO) {
+#  bio_ID = paste0("BIO", i)
+#  phenotype = filter(pheno_table, BIO_ID == bio_ID) %>% pull(Phenotype)
+
+#  temp = list.files(path = paste0(GEA_dir, "2_Subsets/"), pattern = paste0("*subset_", bio_ID,".assoc.txt")) %>% 
+#    map_df(~read_tsv(file = paste0(GEA_dir, "2_Subsets/", .), col_types = c("dcddccdddddd"))) %>%
+#    unite(col = SNP, chr, ps, sep = "_", remove = F) %>%
+#    dplyr::select(SNP, CHR = chr, BP = ps, P = p_wald, zscore = logl_H1) %>%
+#    mutate(Phenotype = phenotype, Nb = i, Subset = "No_extreme")
+#  results_GEMMA_wo_extr[[phenotype]] = temp
+#}
+
+#results_GEMMA_wo_extr = bind_rows(results_GEMMA_wo_extr)
+
 results_GEMMA = bind_rows(results_GEMMA)
 
-
-core_temperature_variable = c("Max Temperature of Warmest Month", "Min Temperature of Coldest Month")
-
-core_rain_variable = c("Precipitation of Wettest Month", "Precipitation of Driest Month")
 
 ```
 
@@ -512,20 +531,20 @@ GWASTools::qqPlot(temp, thinThreshold = 2)
 To determine which variants are significant, we use the Bonferroni correction method, i.e. we divide the traditional threshold of significance of 0.05 by the number of variants that we tested. Based on this corrected threshold, we can then identify variants significantly associated with each environmental condition that we tested.
 ```{r GWAS signif}
 head(results_GEMMA) 
-Bonferroni_threshold = results_GEMMA %>% dplyr::count(Nb) %>%
-  mutate(Bonferroni_threshold = 0.05/n) %>% summarize(average = mean(Bonferroni_threshold)) %>% pull()
-
+Bonferroni_thresholds = results_GEMMA %>% dplyr::count(Phenotype, Nb) %>%
+  mutate(Bonferroni_threshold = 0.05/n) #%>% summarize(average = mean(Bonferroni_threshold)) %>% pull()
+results_GEMMA = full_join(results_GEMMA, Bonferroni_thresholds)
 
 significant = results_GEMMA %>%
   filter(P <= Bonferroni_threshold)  %>% group_by(SNP, CHR, BP) %>%
   mutate(Count = n()) %>% mutate(SNP_type = "significant")%>% 
   ungroup() 
 
-BIO_sum_table = full_join(BIO_sum_table, results_GEMMA %>% 
+BIO_sum_table = full_join(BIO_sum_table, results_GEMMA) %>% 
   filter(P <= Bonferroni_threshold) %>% 
   dplyr::count(Phenotype) %>% 
   arrange(n) %>%
-  dplyr::select(Phenotype, Nb_signif_variants = n))
+  dplyr::select(Phenotype, Nb_signif_variants = n)
 kable(BIO_sum_table)
 
 significant %>%
@@ -536,48 +555,47 @@ significant %>%
 
 Identifying the variants which are significant is very useful already, but it is hard to work with so many "independent" positions. It also does not make sense conceptually, as nearby variants are probably picking up the exact same signal through linkage. So, here I gather variants together into "significant loci" if they are no bigger gaps than a certain threshold.
 ```{r signif loci}
-#Distance between two significant SNPs to include them in the same region
-len_threshold = 20000L
 
-#For each phenotype and for each chromosome
-
-list_loci = list()
-for (j in c(1:length(Bioclim_var))) {
+#Function to gather positions into loci
+from_positions_to_loci <- function(tibble_pos, distance_threshold) {
+  chromosomes = unique(sort(tibble_pos$CHR))
   temp2 = list()
-  for (i in c(1:13)){
-    #Pull vector of position for the right chromosome and phenotype
-    v = filter(significant, CHR == i) %>% 
-      filter(Phenotype == Bioclim_var[j]) %>%
+  for (i in chromosomes){
+    v = tibble_pos %>%
+      filter(CHR == i) %>%
       dplyr::select(CHR, BP) %>% 
       distinct() %>% pull(BP) %>% sort()
     
     # Split the vectors into group based on the length threshold
-    temp = split(v, cumsum(c(TRUE, diff(v) >= len_threshold)))
+    temp = split(v, cumsum(c(TRUE, diff(v) >= distance_threshold)))
     
-    #Single value gets the column name "value" instead of a number
-    if (length(temp) == 1) {
-      temp_tibble = as_tibble(sapply(temp, '[', seq(max(sapply(temp, length)))))
-      colnames(temp_tibble) <- 1
-    } else {
-      temp_tibble = as_tibble(sapply(temp, '[', seq(max(sapply(temp, length)))))
-    }
+    temp2[[i]] =  temp %>% map_df(enframe, .id = 'Locus_nb') %>% rename(BP = value) %>%
+      mutate(CHR = i)
     
-    # Transform to store relevant info in tidy format
-    temp2[[i]] = temp_tibble %>% 
-      pivot_longer(cols =everything(), names_to = "Locus_nb", values_to = "BP") %>%
-      filter(complete.cases(.)) %>%
-      mutate(CHR = i, Phenotype = Bioclim_var[j]) %>% 
-      ungroup()
   }
-list_loci[[j]] = bind_rows(temp2)
+  
+  bind_rows(temp2) %>%
+    dplyr::select(CHR, Locus_nb, BP) %>%
+    arrange(CHR, Locus_nb, BP)
+}
+
+
+distance_threshold = 10000L #Distance between two significant SNPs to include them in the same region
+
+#For each phenotype, get significant loci from list of positions
+list_loci = list()
+for (j in c(1:length(Bioclim_var))) {
+  list_loci[[j]] = from_positions_to_loci(filter(significant, Phenotype == Bioclim_var[j]),
+                         distance_threshold) %>%
+    mutate(Phenotype = Bioclim_var[j])
 }
 
 #Adding locus info to the table
-significant = bind_rows(list_loci) %>%
-  full_join(significant, .) %>% 
-  group_by(CHR, Locus_nb) %>%
+significant = full_join(bind_rows(list_loci), significant) %>% 
+  group_by(CHR, Locus_nb, Phenotype) %>%
   mutate(Locus_length = 1 + max(BP) - min(BP)) %>%
   ungroup()
+ggplot(significant, aes(Locus_length)) + geom_density() 
 
 BIO_sum_table = full_join(BIO_sum_table, significant %>% dplyr::select(Locus_nb, Phenotype) %>%
   distinct() %>% 
@@ -688,7 +706,7 @@ reshape_GEMMA_results <- function(phenotype_list) {
     mutate(logP = -log10(P)) %>%
     filter(logP > 2) %>%
     mutate(Phenotype_code = ifelse(Phenotype == phenotype_list[1], "Pheno1", "Pheno2"))%>%
-    dplyr::select(SNP, Phenotype_code, logP)
+    dplyr::select(SNP, Phenotype_code, logP, Bonferroni_threshold)
   temp = temp %>% pivot_wider(values_from = logP, names_from = Phenotype_code) %>%
     mutate(Signif_max = ifelse(Pheno1 >= -log10(Bonferroni_threshold), "1", "0"),
            Signif_mean = ifelse(Pheno2 >= -log10(Bonferroni_threshold), "1", "0")) %>%
@@ -712,16 +730,15 @@ dot_plot_comparison <- function(reshaped_GEMMA_results, phenotype_list) {
 
 # Variables related to temperatures
 # _________________________
-warm_temp_var = c("Max Temperature of Warmest Month", "Mean Temperature of Warmest Quarter")
-cold_temp_var = c("Min Temperature of Coldest Month", "Mean Temperature of Coldest Quarter")
-
 #Significant for warm temperatures
+warm_temp_var = c("Max Temperature of Warmest Month", "Mean Temperature of Warmest Quarter")
 temp = reshape_GEMMA_results(warm_temp_var)
 table(temp[,"Significant"])
 p1 = dot_plot_comparison(temp, warm_temp_var)
 
 
 #Significant for cold temperatures
+cold_temp_var = c("Min Temperature of Coldest Month", "Mean Temperature of Coldest Quarter")
 temp = reshape_GEMMA_results(cold_temp_var)
 table(temp[,"Significant"])
 p2 = dot_plot_comparison(temp, cold_temp_var)
@@ -733,7 +750,6 @@ cowplot::plot_grid(p1 +theme(legend.position = "none"), p2  + theme(legend.posit
 # _________________________
 drought_var = c("Precipitation of Driest Month", "Precipitation of Driest Quarter")
 rainy_var = c("Precipitation of Wettest Month", "Precipitation of Wettest Quarter")
-core_rain_variable
 #Significant for drought
 temp = reshape_GEMMA_results(drought_var)
 table(temp[,"Significant"])
@@ -749,16 +765,16 @@ cowplot::plot_grid(p1 +theme(legend.position = "none"), p2  + theme(legend.posit
 
 ```
 
-Instead of comparing the results based on a priori knowledge of the underlying wheather/climate patterns for each variables, it is possible tosimply look at the correlation between all pairs of variables. This yields a matrix that is similar to the one shown in the previous section but this time it takes into account the p-values in each test and not the values of the bioclimatic variables themselves.
+Instead of comparing the results based on a priori knowledge of the underlying wheather/climate patterns for each variables, it is possible to simply look at the correlation between all pairs of variables. This yields a matrix that is similar to the one shown in the previous section but this time it takes into account the p-values in each test and not the values of the bioclimatic variables themselves.
 ```{r correl climate assoc}
 # Keep only variants significant in at least one association test
 temp = results_GEMMA %>%
   ungroup() %>%
-  dplyr::select(-CHR, -BP, -Nb, -zscore) %>%
+  dplyr::select(-CHR, -BP, -Nb, -zscore, -Bonferroni_threshold, -Subset, -n) %>%
   distinct() %>%
   pivot_wider(names_from = Phenotype, values_from = P) %>%
-  dplyr::select(-SNP) %>%
-  filter(rowSums(. <= Bonferroni_threshold) >= 1)
+  dplyr::select(-SNP) # %>%
+  #filter(rowSums(. <= Bonferroni_threshold) >= 1)
 
 #Correlation
 Ccor = cor(temp)
@@ -812,39 +828,6 @@ upset(for_upset, sets = names(for_upset),
       order.by = "freq", mb.ratio = c(0.5, 0.5),
       mainbar.y.label = "Variant numbers")
 
-#Category: found in both
-n_count = temp %>% group_by(Category) %>%
-  dplyr::count(SNP)
-
-signif_in_pairs = inner_join(temp, n_count %>% filter(n == 2))  %>%
-  mutate(Present = ifelse(n == 2, 1, 0)) %>%
-  dplyr::select(Category, SNP, Present) %>%
-  distinct() %>%
-  pivot_wider(names_from = Category, values_from = Present, values_fill = 0)
-
-for_upset = as.data.frame(signif_in_pairs[,-1])
-rownames(for_upset) = pull(signif_in_pairs[,1])
-
-upset(for_upset, sets = names(for_upset), order.by = "freq", empty.intersections = "on" ,
-      mainbar.y.label = "Variant numbers found in all phenotypes")
-
-
-#Per category: found in at least one
-signif_in_pairs = inner_join(temp, n_count) %>% 
-  mutate(Present = ifelse(n == 2, 1, 1)) %>%
-  dplyr::select(Category, SNP, Present) %>%
-  distinct() %>%
-  pivot_wider(names_from = Category, values_from = Present, values_fill = 0)
-
-for_upset = as.data.frame(signif_in_pairs[,-1])
-rownames(for_upset) = pull(signif_in_pairs[,1])
-
-upset(for_upset, sets = names(for_upset), 
-      order.by = "freq", empty.intersections = "on", 
-      mainbar.y.label = "Variant numbers found in at least one phenotype" )
-
-
-
 ```
 
 
@@ -855,34 +838,28 @@ upset(for_upset, sets = names(for_upset),
 Traditionally, GWAS results are represented as Manhattan plot. Let's create some for the main variables we are interested in. 
 
 ```{r GEMMA prep plot}
-# Compute chromosome size and cumulative position of each chromosome
-results_GEMMA_for_plot <- results_GEMMA %>% 
-  group_by(CHR) %>% 
-  dplyr::summarise(chr_len=max(BP)) %>% 
-  mutate(tot=cumsum(chr_len)-chr_len) %>%
-  dplyr::select(-chr_len) 
-
-#EStimate middle of chromosome to center the labels
-axisdf = results_GEMMA_for_plot %>%
-  inner_join( ., results_GEMMA %>% filter(Nb == 1)) %>%
-  arrange(CHR, BP) %>%
-  mutate(BPcum = BP+tot) %>% 
-  group_by(CHR) %>% 
-  dplyr::summarise(center=( max(BPcum) + min(BPcum) ) / 2 )
+#This table contains the chromosome names (CHR), the cumulative start of the chromosomes (Cumu_start), 
+# and the cumulative centers of the chromosomes (Cumu_center). These are used for plotting the chromosomes one
+# after the other and to place the chromosome names legends correctly.
+chromosomes_lengths = readxl::read_excel(paste0(metadata_dir, "Chromosomes_cumulative_lengths.xlsx")) 
 
 
-# Manhattan plot function
-Manhattan_one_pheno <- function(pheno, color_duo) {
-  
-  temp = results_GEMMA %>% filter(Phenotype == pheno) %>%
-    inner_join(., results_GEMMA_for_plot)  %>%
-    left_join(., significant %>% dplyr::filter(Phenotype == pheno) ) %>%
+#Prep for simplified function
+results_GEMMA = results_GEMMA %>% 
+    #inner_join(., chromosomes_lengths)  %>%
+    left_join(., significant) %>%
     mutate(SNP_type = ifelse(is.na(SNP_type), "Other", SNP_type)) %>%
     mutate(MAF_type = ifelse(is.na(MAF), "1", ifelse(MAF < 0.05, "1", "19"))) %>%
-    mutate(logP = -log10(P)) %>%
-    filter(CHR <= 13) %>%
-    filter(logP > 2) 
+    mutate(logP = -log10(P))
 
+# Manhattan plot function
+Manhattan_one_pheno <- function(results_GEMMA, pheno, color_duo) {
+  "To use this function we need to have a table containing the columns CHR, BP,
+  logP, Phenotype, SNP_type and MAF_type. CHRs are facets, BP is x, logP is y, SNP_type is color,
+  MAF_type is binary shape, and Phenotype is for filtering." 
+  temp = results_GEMMA %>% filter(Phenotype == pheno) %>%
+    filter(CHR <= 13) %>%
+    filter(logP > 2)
   
   ggplot(temp, aes(x=BP, y=logP)) +
     geom_point( aes(color=SNP_type, shape = MAF_type), size=1.3) +
@@ -891,7 +868,7 @@ Manhattan_one_pheno <- function(pheno, color_duo) {
     geom_hline(aes(yintercept=-log10(Bonferroni_threshold)),
                linetype = "dashed", color = "grey20") +
     theme_bw() +
-    theme( legend.position="none", panel.border = element_blank(),
+    theme( legend.position = "none", panel.border = element_blank(),
       panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank(),
       axis.title.x=element_blank(), axis.text.x=element_blank(),
       axis.ticks.x=element_blank(),
@@ -901,20 +878,24 @@ Manhattan_one_pheno <- function(pheno, color_duo) {
 }
 
 # Manhattan plot function 2
-Manhattan_faceted_pheno <- function(pheno_list, color_duo) {
-  results_GEMMA %>% filter(Phenotype %in% pheno_list) %>%
-    inner_join(., results_GEMMA_for_plot)   %>%
-    left_join(., significant %>% dplyr::filter(Phenotype %in% pheno_list) ) %>%
-    mutate(MAF_type = ifelse(is.na(MAF), "1", ifelse(MAF < 0.05, "1", "19"))) %>%
-    arrange(CHR, BP) %>%
-    mutate(BPcum = BP+tot) %>%
+Manhattan_faceted_pheno <- function(results_GEMMA, pheno_list, color_duo) {
+  "To use this function we need to have a table containing the columns CHR, BP,
+  logP, Phenotype, SNP_type and MAF_type. CHRs are facets, BP is x, logP is y, SNP_type is color,
+  MAF_type is binary shape, and Phenotype is for filtering. We also need a second table 
+  found above as chromosomes_lengths." 
+  
+  results_GEMMA %>% 
+    filter(Phenotype %in% pheno_list) %>%
+    arrange(CHR, BP) %>% 
+    inner_join(., chromosomes_lengths) %>%
+    mutate(BPcum = BP + Cumu_start) %>%
     mutate(logP = -log10(P))%>%
     filter(logP > 2) %>%
     ggplot(., aes(x=BPcum, y=logP)) +
       geom_point( aes(color=as.factor(CHR), shape = MAF_type), size=1.3) +
       scale_color_manual(values = rep(color_duo, 22 )) +
     scale_shape_manual(values =c(1, 19)) +
-      scale_x_continuous( label = axisdf$CHR, breaks= axisdf$center ) +
+      scale_x_continuous( label = chromosomes_lengths$CHR, breaks= chromosomes_lengths$Cumu_center ) +
       geom_hline(aes(yintercept=-log10(Bonferroni_threshold)),
                  linetype = "dashed", color = "grey20") +
       theme_bw() +
@@ -924,6 +905,7 @@ Manhattan_faceted_pheno <- function(pheno_list, color_duo) {
         panel.grid.minor.x = element_blank()) +
       facet_grid(rows = vars(Phenotype), scales = "free_y") 
 }
+
 
 
 # Top SNPs
@@ -1013,28 +995,29 @@ I want to have a main plot for temperature and for precipitation. First, I choos
 ```{r GEMMA plot core temp}
 
 # Manhattan plot with both max and min temperature with mirrored effect
-p = Manhattan_one_pheno("Mean Temperature of Warmest Quarter", c("#F5B9B3", "#F28482")) +
+p = Manhattan_one_pheno(results_GEMMA, "Mean Temperature of Warmest Quarter", c("#F5B9B3", "#F28482")) +
   labs(y = str_wrap("Mean Temperature of Warmest Quarter (-logP)", 25))
 
-q = Manhattan_one_pheno("Min Temperature of Coldest Month", c("#C4E7FD", "#0889D9")) +
+q = Manhattan_one_pheno(results_GEMMA, "Min Temperature of Coldest Month", c("#C4E7FD", "#0889D9")) +
   labs(y = str_wrap("Min Temperature of Coldest Month (-logP)", 25)) +
   scale_y_reverse() + theme(strip.text.x = element_blank())
 
 cowplot::plot_grid(p, q, nrow = 2)
 
-ggsave(paste0(fig_dir, "GEA_Manhattan_temperature_main.pdf"), width = 18, height = 10, units = "cm")
+#ggsave(paste0(fig_dir, "GEA_Manhattan_temperature_main.pdf"), width = 18, height = 10, units = "cm")
 
 top_SNPs_density("Mean Temperature of Warmest Quarter", 2000, c("#F5B9B3", "#F28482", "grey"), 0.05)
 top_SNPs_density("Min Temperature of Coldest Month", 2000, c("#C4E7FD", "#0889D9", "grey"), 0.05)
 ```
 
+
 Then, for precipitation, I choose the precipitation of the driest and of the wettest month.
 ```{r GEMMA core rain}
 #  Manhattan plot for core precipitation
-p = Manhattan_one_pheno("Precipitation of Driest Month", c("#FFD399", "#ff9f1c")) +
+p = Manhattan_one_pheno(results_GEMMA, "Precipitation of Driest Month", c("#FFD399", "#ff9f1c")) +
   labs(y = str_wrap("Precipitation of Driest Month (-logP)", 25))
 
-q = Manhattan_one_pheno("Precipitation of Wettest Month", c("#cbf3f0", "#2ec4b6")) +
+q = Manhattan_one_pheno(results_GEMMA, "Precipitation of Wettest Month", c("#cbf3f0", "#2ec4b6")) +
   scale_y_reverse() + theme(strip.text.x = element_blank()) +
   labs(y = str_wrap("Precipitation of Wettest Month (-logP)", 25))
 
@@ -1049,30 +1032,66 @@ top_SNPs_density("Precipitation of Wettest Month", 1000, c("#cbf3f0", "#2ec4b6",
 
 I also want to have a Manhattan plot for all possible environmental variable. I do try to classify them, grouping conceptually similar variables together.
 ```{r GEMMA plots}
+
 #Yearly variables
-Manhattan_faceted_pheno(Bioclim_var[c(2, 3, 7)], c("grey", "#82c0cc")) +
+Manhattan_faceted_pheno(results_GEMMA, Bioclim_var[c(2, 3, 7)], c("grey", "#82c0cc")) +
   labs(title = "Ranges bioclimatic variables")
-Manhattan_faceted_pheno(Bioclim_var[c(4, 15)], c("grey", "#82c0cc")) +
+Manhattan_faceted_pheno(results_GEMMA, Bioclim_var[c(4, 15)], c("grey", "#82c0cc")) +
   labs(title = "Seasonality bioclimatic variables")
-Manhattan_faceted_pheno(Bioclim_var[c(1, 12)], c("grey", "#82c0cc")) +
+Manhattan_faceted_pheno(results_GEMMA, Bioclim_var[c(1, 12)], c("grey", "#82c0cc")) +
   labs(title = "Annual rain and temperature")
 
-#Temperatures
-Manhattan_faceted_pheno(warm_temp_var, c("grey", "#82c0cc")) +
-  labs(title = "High temperatures")
-Manhattan_faceted_pheno(cold_temp_var, c("grey", "#82c0cc")) +
-  labs(title = "Cold temperatures")
 
 #Rain
-Manhattan_faceted_pheno(drought_var, c("grey", "#82c0cc")) +
+Manhattan_faceted_pheno(results_GEMMA, drought_var, c("grey", "#82c0cc")) +
   labs(title = "Drought")
-Manhattan_faceted_pheno(rainy_var, c("grey", "#82c0cc")) +
+Manhattan_faceted_pheno(results_GEMMA, rainy_var, c("grey", "#82c0cc")) +
   labs(title = "Rain")
 
 #Mix rain and temperature
-Manhattan_faceted_pheno(Bioclim_var[c(8, 9, 18, 19)], c("grey", "#82c0cc")) +
+Manhattan_faceted_pheno(results_GEMMA, Bioclim_var[c(8, 9, 18, 19)], c("grey", "#82c0cc")) +
   labs(title = "Mix rain and temperature")
 
+
+#Temperatures
+p = Manhattan_faceted_pheno(results_GEMMA, warm_temp_var, c("grey", "#82c0cc")) +
+  labs(title = "High temperatures")
+q = Manhattan_faceted_pheno(results_GEMMA, cold_temp_var, c("grey", "#82c0cc")) +
+  labs(title = "Cold temperatures")
+p
+q
+```
+
+```{r QTLs}
+## Adding QTL data from Lendenman
+QTL = readxl::read_excel(path = paste0(GEA_dir, "Lendenman_QTL.xlsx")) %>%
+  inner_join(chromosomes_lengths) %>%
+  mutate( start = 1000*start, end = 1000*end, peak = 1000*peak - distance_threshold, peak2 = peak + distance_threshold,
+          Start = start + Cumu_start, End = end + Cumu_start, Peak = peak + Cumu_start) %>%
+  rename(Observed_pheno = Phenotype)
+
+temp = bind_rows(mutate(QTL, Phenotype = warm_temp_var[[1]]),
+                  mutate(QTL, Phenotype = warm_temp_var[[2]]))
+p + geom_segment(data = temp, 
+                aes(x = Peak, xend = Peak, y = 0.5, yend = 1.6 ),
+                arrow = arrow(length = unit(0.03, "npc")))
+
+temp = bind_rows(mutate(QTL, Phenotype = cold_temp_var[[1]]),
+                  mutate(QTL, Phenotype = cold_temp_var[[2]]))
+q + geom_segment(data = temp, 
+                aes(x = Peak, xend = Peak, y = 0.5, yend = 1.6),
+                arrow = arrow(length = unit(0.03, "npc")), col = "grey40")
+
+
+QTL_GR = makeGRangesFromDataFrame(dplyr::select(QTL, chr = CHR, start= peak, end =peak2))
+temp = significant %>% 
+  group_by(CHR, Locus_nb, Phenotype, score = Nb) %>% 
+  summarize(start = min(BP) - distance_threshold, end = max(BP) + distance_threshold) %>% 
+  inner_join(filter(pheno_table, Category == "Temperature")) %>%
+  mutate(strand = ".") %>%
+  dplyr::select(CHR, start, end) 
+signif_GR = makeGRangesFromDataFrame(temp)
+as.tibble(GenomicRanges::intersect(QTL_GR, signif_GR))
 ```
 
 It is clear from the Manhattan plots that some significant loci are shared between phenotypes, especially phenotypes that we would intuitively group together such as the maximum temperature and the average temperature of the three warmest months. 
@@ -1088,103 +1107,237 @@ It is clear from the Manhattan plots that some significant loci are shared betwe
 
 for (pheno_category in c("Temperature", "Precipitation")){
   
+  #Define new, combined loci per phenotypic category
+  relevant_positions = full_join(significant, pheno_table) %>% 
+    filter(Category == pheno_category)
+  new_loci = from_positions_to_loci(relevant_positions, distance_threshold)
+  relevant_positions = relevant_positions %>%
+    dplyr::select(-Locus_nb) %>%
+    full_join(., new_loci) %>%
+    distinct()
+  locus_signif_in = relevant_positions %>% 
+    dplyr::select(Category, Sub_category, Phenotype, CHR, Locus_nb) %>% 
+    distinct() %>% ungroup()
+  sum_locus_signif_in = locus_signif_in %>% group_by(CHR, Locus_nb) %>% dplyr::count() %>%
+    rename(number_of_biovar_per_locus = n)
   
-temp = full_join(significant, pheno_table) %>%
-  filter(Category == pheno_category) %>%
-  group_by(CHR, Locus_nb, Phenotype) %>%
-  mutate(Rank = rank(P, ties.method = "first")) %>%
-  arrange(Rank) %>%
-  ungroup() %>%
-  filter(Rank == 1) %>%
-  dplyr::select(SNP, CHROM = CHR, POS = BP, Phenotype) %>%
-  #distinct() %>%
-  inner_join(., read_tsv(paste0(GEA_dir, "Significant_GEMMA.ann.tab"), na = ".")) %>%
-  pivot_longer(-c(CHROM, POS, REF, ALT, SNP, Phenotype), 
-                 names_to = "ID_file", values_to = "Allele") %>%
-  inner_join(., Zt_meta %>% dplyr::select(ID_file, Latitude, Longitude, Continent)) %>%
-  mutate(Latitude = round(Latitude/2)*2, Longitude = round(Longitude/2)*2) 
+  #Finding position with the lowest p-value per locus
+  temp = relevant_positions %>%
+    group_by(CHR, Locus_nb, SNP) %>%
+    mutate(number_of_biovar_per_SNP = n()) %>%
+    left_join(sum_locus_signif_in) %>%
+    filter((number_of_biovar_per_locus - number_of_biovar_per_SNP) <= 1) %>%
+    group_by(CHR, Locus_nb) %>%
+    mutate(Rank = rank(P, ties.method = "first")) %>%
+    arrange(Rank) %>%
+    ungroup() %>%
+    filter(Rank == 1) %>%
+    dplyr::select(SNP, CHROM = CHR, POS = BP, Category, Sub_category, Phenotype) 
+  
+  #Adding isolate alleles information
+  temp = temp %>%
+    inner_join(., read_tsv(paste0(GEA_dir, "Significant_GEMMA.ann.tab"), na = ".")) %>%
+    pivot_longer(-c(CHROM, POS, REF, ALT, SNP, Category, Sub_category, Phenotype), 
+                   names_to = "ID_file", values_to = "Allele") %>%
+    inner_join(., Zt_meta %>% dplyr::select(ID_file, Latitude, Longitude, Continent)) %>%
+    mutate(Latitude = round(Latitude/2)*2, Longitude = round(Longitude/2)*2) 
 
-
-#to identify the allele associated with high and with low values of the bioclimatic variable
-med_bioclim_per_allele = climate_per_coordinates %>%
-    pivot_longer(-c(X,Y), names_to = "Phenotype", values_to = "Bioclim") %>%
-    full_join(., Zt_meta  %>% dplyr::select(ID_file, Latitude, Longitude, Continent), 
-              by = c("X" = "Longitude", "Y" = "Latitude"))%>%
-    full_join(., temp) %>%
-    filter(!is.na(Allele)) %>%
-    group_by(Phenotype, SNP, Allele) %>%
-    dplyr::summarize(Median_bioclim = median(Bioclim, na.rm = T))  %>%
-    mutate(Phenotype_hilow = ifelse(Median_bioclim == max(Median_bioclim), "High", "Low"))
-
-#From the allelic data, get freq per place with at least 5 isolates
-temp3 = ungroup(inner_join(temp, med_bioclim_per_allele)) %>% 
-  dplyr::select(Phenotype, ID_file, SNP, Longitude, Latitude, Allele, Continent, Phenotype_hilow) %>%
-  filter(!is.na(Allele))%>%
-  group_by(Phenotype, SNP, Continent, Longitude, Latitude, Phenotype_hilow) %>%
-  dplyr::count(Phenotype_hilow)  %>%
-  pivot_wider(names_from = Phenotype_hilow, values_from = n, values_fill = 0) %>%
-  mutate(sum = High + Low,
-         High = High/sum) %>%
-  filter(sum >= 5) %>%
-  unite(col = "Place", c(Continent, Longitude, Latitude))%>%
-  dplyr::select(Place, SNP, High) 
-
-#Select only variants which are found in high freq
-# in at least one place
-SNP_to_plot = temp3 %>% 
-  group_by(SNP) %>% 
-  summarize(minimum = min(High), maximum = max(High)) %>%
-  filter(maximum >= 0.8) %>%
-  filter(minimum <= 0.2) %>%
-  dplyr::select(-maximum, -minimum)
-
-#Widden the table and remove duplicate variants
-temp3 = inner_join(temp3, SNP_to_plot)%>%
-  pivot_wider(names_from = Place, values_from = High, values_fill = 0)%>%
-  ungroup() %>%
-  dplyr::select(-Phenotype) %>%
-  distinct()
-
-#Get annotations for the places
-# - First, continent
-# - TODO, genetic group
-temp = as_tibble(colnames(temp3[,-1])) %>%
-  separate(value, into = c("Continent", "X", "Y"), sep = "_") %>%
-  dplyr::select(Continent) %>% pull()
-annotation_col <- data.frame(
-        Continent = temp)
-rownames(annotation_col) = colnames(temp3[,-1])
-
-#Define relevant colors for the heatmap
-## First for the annotations
-temp2 = c("#DA4167", "#ffba0a", "#A20106", "#3F6E0C", "#129eba", "#8fa253" )
-names(temp2) = sort(unique(temp))
-colors_pheatmap = list(Continent = temp2)
-
-## And then for the heatmap itself.
-if (pheno_category == "Temperature"){
-    color_heatmap = colorRampPalette(c("#0889D9","white","#F28482"))(30)
-} else if (pheno_category == "Precipitation") {
-    color_heatmap = colorRampPalette(c("#ff9f1c","white","#2ec4b6"))(30)
-} else {
-    color_heatmap = colorRampPalette(c("#grey","white","#82c0cc"))(30)
-}
-
-
-#Make the heatmap
-for_pheatmap = as.matrix(temp3[,-1])
-rownames(for_pheatmap) = pull(temp3[,1])
-pheatmap(for_pheatmap, 
-         angle_col = "45", 
-         fontsize = 8, 
-         color = color_heatmap, border_color = NA,
-         cluster_cols = F,
-         annotation_col = annotation_col,
-         annotation_colors = colors_pheatmap,
-         show_rownames = F)
+  
+  #To identify the allele associated with high and with low values of the bioclimatic variable
+  med_bioclim_per_allele = climate_per_coordinates %>%
+      pivot_longer(-c(X,Y), names_to = "Phenotype", values_to = "Bioclim") %>%
+      left_join(., pheno_table)%>%
+      left_join(., Zt_meta  %>% dplyr::select(ID_file, Latitude, Longitude, Continent), 
+                by = c("X" = "Longitude", "Y" = "Latitude")) %>%
+      full_join(., temp) %>%
+      filter(!is.na(Allele) & !is.na(Phenotype))  %>% 
+      filter(Category == pheno_category) %>%
+      group_by(Category, Phenotype, SNP, Allele) %>%
+      dplyr::summarize(Median_bioclim = median(Bioclim, na.rm = T))  %>%
+      mutate(Phenotype_hilow = ifelse(Median_bioclim == max(Median_bioclim), "High", "Low"))
+  
+  #From the allelic data, get freq per place with at least 5 isolates
+  temp3 = ungroup(inner_join(temp, med_bioclim_per_allele)) %>% 
+    dplyr::select(Phenotype, ID_file, SNP, Longitude, Latitude, Allele, Continent, Phenotype_hilow) %>%
+    filter(!is.na(Allele))%>%
+    group_by(Phenotype, SNP, Continent, Longitude, Latitude, Phenotype_hilow) %>%
+    dplyr::count(Phenotype_hilow)  %>%
+    pivot_wider(names_from = Phenotype_hilow, values_from = n, values_fill = 0) %>%
+    mutate(sum = High + Low,
+           High = High/sum) %>%
+    filter(sum >= 5) %>%
+    unite(col = "Place", c(Continent, Longitude, Latitude))%>%
+    dplyr::select(Place, SNP, High) 
+  
+  #Select only variants which are found in high freq
+  # in at least one place
+  SNP_to_plot = temp3 %>% 
+    group_by(SNP) %>% 
+    summarize(minimum = min(High), maximum = max(High)) %>%
+    filter(maximum >= 0.7) %>%
+    filter(minimum <= 0.3) %>%
+    dplyr::select(-maximum, -minimum)
+  
+  #Widen the table and remove duplicate variants
+  temp3 = inner_join(temp3, SNP_to_plot)%>%
+    pivot_wider(names_from = Place, values_from = High, values_fill = 0)%>%
+    ungroup() %>%
+    dplyr::select(-Phenotype) %>%
+    distinct()
+  
+  #Get annotations for the places
+  # - First, continent
+  # - TODO, genetic group
+  temp = as_tibble(colnames(temp3[,-1])) %>%
+    separate(value, into = c("Continent", "X", "Y"), sep = "_") %>%
+    dplyr::select(Continent) %>% pull()
+  annotation_col <- data.frame(
+          Continent = temp)
+  rownames(annotation_col) = colnames(temp3[,-1])
+  ## Define colors
+  temp2 = c("#DA4167", "#ffba0a", "#A20106", "#3F6E0C", "#129eba", "#8fa253" )
+  names(temp2) = sort(unique(temp))
+  colors_pheatmap = list(Continent = temp2)
+  
+  #Get annot for the SNPs
+  temp = dplyr::select(relevant_positions, SNP, CHR, Locus_nb) %>% 
+    left_join(locus_signif_in) %>% 
+    dplyr::select(SNP, Sub_category) %>% distinct() %>% 
+    mutate(Is_signif = "Significant") %>% 
+    pivot_wider(names_from = Sub_category, values_from = Is_signif, values_fill = "Non-significant") %>%
+    filter(!is.na(SNP)) %>% 
+    filter(SNP %in% pull(SNP_to_plot)) 
+  annotation_row <- data.frame(Annual = temp["Annual"], Low = temp["Low"], 
+                           High= temp["High"])
+  rownames(annotation_row) = pull(temp["SNP"])
+  ## Define colors
+  temp2 = c("White", "Grey")
+  names(temp2) = c("Non-significant", "Significant")
+  colors_pheatmap$High = temp2
+  colors_pheatmap$Low = temp2
+  colors_pheatmap$Annual = temp2
+  
+  #Define relevant colors for the heatmap itself.
+  if (pheno_category == "Temperature"){
+      color_heatmap = colorRampPalette(c("#0889D9","white","#F28482"))(30)
+  } else if (pheno_category == "Precipitation") {
+      color_heatmap = colorRampPalette(c("#ff9f1c","white","#2ec4b6"))(30)
+  } else {
+      color_heatmap = colorRampPalette(c("#grey","white","#82c0cc"))(30)
+  }
+  
+  
+  #Make the heatmap
+  for_pheatmap = as.matrix(temp3[,-1])
+  rownames(for_pheatmap) = pull(temp3[,1])
+  pheatmap(for_pheatmap, 
+           angle_col = "45", 
+           fontsize = 8, 
+           color = color_heatmap, border_color = NA,
+           cluster_cols = F, #cluster_rows = F,
+           annotation_col = annotation_col,
+           annotation_colors = colors_pheatmap,
+           annotation_row = annotation_row,
+           show_rownames = F)
 
 }
 ```
+```{r genes MAF 5}
+
+#Translating SnpEff effects in a numerical scale
+gene_detected = inner_join(pheno_table, significant) %>%
+    mutate(logP = -log10(P)) %>%
+    left_join(., signif_ann) %>% 
+  mutate(Ranked_effect_strength = Effect_strength)
+gene_detected$Ranked_effect_strength[gene_detected$Ranked_effect_strength == "HIGH"] = 1
+gene_detected$Ranked_effect_strength[gene_detected$Ranked_effect_strength == "MODERATE"] = 2
+gene_detected$Ranked_effect_strength[gene_detected$Ranked_effect_strength == "LOW"] = 3
+gene_detected$Ranked_effect_strength[gene_detected$Ranked_effect_strength == "MODIFIER"] = 4
+gene_detected$Ranked_effect_strength[is.na(gene_detected$Effect_strength)] = 5
+gene_detected$Effect_strength[is.na(gene_detected$Effect_strength)] = "NO_EFFECT"
+
+
+
+plot_tiles_GWAS <- function(list_chr, list_pheno_cat) {
+  gene_detected %>% 
+    filter( MAF > 0.05 ) %>%
+    filter(CHR %in% list_chr) %>%
+    filter(Category %in% list_pheno_cat) %>%
+    ggplot(aes(x = Gene, y = Phenotype, fill = log(P))) + 
+    geom_tile() + 
+    theme_bw() +
+    theme(axis.title.x = element_blank(), 
+          axis.text.x = element_text(angle = 40, hjust = 1, vjust = 1),
+          axis.title.y = element_blank(),
+          legend.position = "none",
+          panel.grid.major.x = element_blank(),
+          panel.grid.major.y = element_blank(),
+          panel.ontop = TRUE,
+          panel.background = element_rect(fill = "transparent")) +
+    scale_fill_gradient(low = "white", high = "#82c0cc")
+}
+
+gene_detected %>% 
+  filter( MAF > 0.05 ) %>%
+  dplyr::select(CHR, Gene, Phenotype) %>%
+  distinct() %>%
+  group_by(CHR) %>%
+  dplyr::count() %>%
+  arrange(n)
+
+
+plot_tiles_GWAS(c(8,9,3,4,10),c("Temperature", "Precipitation")) +
+    labs(title = "Five chromosomes with the lowest number of hits") +
+  facet_grid(rows = vars(Category), scales = "free")
+    
+
+plot_tiles_GWAS(c(5, 11, 2, 6), c("Temperature", "Precipitation")) +
+    facet_grid(rows = vars(Category), cols = vars(CHR), scales = "free")
+
+plot_tiles_GWAS(c(13), c("Temperature", "Precipitation")) +
+    labs(title = "Chromosome 13")+
+  facet_grid(rows = vars(Category), scales = "free")
+
+plot_tiles_GWAS(c(1), c("Temperature", "Precipitation"))+
+    labs(title = "Chromosome 1")+
+  facet_grid(rows = vars(Category), scales = "free")
+
+plot_tiles_GWAS(c(7), c("Temperature", "Precipitation")) +
+    labs(title = "Chromosome 7")+
+  facet_grid(rows = vars(Category), scales = "free")
+
+
+
+```
+
+```{r}
+allele_counts = read_tsv(paste0(vcf_dir, "Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-100.biall.frq.count"),
+                         col_names = c("CHR", "BP", "N_ALL", "Total", "REF", "ALT")) %>%
+  filter(CHR != "mt") %>%
+  mutate(CHR = as.numeric(CHR), BP = as.numeric(BP)) %>%
+  full_join(., significant) %>% 
+  mutate(MAF = min(as.numeric(REF), as.numeric(ALT))/as.numeric(Total))
+
+temp = significant %>% dplyr::select(CHR, BP, MAF, SNP_type) %>%
+  distinct()
+
+temp %>% ggplot(aes(MAF)) + geom_density() + theme_bw()
+
+allele_counts %>% 
+  filter(is.na(SNP_type)) %>%
+  #sample_n(length(temp)) %>%
+  mutate(SNP_type == "non-significant") %>%
+  bind_rows(temp) %>% 
+  ggplot(aes(MAF, fill = SNP_type)) + 
+    geom_density(alpha = .4) + 
+    theme_bw() +
+    labs(title = "Enrichment of low MAF variants in the significant pool")
+
+
+
+
+```
+
 
 
 ## Plots per locus
@@ -1278,11 +1431,18 @@ ggsave(paste0(fig_dir, "Allele_", SNP_name,"_BIO", i, ".pdf"), width = 18, heigh
 
 
 #Set parameters for the plot
-chromosome = 7
-min_coord = 1094086
-max_coord = 1892455
+chromosome = 1
+min_coord = 2076000
+max_coord = 2125000
+
+#chromosome = 1
+#min_coord = 2020000
+#max_coord = 2040000
 #pheno = "Precipitation of Driest Month"
-pheno = "Precipitation of Warmest Quarter"
+pheno = "Precipitation of Coldest Quarter"
+#pheno = "Max Temperature of Warmest Month"
+
+#pheno = "Precipitation of Warmest Quarter"
 genes_to_highlight = c("Zt09_model_5_00004")
 TE_gff = "~/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/Cecile_IPO323_refTEs_match.gff"
 gene_gff = "~/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/Zymoseptoria_tritici.MG2.Grandaubert2015.mRNA.gff3"
@@ -1308,7 +1468,8 @@ b = results_GEMMA %>%
                            " from ", min_coord, "bp to ", max_coord, "bp.")) +
   theme(axis.title.x = element_blank(),
         panel.grid.major =  element_line(color = "grey90"),
-        axis.text = element_text(color = "grey20", size = 9))
+        axis.text = element_text(color = "grey20", size = 9))+
+  coord_cartesian(xlim = c(min_coord, max_coord))
 
 cowplot::plot_grid(b, c, d, ncol = 1, align = 'v', axis = 'lr', rel_heights = c(1, 0.3, 0.3))
 
@@ -1316,13 +1477,24 @@ cowplot::plot_grid(b, c, d, ncol = 1, align = 'v', axis = 'lr', rel_heights = c(
 
 
 
-
 ## Functional significance
+
+```{r}
+# Table with genes affected by significant variants with high MAF
+# with all the functional annotations
+temp = gene_detected %>% 
+  filter( MAF > 0.05 ) %>%
+  filter(Category %in% c("Temperature", "Precipitation"))  %>%
+  filter(Sub_category != "Annual") %>%
+  dplyr::select("Phenotype","Category","Sub_category", "SNP" , "Variant_type","Effect_strength",
+                "Gene", "Secretion", "Transmembrane", "Cell_location", "Cluster(nb, function)", "Effector", "CAZyme", 
+                "Summary_RNAseq") %>%
+  left_join(eggnog_functions, by = c("Gene" = "query_name"))
+```
 
 ### Functional enrichment
 The genes found in each of the GWAS could have some type of enrichment. 
 ```{r GO enrichment}
-library(topGO)
 
 geneNames = read_tsv(gff_file, 
                col_names = c("CHR", "X1", "mRNA", "Start", "Stop", "X2", "X3", "X4", "Annot"))  %>%
@@ -1361,7 +1533,7 @@ for (pheno in phenotypes) {
   #Store results in a table
   allRes <- GenTable(GOdata, classicFisher = resultFisher,
                      classicKS = resultKS, elimKS = resultKS.elim,
-                     orderBy = "elimKS", ranksOf = "classicFisher", topNodes = 10)
+                     orderBy = "elimKS", ranksOf = "classicFisher", topNodes = 20)
   enrich_results[[pheno]] =  as_tibble(allRes) %>% mutate(Phenotype = pheno)
   
   #Make automatic plot
@@ -1371,9 +1543,9 @@ for (pheno in phenotypes) {
 bind_rows(enrich_results)
 
 bind_rows(enrich_results) %>%
-  dplyr::select(Phenotype, GO.ID, Term) %>%
+  dplyr::select(Phenotype, GO.ID, Term, elimKS) %>%
   unite(col = "GO", GO.ID, Term) %>% 
-  mutate(Is_enriched = 1) %>%
+  mutate(Is_enriched = ifelse(elimKS < 0.05, 0, 1)) %>%
   ggplot(aes(y = GO, x = Phenotype, fill = Is_enriched)) +
   geom_tile() +
   theme_bw() +
@@ -1409,9 +1581,11 @@ gene_detected$Ranked_effect_strength[gene_detected$Ranked_effect_strength == "MO
 gene_detected$Ranked_effect_strength[is.na(gene_detected$Ranked_effect_strength)] = 5
 gene_detected$Effect_strength[is.na(gene_detected$Effect_strength)] = "NO_EFFECT"
 
+
 #For each variant, 
 #selecting the highest effect 
 temp = gene_detected %>%
+  filter( MAF >= 0.05 ) %>%
   group_by(SNP, Effect_strength, Ranked_effect_strength) %>% 
   summarize(logP = max(logP)) %>% group_by(SNP) %>% 
   mutate(ranktemp = rank(Ranked_effect_strength, ties.method = "random")) %>%
@@ -1448,8 +1622,8 @@ dplyr::group_by(temp, SNP, Effect_strength) %>%
   mutate(ave_logP = median(logP)) %>%
   filter(logP < max_val) %>%
   ggplot(aes(x = fct_reorder(Effect_strength, ave_logP), y = logP)) + 
-     geom_violin(aes(fill = Effect_strength, col = Effect_strength), alpha =.5) + 
-     geom_boxplot(aes(col = Effect_strength), width = .1, outlier.shape = NA) + 
+     geom_boxplot(aes(col = Effect_strength), outlier.shape = NA) + 
+  geom_jitter(width = .1, fill = NA, shape = 1, alpha = .5) +
      theme_bw() +
      geom_text(data = CLD_dim, aes(x = Effect_strength,
                             y = max_val + 2,
@@ -1462,17 +1636,6 @@ table(temp$Effect_strength)
 
 Using only the top variants for each locus and each bioclimatic variables, lower the number of variants to the point that there are only 6 high effect variant left...
 ```{r snpeff topSNP}
-#Translating SnpEff effects in a numerical scale
-gene_detected = inner_join(pheno_table, significant) %>%
-    mutate(logP = -log10(P)) %>%
-    left_join(., signif_ann) %>% 
-  mutate(Ranked_effect_strength = Effect_strength)
-gene_detected$Ranked_effect_strength[gene_detected$Ranked_effect_strength == "HIGH"] = 1
-gene_detected$Ranked_effect_strength[gene_detected$Ranked_effect_strength == "MODERATE"] = 2
-gene_detected$Ranked_effect_strength[gene_detected$Ranked_effect_strength == "LOW"] = 3
-gene_detected$Ranked_effect_strength[gene_detected$Ranked_effect_strength == "MODIFIER"] = 4
-gene_detected$Ranked_effect_strength[is.na(gene_detected$Effect_strength)] = 5
-gene_detected$Effect_strength[is.na(gene_detected$Effect_strength)] = "NO_EFFECT"
 
 #For each variant, 
 #selecting the highest effect 
@@ -1546,6 +1709,134 @@ table(temp$Effect_strength)
 
 
 
+
+
+## Without extreme climatic values
+
+```{r GEMMAres wo extr}
+subset_BIO = c(5, 6, 10, 11, 13, 14, 16, 14, 17)
+
+results_GEMMA_wo_extr = list()
+
+for (i in subset_BIO) {
+  bio_ID = paste0("BIO", i)
+  phenotype = filter(pheno_table, BIO_ID == bio_ID) %>% pull(Phenotype)
+
+  temp = list.files(path = paste0(GEA_dir, "2_Subsets/"), pattern = paste0("*subset_", bio_ID,".assoc.txt")) %>% 
+    map_df(~read_tsv(file = paste0(GEA_dir, "2_Subsets/", .), col_types = c("dcddccdddddd"))) %>%
+    unite(col = SNP, chr, ps, sep = "_", remove = F) %>%
+    dplyr::select(SNP, CHR = chr, BP = ps, P = p_wald, zscore = logl_H1) %>%
+    mutate(Phenotype = phenotype, Nb = i, )
+  results_GEMMA_wo_extr[[phenotype]] = temp
+}
+
+results_GEMMA_wo_extr = bind_rows(results_GEMMA_wo_extr)
+
+
+#Genomic Inflation Factor
+temp = results_GEMMA_wo_extr %>% 
+        group_by(Phenotype) %>%
+        summarize(Genomic_Inflation_Factor = median(qchisq(1-P,1))/qchisq(0.5,1))
+BIO_sum_table =  inner_join(pheno_table, temp) %>% arrange(Genomic_Inflation_Factor)       
+kable(BIO_sum_table)
+
+#QQ-plots
+par(mfrow=c(3,3)) 
+for (i in subset_BIO){
+  phenotype = filter(pheno_table, BIO_ID == bio_ID) %>% pull(Phenotype)
+temp = results_GEMMA_wo_extr %>% 
+  filter(Phenotype == phenotype) %>% 
+  dplyr::sample_frac(size = .10) %>% 
+  dplyr::select(P) %>% pull()
+GWASTools::qqPlot(temp, thinThreshold = 2)
+}
+
+
+
+```
+
+```{r}
+head(results_GEMMA_wo_extr) 
+Bonferroni_threshold_wo_extr = results_GEMMA_wo_extr %>% 
+  group_by(Phenotype, Nb) %>%
+  dplyr::count() %>%
+  mutate(Bonferroni_threshold = 0.05/n)
+
+results_GEMMA_wo_extr = full_join(results_GEMMA_wo_extr, Bonferroni_threshold_wo_extr)
+
+significant_wo_extr = results_GEMMA_wo_extr  %>%
+  filter(P <= Bonferroni_threshold)  %>% group_by(SNP, CHR, BP) %>%
+  mutate(Count = n()) %>% mutate(SNP_type = "significant") %>% 
+  ungroup() 
+
+temp = results_GEMMA_wo_extr %>% 
+  filter(P <= Bonferroni_threshold) %>% 
+  dplyr::count(Phenotype) %>% 
+  arrange(n) %>%
+  dplyr::select(Phenotype, Nb_signif_variants_wo_extr = n)
+
+temp2 = results_GEMMA %>% 
+  filter(P <= Bonferroni_threshold) %>% 
+  dplyr::count(Phenotype) %>% 
+  arrange(n) %>%
+  dplyr::select(Phenotype, Nb_signif_variants = n)
+
+inner_join(temp, temp2)
+temp = bind_rows(results_GEMMA_wo_extr %>% mutate(Isolate_group = "No_extreme"),
+          results_GEMMA %>% mutate(Isolate_group = "ALL")) %>%
+  filter(Nb %in% subset_BIO) %>%
+  mutate(logP =  -log10(P)) %>%
+  filter(logP > 2) %>%
+  dplyr::select(Isolate_group, SNP, logP, Phenotype, Nb) %>%
+  pivot_wider(names_from = Isolate_group, values_from = logP) %>%
+  filter(!is.na(ALL)) %>%
+  filter(!is.na(No_extreme))
+
+ggplot(temp, aes(x = ALL, y = No_extreme)) +
+  geom_point(alpha =.4) + 
+  facet_wrap(vars(Phenotype), scales = "free") +
+  theme_bw() +
+  geom_abline(slope = 1, intercept = 0)
+
+```
+```{r}
+#Prep for simplified function
+results_GEMMA_wo_extr = results_GEMMA_wo_extr %>% 
+    #inner_join(., chromosomes_lengths)  %>%
+    left_join(., significant_wo_extr %>% dplyr::filter(Phenotype == pheno) ) %>%
+    mutate(SNP_type = ifelse(is.na(SNP_type), "Other", SNP_type)) %>%
+    mutate(MAF_type = "1") %>%
+    #mutate(MAF_type = ifelse(is.na(MAF), "1", ifelse(MAF < 0.05, "1", "19"))) %>%
+    mutate(logP = -log10(P))
+
+p = Manhattan_one_pheno(results_GEMMA_wo_extr, "Mean Temperature of Warmest Quarter", c("#F5B9B3", "#F28482")) +
+  labs(y = str_wrap("Mean Temperature of Warmest Quarter (-logP)", 25))
+
+q = Manhattan_one_pheno(results_GEMMA_wo_extr, "Min Temperature of Coldest Month", c("#C4E7FD", "#0889D9")) +
+  labs(y = str_wrap("Min Temperature of Coldest Month (-logP)", 25)) +
+  scale_y_reverse() + theme(strip.text.x = element_blank())
+
+cowplot::plot_grid(p, q, nrow = 2)
+
+Manhattan_faceted_pheno(results_GEMMA, drought_var, c("grey", "#82c0cc")) +
+  labs(title = "Drought")
+Manhattan_faceted_pheno(results_GEMMA_wo_extr, drought_var, c("grey", "#f5cac3")) +
+  labs(title = "Drought")
+Manhattan_faceted_pheno(results_GEMMA, rainy_var, c("grey", "#82c0cc")) +
+  labs(title = "Rain")
+Manhattan_faceted_pheno(results_GEMMA_wo_extr, rainy_var, c("grey", "#f5cac3")) +
+  labs(title = "Rain")
+
+
+Manhattan_faceted_pheno(results_GEMMA, warm_temp_var, c("grey", "#82c0cc")) +
+  labs(title = "High temperatures")
+Manhattan_faceted_pheno(results_GEMMA_wo_extr, warm_temp_var, c("grey", "#f5cac3")) +
+  labs(title = "High temperatures")
+Manhattan_faceted_pheno(results_GEMMA, cold_temp_var, c("grey", "#82c0cc")) +
+  labs(title = "Cold temperatures")
+Manhattan_faceted_pheno(results_GEMMA_wo_extr, cold_temp_var, c("grey", "#f5cac3")) +
+  labs(title = "Cold temperatures")
+```
 
 
 
@@ -1748,13 +2039,13 @@ mafft --thread 8 --threadtb 5 --threadit 0 --reorder --adjustdirection --auto in
 
 Here is the tree for the Avr_Stb6 gene. For reference, the allele carried by ST99CH_1A4 gives an avirulent phenotype, while the allele from ST99CH_1A5 is the virulent allele (from [Zhong et al. 2017](https://nph.onlinelibrary.wiley.com/doi/full/10.1111/nph.14434)).
 
-```{r AvrStb6 tree plots}
+```{r AvrStb6 tree plots, eval = F}
 #grep ">" ../7_Virulence/Overall_results_blast_Avr_Stb6.fasta | sed 's/>//' > ../7_Virulence/Overall_results_blast_Avr_Stb6.list
 
 temp2 = read_tsv(paste0(virulence_dir, "Overall_results_blast_Avr_Stb6.list"), col_names = "Fasta_header") %>%
   separate(Fasta_header, into = c("ID_file", "chr", "coords"), sep=":", remove = F) %>%
   mutate(contig2 = stringr::str_replace_all(Fasta_header, "[:.]", "_")) %>%
-  left_join(.,Zt_meta)
+  left_join(., Zt_meta)
 
 #Read tree in
 #details from the mafft website about the tree

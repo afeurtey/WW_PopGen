@@ -6,13 +6,13 @@ output:
   html_document:
     toc: yes
     toc_float: yes
-    css: /Users/feurtey/Documents/epur_css.css
+    css: ~/Documents/epur_css.css
     number_sections: no
     code_folding: hide
   #html_document:
    # toc: yes
    # df_print: paged
-logo: /Users/feurtey/Documents/Postdoc_Bruce/Communication/Logo_WWZt.png
+logo: ~/Documents/Postdoc_Bruce/Communication/Logo_WWZt.png
 ---
 
 
@@ -62,8 +62,6 @@ library(tidytree)
 library(multcomp)
 library(lsmeans)
 
-
-
 #GEA
 library(lfmm)
 
@@ -73,16 +71,18 @@ library(corrr)
 library(lsmeans)
 library(multcomp)
 
+library(caret)
+library(mgcv)
 
 #Variables
 world <- map_data("world")
-project_dir="/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/"
-lists_dir = "/Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/WW_PopGen/Keep_lists_samples/"
+project_dir="~/Documents/Postdoc_Bruce/Projects/WW_project/"
+lists_dir = "~/Documents/Postdoc_Bruce/Projects/WW_project/WW_PopGen/Keep_lists_samples/"
 
 #Data directories
 data_dir=paste0(project_dir, "0_Data/")
 metadata_dir=paste0(project_dir, "Metadata/")
-fig_dir = "/Users/feurtey/Documents/Postdoc_Bruce/Manuscripts/Feurtey_WW_Zt/Draft_figures/"
+fig_dir = "~/Documents/Postdoc_Bruce/Manuscripts/Feurtey_WW_Zt/Draft_figures/"
 
 #Analysis directories
 #-___________________
@@ -200,14 +200,14 @@ rsync -avP alice@130.125.25.244:/home/alice/WW_PopGen/Keep_lists_samples/Ztritic
   ../WW_PopGen/Keep_lists_samples/
 
 # 1 - Variant calling - Mito 
-rsync -avP alice@130.125.25.244:/data2/alice/WW_project/1_Variant_calling/4_Joint_calling/Ztritici_global_March2021.genotyped.mt.filtered.clean.AB_filtered.variants.good_samples.max-m-80.recode.vcf.gz  /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/1_Variant_calling/4_Joint_calling/
+rsync -avP alice@130.125.25.244:/data2/alice/WW_project/1_Variant_calling/4_Joint_calling/Ztritici_global_March2021.genotyped.mt.filtered.clean.AB_filtered.variants.good_samples.max-m-80.recode.vcf.gz  ~/Documents/Postdoc_Bruce/Projects/WW_project/1_Variant_calling/4_Joint_calling/
 
-rsync -avP alice@130.125.25.244:/data2/alice/WW_project/0_Data/4_Mitochondrial_genome/0_Mito_blast/Complete_mitochondria_from_blast.txt /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/
+rsync -avP alice@130.125.25.244:/data2/alice/WW_project/0_Data/4_Mitochondrial_genome/0_Mito_blast/Complete_mitochondria_from_blast.txt ~/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/
 
 # 1 - Variant calling - Depth 
 rsync -avP alice@130.125.25.244:/data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.1kb_windows.nuc_GC.tab ../0_Data/
 rsync -avP alice@130.125.25.244:/data2/alice/WW_project/1_Variant_calling/1_Depth_per_window/Depth_per*summary.q30.txt  \
-   /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/1_Variant_calling/1_Depth_per_window/
+   ~/Documents/Postdoc_Bruce/Projects/WW_project/1_Variant_calling/1_Depth_per_window/
 # Depth_per_sample_core_chr_summary.q30.txt
 # Depth_per_sample_summary.q30.txt
 # Depth_per_chromosome_summary.q30.txt
@@ -216,7 +216,7 @@ rsync -avP alice@130.125.25.244:/data2/alice/WW_project/1_Variant_calling/2_Dept
   
 # 1 - Variant calling - SV
 rsync -avP alice@130.125.25.244:/data2/alice/WW_project/1_Variant_calling/6_Mito_SV/All_complete_mitochondria.* \
-  /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/1_Variant_calling/6_Mito_SV/
+  ~/Documents/Postdoc_Bruce/Projects/WW_project/1_Variant_calling/6_Mito_SV/
 #All_complete_mitochondria.mcoords
 #All_complete_mitochondria.snps
 
@@ -228,14 +228,14 @@ rsync -avP alice@130.125.25.244:/data2/alice/WW_project/2_Population_structure/1
 # 4 - TE and RIP
 rsync -avP \
   alice@130.125.25.244:/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/Nb_reads* \
-  /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/0_RIP_estimation/
+  ~/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/0_RIP_estimation/
 # Nb_reads_per_TE.txt
 # Nb_reads.txt
 rsync -avP \
   alice@130.125.25.244:/data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/Composite_index.txt \
-  /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/0_RIP_estimation/
+  ~/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/0_RIP_estimation/
 rsync -avP   alice@130.125.25.244:/data2/alice/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/1_Blast_dim2_deRIPped/ \
- /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/
+ ~/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/
   
   
 # 5 - GEA
@@ -780,13 +780,14 @@ lab_set = inner_join(indv_snmf, Zt_meta, by = c("Sample" = "ID_file")) %>%
   dplyr::select(Continent, Country) %>%
   mutate(Continent = ifelse(is.na(Continent), "Unknown", Continent),
          Country = ifelse(is.na(Country), "Unknown", Country))
+
 #Low numbers
 from = 2
 up_to = 6
 p1 <-   plotQ(alignK(qlist[from:up_to], type = "across"),
             imgoutput="join",
             returnplot=T,exportplot=F,
-            quiet=T,basesize=11,
+            basesize=11,
             splab= paste0("K=", K_list[from:up_to]),
             grplab=lab_set, ordergrp=T, grplabangle = 40, grplabheight = 2, grplabsize = 2,
             clustercol = K_colors)
@@ -799,7 +800,7 @@ up_to = 11
 p2 <-   plotQ(alignK(qlist[from:up_to], type = "across"),
             imgoutput="join",
             returnplot=T,exportplot=F,
-            quiet=T,basesize=11,
+            basesize=11,
             splab= paste0("K=", K_list[from:up_to]),
             grplab=lab_set, ordergrp=T, grplabangle = 40, grplabheight = 2, grplabsize = 2,
             clustercol = K_colors)
@@ -811,7 +812,7 @@ up_to = 15
 p3 <-   plotQ(alignK(qlist[from:up_to], type = "across"),
             imgoutput="join",
             returnplot=T,exportplot=F,
-            quiet=T,basesize=11,
+            basesize=11,
             splab= paste0("K=", K_list[from:up_to]),
             grplab=lab_set, ordergrp=T, grplabangle = 40, grplabheight = 2, grplabsize = 2,
             clustercol = K_colors)
@@ -1027,6 +1028,22 @@ status_admix = inner_join(chosen_coef, cluster_per_country) %>%
                          ifelse(max_cluster == Main_country_cluster, "Pure local", 
                                 "Pure other")))
 
+#Table hybrids assigned to several clusters, and pure foreign
+temp = inner_join(chosen_coef, 
+                  status_admix %>% 
+                    filter(Status != "Pure local") %>% 
+                    dplyr::select(Sample, Status)) %>%
+  dplyr::select(Sample, Continent, Country, Latitude, Longitude, Status, Cluster, Admix_coef) %>%
+  mutate(Admix_coef = ifelse(Admix_coef > 0.2, round(Admix_coef, 4), NA)) %>%
+  pivot_wider(names_from = Cluster, values_from = Admix_coef) %>%
+  rowwise() %>%
+  dplyr::mutate(Count_NA = sum(is.na(c_across(V1:V11)))) %>%
+  filter(Status == "Pure other" | Count_NA < 10)
+
+opts <- options(knitr.kable.NA = "")
+kable(temp, digits = 3, )
+write_tsv(x = temp, file = paste0(PopStr_dir, "Hybrids_and_pure_foreign.tab"))
+
 # Summary of hybrid category per country
 ## As table
 kable(status_admix %>% group_by(Country) %>% 
@@ -1043,7 +1060,7 @@ ggplot(status_admix, aes(x = Country, fill = Status)) +
   facet_wrap(vars(Continent), scales = "free")
 
 
-hybrids = status_admix %>% filter(Status == "Hybrid")
+
 ```
 The clustering data can also be represented as an average of ancestry coefficient per country. This is done here first with barplots. 
 ```{r per country ancestry coef}
@@ -1161,7 +1178,7 @@ cat  ${POPSTR}$VCFNAME.high_anc_coef_snmf.GT.FORMAT | cut -f 3- \
 ```
 
 
-```{python convert genotype file to treemix}
+```{python convert genotype file to treemix, eval = F}
 
 from collections import defaultdict
 
@@ -1255,7 +1272,7 @@ treemix \
 ```
 
 ```{r plot treemix}
-source("/Users/feurtey/Documents/Software/treemix-1.13/src/plotting_funcs.R")
+source("~/Documents/Software/treemix-1.13/src/plotting_funcs.R")
 p_cluster
 t = plot_tree(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.m0.treemix.out"))
 t = plot_tree(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.m1.treemix.out"))
@@ -1266,11 +1283,13 @@ t = plot_tree(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.m5.treemix.out")
 t = plot_tree(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.m6.treemix.out"))
 ```
 
-Along with the treemix software, are distribution the software treepop and fourpop. These measure f3 and f4 statistics which test for treeness in population trees.
+Along with the treemix software, are distribution the software threepop and fourpop. These measure f3 and f4 statistics which test for treeness in population trees.
 
 The three-population test is of the form f3(A;B;C), where a significantly negative value of the f3 statistic implies that population A is admixed. The output is four columns: populations | f3 statistic | standard error | Z-score
 ```{bash run threepop, eval = F}
-threepop -i ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix.gz -k 500 | grep "^V" > ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix.3pop.tab
+#threepop -i ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix.gz -k 500 | grep "^V" > ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix.3pop.tab
+
+threepop -i /Users/afeurtey/Documents/Postdoc_Bruce/Projects/WW_project/2_Population_structure/Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.biall_SNP.max-m-1.maf-0.05.thin-1000bp.high_anc_coef_snmf.treemix.gz -k 500 | grep "^V" > /Users/afeurtey/Documents/Postdoc_Bruce/Projects/WW_project/2_Population_structure/Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.biall_SNP.max-m-1.maf-0.05.thin-1000bp.high_anc_coef_snmf.treemix.3pop.tab #${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix.3pop.tab
 ```
 
 ```{r}
@@ -1281,7 +1300,7 @@ kable(read_delim(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.treemix.3pop.
 
 
 
-#Split tree
+## Split tree
 ```{r subset even sampling}
 threshold_per_pop = 6
 threshold_per_country = 20
@@ -1339,7 +1358,7 @@ ggplot() +
   
 ```
 
-```{bash vcftools even sampling}
+```{bash vcftools even sampling, eval = F}
 head ${POPSTR}List_samples_even_sampling.txt
 
 vcftools --vcf ${VCFDIR}$VCFNAME.recode.vcf \
@@ -1373,9 +1392,9 @@ datamash transpose < ${POPSTR}$VCFNAME.even_sampling.GT.FORMAT2  |  sed 's/^/>/'
 
 ## Summary statistics of diversity per clusters
 
-```{bash}
+```{bash, eval = F}
 #rsync -avP  alice@130.125.25.244:/data2/alice/WW_project/3_Sumstats_demography/Sample_list_V*_*_diversity_pi.tsv \
-#    /Users/feurtey/Documents/Postdoc_Bruce/Projects/WW_project/3_Sumstats_demography/
+#    ~/Documents/Postdoc_Bruce/Projects/WW_project/3_Sumstats_demography/
 
 echo -e "Subset_samples\tChromosome\tStart\tStop\tPi\tTajimaD\tTheta" > \
   ../3_Sumstats_demography/Diversity_per_cluster.tsv
@@ -1403,9 +1422,13 @@ median_values = ungroup(temp) %>%
   group_by(Estimate) %>%
   dplyr::summarize(average = median(Value, na.rm = T))
 
-p1 = temp %>%
+pi_data = temp %>%
   filter(Estimate == "Pi") %>%
-  ggplot(aes(x = reorder(Cluster, -Order_tree), y = Value, fill = Cluster))  +
+  filter(!is.na(Cluster)) %>%
+  group_by(Cluster) %>%
+  dplyr::mutate(cluster_avg = median(Value, na.rm = T))
+
+p1 = ggplot(pi_data, aes(x = reorder(Cluster, -Order_tree), y = Value, fill = Cluster))  +
   geom_boxplot(outlier.shape = NA) + 
   #facet_wrap(vars(Estimate), scales = "free") +
   coord_flip() + ylim(c(-0.001, 0.065)) +
@@ -1423,11 +1446,137 @@ p2 = temp %>%
   #facet_wrap(vars(Estimate), scales = "free") +
   coord_flip() + 
   labs(y = "Tajima's D", x = "") +
+  theme_cowplot() +
   theme(legend.position = "None") +
   geom_hline(yintercept = pull(median_values %>% filter(Estimate == "TajimaD") %>% dplyr::select(average)),
              linetype = "dashed")
 
 cowplot::plot_grid(p1, p2, ncol = 2)
+
+
+#One-way ANOVA with blocks
+##Define linear model
+
+model = lm(Value ~ Cluster,
+          data=pi_data)
+summary(model)   ### Will show overall p-value and r-squared
+
+##Conduct analysis of variance
+Anova(model,type = "II")  
+summary(model)
+
+hist(residuals(model), col="darkgray")
+
+#Post-hoc analysis:  mean separation tests
+marginal = lsmeans(model, ~ Cluster)
+
+pairs(marginal, adjust="tukey")
+
+CLD = cld(marginal,
+          alpha   = 0.05,
+          Letters = letters,  ### Use lower-case letters for .group
+          adjust  = "tukey")  ### Tukey-adjusted p-values
+
+CLD
+
+CLD$.group=gsub(" ", "", CLD$.group)
+
+### Plot
+pi_ave = pull(median_values %>% filter(Estimate == "Pi") %>% dplyr::select(average))
+
+p1 = ggplot(pi_data, aes(x = reorder(Cluster, -Order_tree), y = Value))  +
+  coord_flip() +
+  geom_boxplot(outlier.shape = NA, alpha = .4, color = "grey") + 
+  geom_segment(aes(x = Cluster, xend = Cluster,
+        y = pi_ave, yend = cluster_avg, color = Cluster), size = 0.8) +
+  #geom_jitter(size = 1.5, alpha = 0.2, width = 0.2) +
+  geom_hline(aes(yintercept = pi_ave), color = "gray20", size = 0.6) +
+  geom_point(aes(color = Cluster, x = Cluster, y = cluster_avg), size = 3) + 
+  #stat_summary(aes(color = Cluster), fun = mean, geom = "point", size = 2) +
+  theme_cowplot() +
+    theme(legend.position = "none",
+          axis.text.x = element_text(angle = 40, hjust = 1)) +
+  labs (x = "", y = "Diversity (pi)") +
+  ylim(c(-0.001, 0.055)) +
+  geom_text(data = CLD, aes(x = Cluster, label = .group, y = 0.054), color   = "black")
+
+cowplot::plot_grid(p1, p2, ncol = 2)
+```
+
+
+## Variant effects
+
+```{r summarize snpEff, eval = F}
+#rsync -avP alice@130.125.25.244:/data2/alice/WW_project/2_Population_structure/Sample_list_V*.ann.tsv ~/Documents/Postdoc_Bruce/Projects/WW_project/3_Sumstats_demography/
+
+list_snpEff = list()
+for (K in c(1:chosen_K)){
+#for (K in c(1:3)){
+  print(K)
+snpEff_per_cluster = read_tsv(paste0(Sumstats_dir, "Sample_list_V", K, ".ann.tsv"), col_names = c("CHR", "BP", "REF", "ALT", "ANN"))%>%
+  separate(ANN, sep = ",", 
+           into = c("ANN1", "ANN2", "ANN3", "ANN4", "ANN5", "ANN6", "ANN7", "ANN8", "ANN9", "ANN10", "ANN11",
+                    "ANN12", "ANN13", "ANN14", "ANN15", "ANN16", "ANN17"), 
+           extra = "warn") %>%
+  pivot_longer(cols = c(-CHR, -BP, -REF, -ALT), names_to = "ANN", values_to = "Annotation") %>%
+  filter(!is.na(Annotation)) %>%
+  separate(Annotation, into = c("ALT2", "Variant_type", "Effect_strength", "Gene", "Rest"), sep = "\\|", extra = "merge")%>% 
+  dplyr::mutate(Ranked_effect_strength = Effect_strength)
+snpEff_per_cluster$Ranked_effect_strength[snpEff_per_cluster$Ranked_effect_strength == "HIGH"] = 1
+snpEff_per_cluster$Ranked_effect_strength[snpEff_per_cluster$Ranked_effect_strength == "MODERATE"] = 2
+snpEff_per_cluster$Ranked_effect_strength[snpEff_per_cluster$Ranked_effect_strength == "LOW"] = 3
+snpEff_per_cluster$Ranked_effect_strength[snpEff_per_cluster$Ranked_effect_strength == "MODIFIER"] = 4
+snpEff_per_cluster$Ranked_effect_strength[is.na(snpEff_per_cluster$Effect_strength)] = 5
+snpEff_per_cluster$Effect_strength[is.na(snpEff_per_cluster$Effect_strength)] = "NO_EFFECT"
+
+snpEff_per_cluster = snpEff_per_cluster %>%
+  group_by(CHR, BP) %>% 
+  dplyr::mutate(ranktemp = rank(Ranked_effect_strength, ties.method = "random")) %>%
+  filter(ranktemp == 1) 
+
+list_snpEff[[K]] = ungroup(snpEff_per_cluster) %>%
+  dplyr::count(Effect_strength) %>%
+  dplyr::mutate(Cluster = K)
+}
+summary_snpEff_per_cluster = bind_rows(list_snpEff) 
+write_tsv(summary_snpEff_per_cluster, paste0(Sumstats_dir, "Summary_snpEff_per_cluster.tsv"))
+```
+
+```{r plot snpEff}
+
+summary_snpEff_per_cluster = read_tsv(paste0(Sumstats_dir, "Summary_snpEff_per_cluster.tsv"))
+
+summary_snpEff_per_cluster %>%
+  ggplot(aes(x = as.factor(Cluster), y = n, fill =Effect_strength)) +
+  geom_bar(stat = "identity") +
+  theme_bw()
+
+summary_snpEff_per_cluster %>%
+  group_by(Cluster) %>%
+  dplyr::mutate(total = sum(n),
+                prop = n/total) %>%
+  ggplot(aes(x = Effect_strength, y = prop, fill = as.factor(Cluster))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_bw()
+
+summary_snpEff_per_cluster %>%
+  group_by(Cluster) %>%
+  dplyr::mutate(total = sum(n),
+                prop = n/total) %>%
+  filter(Effect_strength != "MODIFIER") %>%
+  ggplot(aes(x = as.factor(Cluster), y = prop, fill = as.factor(Effect_strength))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_bw()
+
+summary_snpEff_per_cluster %>%
+  group_by(Cluster)  %>%
+  dplyr::mutate(total = sum(n)) %>%
+  filter(Effect_strength != "MODIFIER") %>%
+  filter(Effect_strength != "LOW") %>%
+    mutate(prop = n/total) %>%
+  ggplot(aes(x = as.factor(Cluster), y = prop, fill = as.factor(Effect_strength))) +
+  geom_bar(stat = "identity") +
+  theme_bw()
 ```
 
 
@@ -1465,6 +1614,313 @@ corrplot(WC_Fst_values, method="circle", is.corr=FALSE,
 ```
 
 
+
+
+```{r dist geo vs genet cont}
+
+library(geodist)
+library(ggExtra)
+
+#Estimate geographic distances between samples
+temp = dplyr::select(Zt_meta, ID_file, Latitude, Longitude) %>%
+  filter(!is.na(Latitude))
+geo_distances = as.data.frame(geodist(x = temp, sequential = FALSE, measure = "geodesic")) 
+colnames(geo_distances) <- temp$ID_file
+geo_distances$ID_file1 = temp$ID_file
+geo_distances = as.tibble(geo_distances) %>%
+  pivot_longer(-ID_file1, names_to = "ID_file2", values_to = "Geo_distance")
+  
+
+#Run IBS with plink on cluster and import
+# ${SOFTPATH}plink   --distance square ibs   --vcf ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.vcf.gz   --out ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80   --const-fid   --not-chr 14-21 mt
+#rsync -avP alice@130.125.25.244:/data2/alice/WW_project/1_Variant_calling/4_Joint_calling/Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.mibs.id ~/Documents/Postdoc_Bruce/Projects/WW_project/2_Population_structure/0_Nuclear_genome/All_good_samples.mibs.id
+#rsync -avP alice@130.125.25.244:/data2/alice/WW_project/1_Variant_calling/4_Joint_calling/Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.mibs ~/Documents/Postdoc_Bruce/Projects/WW_project/2_Population_structure/0_Nuclear_genome/All_good_samples.mibs
+
+#../Software/vcftools_jydu/src/cpp/vcftools --gzvcf ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.vcf.gz  --missing-indv  --out temp
+#rsync -avP alice@130.125.25.244:/home/alice/WW_PopGen/temp.imiss ~/Documents/Postdoc_Bruce/Projects/WW_project/2_Population_structure/0_Nuclear_genome/All_good_samples.miss
+
+
+#Read genetic distances
+ibs = read_tsv(paste0(nuc_PS_dir, "All_good_samples.mibs.id"), col_names = c("Whatever", "ID_file1")) %>% 
+  dplyr::select(ID_file1) %>% pull()
+related = read_tsv(paste0(nuc_PS_dir, "All_good_samples.mibs"), col_names = ibs) %>%
+  mutate(ID_file1 = ibs) %>%
+  pivot_longer(names_to = "ID_file2", values_to = "Relatedness", cols = -ID_file1) 
+distances = inner_join(related, geo_distances) 
+
+#To do: compare intra-continent and inter-continent
+#To do: compare intra-cluster and inter-cluster
+#
+distances = distances %>% 
+  inner_join(Zt_meta %>% dplyr::select(ID_file1 = ID_file, Continent1 = Continent)) %>% 
+  inner_join(Zt_meta %>% dplyr::select(ID_file2 = ID_file, Continent2 = Continent)) %>%
+  mutate(Continent_comparison = ifelse(Continent1 == Continent2, "Intra", "Inter")) %>% 
+  filter(Continent1 != "Asia") %>%
+  filter(ID_file1 != ID_file2) 
+
+
+#Dot plots
+distances  %>%
+  filter(Continent_comparison == "Intra") %>%
+  ggplot(aes(x = Geo_distance, y = Relatedness, col = Continent1)) + 
+  geom_point(shape = 1, alpha = 0.6) + 
+  theme_bw() +
+  facet_wrap(vars(Continent1), scales = "free") +
+  Color_Continent + 
+  stat_smooth(col = "grey20", method = "lm")#, formula = "y ~ log(x)")
+
+# Discretized distances
+temp = distances %>%
+  filter(Continent_comparison == "Intra") %>%
+  filter(Geo_distance < 4000000) %>%
+  mutate(Geo_distance_disc = as.factor(500*round(Geo_distance/500000))) %>%
+  dplyr::count(Continent1, Geo_distance_disc) #%>%
+#filter(n >= 100)
+
+distances %>%
+  filter(Continent_comparison == "Intra") %>%
+  mutate(Geo_distance_disc = as.factor(500*round(Geo_distance/500000)))%>%
+ # inner_join(temp) %>%
+  filter(Geo_distance < 4000000) %>%
+  ggplot(aes(x = Geo_distance_disc, y = Relatedness, col = Continent1)) +
+  geom_boxplot(outlier.shape = 1) + 
+  theme_bw() +
+  facet_wrap(vars(Continent1), scales = "free_y") +
+  Color_Continent  +
+  geom_text(data = temp, aes(x = Geo_distance_disc, y = 1, label = n), 
+            col = "black", angle = 90, size = 4) +
+  theme(axis.text.x = element_text(angle = 45, hjust =1, vjust = 1))
+
+
+
+```
+
+
+```{r dist geo vs genet clust}
+temp = list()
+for (i in c(1:chosen_K)){
+  temp[[i]] = read_tsv(paste0(PopStr_dir, "Sample_list_V", i, ".args"), col_names = "ID_file") %>%
+    mutate( Cluster  = paste0("V", i)) }
+
+list_pure_cluster = bind_rows(temp)
+
+distances = distances %>% 
+  inner_join(list_pure_cluster %>% dplyr::select(ID_file1 = ID_file, Cluster1 = Cluster)) %>% 
+  inner_join(list_pure_cluster %>% dplyr::select(ID_file2 = ID_file, Cluster2 = Cluster)) %>%
+  mutate(Cluster_comparison = ifelse(Cluster1 == Cluster2, "Intra", "Inter")) 
+
+
+
+
+distances %>%
+  filter(Cluster_comparison == "Intra") %>%
+ # inner_join(temp) %>%
+#  filter(Geo_distance < 4000000) %>%
+  ggplot(aes(x = Geo_distance, y = Relatedness, col = Cluster1)) +
+  geom_point() + 
+  theme_bw() +
+  facet_wrap(vars(Cluster1), scales = "free")  +
+  theme(axis.text.x = element_text(angle = 45, hjust =1, vjust = 1))+ 
+  stat_smooth(col = "grey20", method = "lm")
+
+# Discretized distances
+distances %>%
+  filter(Cluster_comparison == "Intra") %>%
+  mutate(Geo_distance_disc = as.factor(500*round(Geo_distance/500000)))%>%
+ # inner_join(temp) %>%
+ # filter(Geo_distance < 4000000) %>%
+  ggplot(aes(x = Geo_distance_disc, y = Relatedness, col = Cluster1)) +
+  geom_boxplot(outlier.shape = 1) + 
+  theme_bw() +
+  facet_wrap(vars(Cluster1), scales = "free_y") +
+  #geom_text(data = temp, aes(x = Geo_distance_disc, y = 1, label = n), 
+  #          col = "black", angle = 90, size = 4) +
+  theme(axis.text.x = element_text(angle = 45, hjust =1, vjust = 1))
+
+distances %>%
+  filter(Cluster_comparison == "Intra") %>%
+  mutate(Geo_distance_disc = as.factor(100*round(Geo_distance/100000)))%>%
+ # inner_join(temp) %>%
+  filter(Geo_distance < 1000000) %>%
+  ggplot(aes(x = Geo_distance_disc, y = Relatedness, col = Cluster1)) +
+  geom_boxplot(outlier.shape = 1) + 
+  theme_bw() +
+  facet_wrap(vars(Cluster1), scales = "free_y") +
+  #geom_text(data = temp, aes(x = Geo_distance_disc, y = 1, label = n), 
+  #          col = "black", angle = 90, size = 4) +
+  theme(axis.text.x = element_text(angle = 45, hjust =1, vjust = 1))
+
+distances %>%
+  filter(Cluster_comparison == "Intra") %>%
+  mutate(Geo_distance_disc = as.factor(50*round(Geo_distance/50000)))%>%
+ # inner_join(temp) %>%
+  filter(Geo_distance < 500000) %>%
+  ggplot(aes(x = Geo_distance_disc, y = Relatedness, col = Cluster1)) +
+  geom_boxplot(outlier.shape = 1) + 
+  theme_bw() +
+  facet_wrap(vars(Cluster1), scales = "free_y") +
+  #geom_text(data = temp, aes(x = Geo_distance_disc, y = 1, label = n), 
+  #          col = "black", angle = 90, size = 4) +
+  theme(axis.text.x = element_text(angle = 45, hjust =1, vjust = 1))
+
+```
+
+
+```{r dist models}
+# Comparing fit of models in Europe
+
+set.seed(123)
+subset_distances = distances %>% filter(Continent1 == "Europe") %>%
+  filter(Continent_comparison == "Intra") 
+training.samples <- distances$Relatedness %>%
+  createDataPartition(p = 0.8, list = FALSE)
+train.data  <- subset_distances[training.samples, ]
+test.data <- subset_distances[-training.samples, ]
+
+# Build the model for linear regression
+model <- lm(Relatedness ~ Geo_distance, data = train.data)
+# Make predictions
+predictions <- model %>% predict(test.data)
+# Model performance
+data.frame(
+  RMSE = RMSE(predictions, test.data$Relatedness),
+  R2 = R2(predictions, test.data$Relatedness)
+)
+
+# Build the model for log regression
+model <- lm(Relatedness ~ log(Geo_distance + 1), data = train.data)
+# Make predictions
+predictions <- model %>% predict(test.data)
+# Model performance
+data.frame(
+  RMSE = RMSE(predictions, test.data$Relatedness),
+  R2 = R2(predictions, test.data$Relatedness)
+)
+
+# Build the model
+model <- gam(Relatedness ~ s(Geo_distance), data = train.data)
+# Make predictions
+predictions <- model %>% predict(test.data)
+# Model performance
+data.frame(
+  RMSE = RMSE(predictions, test.data$Relatedness),
+  R2 = R2(predictions, test.data$Relatedness)
+)
+
+ggplot(train.data, aes(Geo_distance, Relatedness) ) +
+  geom_point() +
+  stat_smooth(method = gam, formula = y ~ s(x))
+
+ggplot(train.data, aes(Geo_distance, Relatedness) ) +
+  geom_hex() 
+
+```
+
+```{r WTF Europe}
+#
+
+temp = distances %>% filter(Continent1 == "Europe") %>% 
+  filter(Continent2 == "Europe") %>% 
+   mutate(Relat_group = ifelse(Relatedness > 0.935, "High", ifelse(Relatedness < 0.925, "Low", "Medium"))) %>% 
+  inner_join(Zt_meta %>% dplyr::select(ID_file1 = ID_file, Country1 = Country, Year1 = Sampling_Date)) %>% 
+  inner_join(Zt_meta %>% dplyr::select(ID_file2 = ID_file, Country2 = Country, Year2 = Sampling_Date)) %>%
+  dplyr::select(-c("Continent1", "Continent2", "Continent_comparison", "Cluster1", "Cluster2"))
+
+
+ungroup(temp) %>% group_by(Relat_group, Year1, Year2) %>%
+  dplyr::count() %>%
+  ggplot(aes(x = Year1, y = Year2, size = n, col = Relat_group))+
+  geom_abline(slope = 1, intercept = 0, col = "grey30") +
+  geom_point(alpha = .4) + 
+  theme_bw() + facet_wrap(vars(Relat_group)) 
+ 
+ungroup(temp) %>% group_by(Relat_group, Country1, Country2) %>%
+  dplyr::count() %>%
+  ggplot(aes(x = Country1, y = Country2, size = n, col = Relat_group))+
+  geom_abline(slope = 1, intercept = 0, col = "grey30") +
+  geom_point(alpha = .4) + 
+  theme_bw() + facet_wrap(vars(Relat_group))
+
+p1 = bind_rows(ungroup(temp) %>% dplyr::select(Relatedness, ID_file = ID_file1),
+          ungroup(temp) %>% dplyr::select(Relatedness, ID_file = ID_file2))%>% 
+  group_by(ID_file) %>% 
+  dplyr::summarize(median_rel = median(Relatedness), ave_rel = mean(Relatedness)) %>% 
+  dplyr::mutate(median_rel_cat = ifelse(median_rel > 0.935, "High", ifelse(median_rel < 0.925, "Low", "Medium"))) %>%
+  full_join(read_tsv(paste0(nuc_PS_dir, "All_good_samples.miss")), by = c("ID_file" = "INDV"))
+
+ggplot(data = p1, aes(median_rel, F_MISS)) + #TODO: compare with missing data...
+  geom_point(alpha = .4) + 
+    geom_text(data = p1 %>% filter(median_rel_cat != "Medium"), 
+              aes (median_rel, F_MISS, label = ID_file)) 
+
+inner_join(p1, dplyr::select(Zt_meta, Latitude, Longitude, ID_file)) %>%
+  dplyr::filter(median_rel_cat != "Medium") %>%
+  ggplot(aes(x = Latitude, y = Longitude, col = median_rel_cat)) +
+  geom_point() +
+  theme_bw()
+
+distances = distances %>% 
+  inner_join(Zt_meta %>% dplyr::select(ID_file1 = ID_file, Year1 = Sampling_Date)) %>% 
+  inner_join(Zt_meta %>% dplyr::select(ID_file2 = ID_file, Year2 = Sampling_Date)) %>%
+  filter(!is.na(Year1) & !is.na(Year2)) %>%
+  mutate(Time_diff = abs(Year1 - Year2))
+
+samples_to_exclude = p1 %>% filter(median_rel_cat != "Medium") %>% pull(ID_file)
+
+p2 = distances %>% filter(Continent1 == "Europe") %>%
+  filter(!(ID_file1 %in% samples_to_exclude)) %>%
+  filter(!(ID_file2 %in% samples_to_exclude)) %>%
+  filter(Continent_comparison == "Intra") %>%
+  ggplot(aes(Geo_distance, Relatedness, col = Time_diff) ) +
+  geom_point(alpha = .4) +
+  coord_cartesian(ylim = c(0.91, 0.975))
+
+p3 = distances %>% filter(Continent1 == "Europe") %>%
+  filter(Continent_comparison == "Intra") %>%
+  ggplot(aes(Geo_distance, Relatedness, col = Time_diff) ) +
+  geom_point(alpha = .4) +
+  coord_cartesian(ylim = c(0.91, 0.975))
+
+cowplot::plot_grid(p2, p3, ncol = 2)
+
+
+# Model
+subset_distances = distances %>% filter(Continent1 == "Europe") %>%
+  filter(Continent_comparison == "Intra") %>%
+  filter(!(ID_file1 %in% samples_to_exclude)) %>%
+  filter(!(ID_file2 %in% samples_to_exclude)) 
+training.samples <- subset_distances$Relatedness %>%
+  createDataPartition(p = 0.8, list = FALSE)
+train.data  <- subset_distances[training.samples, ]
+test.data <- subset_distances[-training.samples, ]
+
+# Build the model for linear regression
+model <- lm(Relatedness ~ Geo_distance, data = train.data)
+# Make predictions
+predictions <- model %>% predict(test.data)
+# Model performance
+data.frame(
+  RMSE = RMSE(predictions, test.data$Relatedness),
+  R2 = R2(predictions, test.data$Relatedness)
+)
+
+library(mgcv)
+# Build the model
+model <- gam(Relatedness ~ s(Geo_distance), data = train.data)
+# Make predictions
+predictions <- model %>% predict(test.data)
+# Model performance
+data.frame(
+  RMSE = RMSE(predictions, test.data$Relatedness),
+  R2 = R2(predictions, test.data$Relatedness)
+)
+
+ggplot(train.data, aes(Geo_distance, Relatedness) ) +
+  geom_point(alpha = .2) +
+  stat_smooth(method = gam, formula = y ~ s(x)) +
+  coord_cartesian(ylim = c(0.92, 0.94)) +
+  theme_bw()
+```
 <br><br>
 
 
@@ -1522,57 +1978,49 @@ ggplot() + theme_void() +
 
 
 ```
+```{bash, eval = F}
+#rsync -avP  alice@130.125.25.244:/data2/alice/WW_project/3_Sumstats_demography/Sample_list_V*_*_diversity_pi.tsv \
+#    ~/Documents/Postdoc_Bruce/Projects/WW_project/3_Sumstats_demography/
 
-```{r diversity per country}
+echo -e "Subset_samples\tChromosome\tStart\tStop\tPi\tTajimaD\tTheta" > \
+  ../3_Sumstats_demography/Diversity_per_country.tsv
+for x in Algeria Argentina Australia Australia_NSW Australia_Tasmania Belgium Canada Chile Czech_Republic Denmark France Germany Iran Ireland Israel Netherlands New_Zealand Switzerland Tunisia Turkey UK USA_Indiana USA_Missouri USA_Oregon USA_Texas Uruguay; 
+  do
+  cat ../3_Sumstats_demography/Sample_list_${x}_diversity_pi.tsv >>  \
+    ../3_Sumstats_demography/Diversity_per_country.tsv
+done
+
+```
+
+```{r diversity per country2}
 #Setting countries and windows
 temp_countries = c("Algeria", "Argentina", "Australia", "Belgium", "Canada", "Chile", "Czech_Republic", 
                    "Denmark", "France", "Germany", "Iran", "Ireland", "Israel", "Netherlands", 
                    "New_Zealand", "Switzerland", "Tunisia", "Turkey", "UK",
                    "USA_Indiana", "USA_Missouri", "USA_Oregon", "USA_Texas", "Uruguay")
 
-windows = read_tsv(paste0(Sumstats_dir, "Windows_for_diversity.bed"), 
-                   col_names = c("CHROM", "BIN_START", "BIN_END")) %>%
-  mutate(BIN_START = BIN_START +1 )
+diversity_values = read_tsv(paste0(Sumstats_dir, "Diversity_per_country.tsv"), na = "nan")
 
-
-#Reading diversity data
-diversity_list = list()
-for (country in temp_countries) {
-filename = paste0(nuc_PS_dir,
-                  "Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.",
-                   country, ".windowed.pi")
-
-temp = read_tsv(filename) %>% mutate(Country = country)
-diversity_list[[country]] = temp
-}
-
-temp_diversity = bind_rows(diversity_list) %>%
-  inner_join(windows) #%>%
-  #mutate(Country = ifelse(str_detect(Country, "^USA"), "USA", Country)) 
-
-#Summarising the genetic diversity for each country
-summary_diversity = temp_diversity %>%
+temp = diversity_values %>% dplyr::select(-Theta, -TajimaD) %>%
+  mutate(Country = str_remove(Subset_samples, "Sample_list_")) %>%
   group_by(Country) %>%
-  summarize(ave_pi = mean(PI), med_pi = median(PI)) %>%
-  left_join(Zt_meta %>% dplyr::select(Country, Continent) %>% distinct()) %>%
-  left_join(Zt_meta %>% dplyr::count(Country, name = "Number_of_isolates")) %>%
-  mutate(Continent = ifelse(Country == "Australia", "Oceania", Continent)) %>%
-  mutate(Continent = ifelse(Country == "New_Zealand", "Oceania", Continent)) %>%
-  #mutate(Continent = ifelse(Country == "USA", "North America", Continent)) 
-  mutate(Continent = ifelse(str_detect(Country, "^USA"), "North America", Continent)) 
+  summarize(Pi = median(Pi, na.rm = T)) 
+temp = countries %>%
+  mutate(Country = ifelse(Country == "Czech Republic", "Czech_Republic", Country))%>%
+  mutate(Country = ifelse(Country == "New Zealand", "New_Zealand", Country)) %>%
+  right_join(., temp)
 
-#Adding wheat info to the diversity info
 summary_diversity = wheat_per_country %>%
   mutate(Area = ifelse(Area == "United States of America", "USA", Area)) %>%
   mutate(Area = ifelse(Area == "United Kingdom of Great Britain and Northern Ireland", "UK", Area)) %>%
   mutate(Area = ifelse(Area == "Czechia", "Czech_Republic", Area)) %>%
   mutate(Area = ifelse(Area == "New Zealand", "New_Zealand", Area)) %>%
   mutate(Area = ifelse(Area == "Iran (Islamic Republic of)", "Iran", Area)) %>%
-  inner_join(., summary_diversity, by = c("Area" = "Country"))
+  inner_join(., temp, by = c("Area" = "Country")) 
 
 p3 = pivot_longer(summary_diversity, cols = c(Arable_land_for_wheat, Land_for_wheat), 
                names_to = "Wheat_qty_est", values_to = "Percent") %>%
-  ggplot(aes(x = med_pi, y = Percent, label = Area, col = Continent)) +
+  ggplot(aes(x = Pi, y = Percent, label = Area, col = Continent)) +
   geom_text() + 
   theme_bw() +
   facet_wrap(vars(Wheat_qty_est), scales = "free_y") +
@@ -1580,17 +2028,15 @@ p3 = pivot_longer(summary_diversity, cols = c(Arable_land_for_wheat, Land_for_wh
   xlim(c(0.004, 0.012))
 
 
-res.aov2 <- aov(ave_pi ~ Land_for_wheat + Continent, data = summary_diversity)
-summary(res.aov2)
 
 p1 = filter(summary_diversity, Continent == "Europe") %>%
-  ggplot(aes(x = med_pi, y = Land_for_wheat, label = Area, col = Continent)) +
+  ggplot(aes(x = Pi, y = Land_for_wheat, label = Area, col = Continent)) +
   geom_text() + 
   theme_bw() +
   Color_Continent
 
 p2 = filter(summary_diversity, Continent != "Europe") %>%
-  ggplot(aes(x = med_pi, y = Land_for_wheat, label = Area, col = Continent)) +
+  ggplot(aes(x = Pi, y = Land_for_wheat, label = Area, col = Continent)) +
   geom_text() + 
   theme_bw() +
   Color_Continent
@@ -1598,24 +2044,14 @@ p2 = filter(summary_diversity, Continent != "Europe") %>%
 row = cowplot::plot_grid(p1, p2, nrow = 1) 
 cowplot::plot_grid(p3, row, ncol = 1)
 
-#Plot only for Europe
-filter(summary_diversity, Continent == "Europe") %>%
-  ggplot(aes(x = med_pi, y = Wheat_ha, label = Area, col = Continent)) +
-  geom_text() + 
-  theme_bw() +
-  Color_Continent
 
-res.aov2 <- aov(med_pi ~ Land_for_wheat + Continent + Number_of_isolates, data = summary_diversity)
-summary(res.aov2)
-
-# Plot only for North America
-filter(summary_diversity, str_detect(Area, "^USA")) %>%
-  ggplot(aes(x = med_pi, y = Wheat_ha, label = Area, col = Continent)) +
-  geom_text() + 
-  theme_bw() +
-  Color_Continent
-
+model1 = lm(Pi ~ Land_for_wheat + Continent, data = summary_diversity)
+summary(model1)
+model2 = lm(Pi ~ Land_for_wheat + Continent + Land_for_wheat*Continent, data = summary_diversity)
+summary(model2)
 ```
+
+
 
 ```{r}
 temp = read_tsv(paste0(Sumstats_dir, "Summary_diversity_pi.tsv"), 
@@ -1642,20 +2078,6 @@ summary_diversity2 = wheat_per_country %>%
   mutate(Area = ifelse(Area == "Iran (Islamic Republic of)", "Iran", Area)) %>%
   inner_join(., filter(temp, Subset_size == 6) %>% group_by(Country, Continent) %>% summarize(Median_pi = median(Median_pi)), 
              by = c("Area" = "Country")) 
-
-res.aov2 <- aov(Median_pi ~ Wheat_ha + Continent, data = summary_diversity2)
-summary(res.aov2)
-
-res.aov2 <- aov(Median_pi ~ Arable_land_for_wheat + Continent, data = summary_diversity2)
-summary(res.aov2)
-
-res.aov2 <- aov(Median_pi ~ Land_for_wheat + Continent, data = summary_diversity2)
-summary(res.aov2)
-
-res.aov2 <- aov(Median_pi ~ Arable_land_for_wheat, data = summary_diversity2[summary_diversity2$Continent == "Europe", ])
-summary(res.aov2)
-res.aov2 <- aov(Median_pi ~ Land_for_wheat, data = summary_diversity2[summary_diversity2$Continent == "North America", ])
-summary(res.aov2)
 
 pivot_longer(summary_diversity2, cols = c(Arable_land_for_wheat, Land_for_wheat, Wheat_ha), 
                names_to = "Wheat_qty_est", values_to = "Land_use") %>%
