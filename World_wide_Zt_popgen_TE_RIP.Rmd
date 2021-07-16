@@ -219,7 +219,7 @@ First, I mapped the reads on the TE consensus created by Ursula based on Thomas'
 TE_qty = read_delim(paste0(RIP_DIR, "Nb_reads.txt"), delim = " ") %>%
   dplyr::filter(Total_reads > Te_aligned_reads) %>%
   dplyr::mutate(Percent_TE_Reads = Te_aligned_reads * 100 / Total_reads) %>%
-  left_join(., Zt_meta) %>%
+  full_join(., Zt_meta) %>%
   unite(Continent, Country, ID_file, col = "for_display", remove = F)
 
 world_avg <-
@@ -278,15 +278,36 @@ TE_prop +
 ```
 
 At this stage, I have three different TE quantity measure: the percentage of reads that mapped on the consensus reads and the number of  insertions (both reference and non-reference) identified by ngs_te_mapper2. Let's see how they compare.
+
+```{bash, eval = F}
+#Summarize numbers
+#_________________
+#grep "Number" /data2/alice/WW_project/4_TE_RIP/4_ngs_TE_mapper/*/ngs_te_mapper.log | grep "non-reference" -v | cut -d ":" -f 1,7 | sed 's|/| |g' | cut -d " " -f 7,9 | sort > /data2/alice/WW_project/4_TE_RIP/4_ngs_TE_mapper/Ref_TE_numbers.txt
+#grep "Number" /data2/alice/WW_project/4_TE_RIP/4_ngs_TE_mapper/*/ngs_te_mapper.log | grep "non-reference" | cut -d ":" -f 1,7 | sed 's|/| |g' | cut -d " " -f 7,9 | sort > /data2/alice/WW_project/4_TE_RIP/4_ngs_TE_mapper/Non-ref_TE_numbers.txt
+#rsync -avP alice@130.125.25.244:/data2/alice/WW_project/4_TE_RIP/4_ngs_TE_mapper/*_TE_numbers.txt ../4_TE_RIP/
+
+
+
+#Gather per strain files into one big file
+#_________________________________________
+#cd /data2/alice/WW_project/4_TE_RIP/4_ngs_TE_mapper
+#for direc in $dir_list ; do if [ -f ./${direc}${direc%/}_1_paired.nonref.bed ] ; then awk -v var=${direc%/} 'BEGIN {OFS = "\t"} {print var, $1,$2,$3,$4,$5}' ./${direc}${direc%/}_1_paired.nonref.bed ; else awk -v var=${direc%/} 'BEGIN {OFS = "\t"} {print var, $1,$2,$3,$4,$5}' ./${direc}${direc%/}.nonref.bed ; fi  ; done > Non-ref_all_strains.bed
+#for direc in $dir_list ; do if [ -f ./${direc}${direc%/}_1_paired.ref.bed ] ; then awk -v var=${direc%/} 'BEGIN {OFS = "\t"} {print var, $1,$2,$3,$4,$5}' ./${direc}${direc%/}_1_paired.ref.bed ; else awk -v var=${direc%/} 'BEGIN {OFS = "\t"} {print var, $1,$2,$3,$4,$5}' ./${direc}${direc%/}.ref.bed ; fi  ; done > Ref_all_strains.bed
+#rsync -avP alice@130.125.25.244:/data2/alice/WW_project/4_TE_RIP/4_ngs_TE_mapper/*ef_all_strains.bed ../4_TE_RIP/
+```
+
 ```{r method comparison}
+
+
 TE_qty = full_join(read_delim(paste0(TE_RIP_dir, "Non-ref_TE_numbers.txt"), 
                                      col_names = c("ID_file", "Non_ref_insertions"),
                                      delim = " "),
                           read_delim(paste0(TE_RIP_dir, "Ref_TE_numbers.txt"), 
                                      col_names = c("ID_file", "Ref_insertions"),
-                                     delim = " ")) %>%
-  left_join(TE_qty) %>%
-  mutate(Total_insertions = Ref_insertions + Non_ref_insertions)
+                                     delim = " "))  %>%
+  mutate(Total_insertions = Ref_insertions + Non_ref_insertions) %>%
+  filter(Total_insertions > 0) %>%
+  left_join(TE_qty)
 
 
 p1 = TE_qty %>%
@@ -354,19 +375,23 @@ model3 = lm(Percent_TE_Reads ~  Collection,
 summary(model3)
 
 ```
-Comparing the 3 models, it is clear that the reference insertions estimation is the most biased of the 3 methods (when taking the sequencing batch into account). The non-reference insertions does not look too bad. 
+Comparing the 3 models, it is clear that the reference insertions estimation is the most biased of the 3 methods (when taking the sequencing batch into account). The non-reference insertions does not look too bad, until we add the recent Oregon population. 
 
 I now want to see if adding the continent information on top of the collection one to the model brings a significant improvement or not.
 ```{r model comparison}
 model11 = lm(Non_ref_insertions ~  Collection + Continent,
           data=temp)
 summary(model11)
+model21 = lm(Ref_insertions ~  Collection + Continent,
+          data=temp)
+summary(model21)
 model31 = lm(Percent_TE_Reads ~  Collection + Continent,
           data=temp)
 summary(model31)
 
 #Comparison of simple vs complex models
 anova(model1, model11)
+anova(model2, model21)
 anova(model3, model31)
 
 temp = TE_qty %>% filter(!is.na(Continent))%>% filter(!is.na(Collection)) %>% filter(!is.na(Cluster))
@@ -421,6 +446,16 @@ TE_qty %>%
         title = "TE insertions per continent",
         subtitle = str_wrap(paste(""), width = 70)) +
   geom_text(data = CLD, aes(x = Continent, label = .group, y = 430), color   = "black")
+TE_qty %>%
+  filter(!is.na(Continent)) %>%
+  ggplot(aes(x = Continent, y = Ref_insertions, fill = Continent)) +
+    geom_violin(alpha = .8)  +
+  Fill_Continent + Color_Continent +
+  theme_cowplot()  +
+    theme(axis.text.x = element_text(angle = 40, hjust = 1)) +
+  labs (x = "", y = str_wrap("Reference insertions", width = 30),
+        title = "TE insertions per continent",
+        subtitle = str_wrap(paste(""), width = 70))
 
 #Cluster
 model = lm(Non_ref_insertions ~  Cluster, data=TE_qty)
@@ -440,72 +475,24 @@ TE_qty %>%
 
 ```
 
-```{r TE content estimation plots woHOG}
-
-#Reading in the data
-TE_qty2 = read_delim(paste0(RIP_DIR, "Nb_reads.txt"), delim = " ") %>%
-  dplyr::filter(Total_reads > Te_aligned_reads) %>%
-  dplyr::mutate(Percent_TE_Reads = Te_aligned_reads * 100 / Total_reads) %>%
-  left_join(., Zt_meta) %>%
-  unite(Continent, Country, ID_file, col = "for_display", remove = F) %>%
-  filter(!is.na(Continent)) %>%
-  filter(Collection != "Hartmann_FstQst_2015") 
-
-world_avg <-
-  TE_qty2  %>%
-  dplyr::summarize(avg = mean(as.numeric(Percent_TE_Reads), na.rm = T)) %>%
-  pull(avg)
-
-#Building the basic violin plot per continent
-TE_prop2 =  TE_qty2 %>%
-  filter(!is.na(Continent)) %>%
-  ggplot(aes(x = Continent, y = Percent_TE_Reads, fill = Continent)) +
-  geom_hline(aes(yintercept = world_avg),
-             color = "gray30", size = 0.6, linetype = "dashed") +
-    geom_violin(alpha = .8) +
-  stat_summary(fun = mean, geom = "point", size = 2, color = "grey30") +
-    theme_classic() + Fill_Continent + Color_Continent +
-  theme_cowplot()  +
-    theme(axis.text.x = element_text(angle = 40, hjust = 1)) +
-  labs (x = "", y = str_wrap("Percentage of reads", width = 30),
-        title = "Amount of reads mapping on TE consensus per continent",
-        subtitle = str_wrap(paste(""), width = 70))
-
-#TE_prop
-
-
-#One-way ANOVA with blocks
-##Define linear model
-model2 = lm(Percent_TE_Reads ~ Continent + Collection ,
-          data=TE_qty2)
-summary(model2)   ### Will show overall p-value and r-squared
-
-##Conduct analysis of variance
-Anova(model2,type = "II")  
-summary(model2)
-
-
-#Post-hoc analysis:  mean separation tests
-marginal = lsmeans(model2, ~ Continent)
-
-pairs(marginal, adjust="tukey")
-
-CLD2 = cld(marginal,
-          alpha   = 0.05,
-          Letters = letters,  ### Use lower-case letters for .group
-          adjust  = "tukey")  ### Tukey-adjusted p-values
-
-CLD2
-
-CLD2$.group=gsub(" ", "", CLD2$.group)
-
-### Plot
-TE_prop2 +
-  geom_text(data = CLD2, aes(x = Continent, label = .group, y = 34), color   = "black")
-
-
-```
 The statistics used here are a one-way [ANOVA with block](https://rcompanion.org/handbook/I_06.html). Blocks are used in an analysis of variance or similar models in order to account for suspected variation from factors other than the treatments or main independent variables being investigated. Here I considered the collection as the confounging factor. It definitely has an effect and was thus accounted for in the statistics related to TE content and to RIP level.
+
+
+#####
+```{r}
+non_ref_insertions = read_tsv(paste0(TE_RIP_dir, "Non-ref_all_strains.bed"), 
+           col_names = c("ID_file", "chromosome", "position", "end", "info", "score", "strand")) %>%
+  separate(col = chromosome, into = c("X1", "CHR", "X2", "X3", "X4"), sep = "_") %>%
+  separate(col = info, into = c("TE_family", "TSD", "Allele_Frequency", "3_support", "5_support", "ref_reads"), sep = "\\|") %>%
+  dplyr::select(-c(X1, X2, X3, X4, score, strand))
+
+
+ggplot(non_ref_insertions, aes(as.numeric(Allele_Frequency))) +
+  geom_density() +
+  theme_bw()
+```
+
+#####
 
 I would like to go finer in the TE content analysis and look at the reads aligning on each consensus sequence.
 ```{r reads per TE}

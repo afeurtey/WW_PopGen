@@ -76,7 +76,6 @@ library(multcomp)
 
 
 #Variables
-world <- map_data("world")
 project_dir="~/Documents/Postdoc_Bruce/Projects/WW_project/"
 lists_dir = "~/Documents/Postdoc_Bruce/Projects/WW_project/WW_PopGen/Keep_lists_samples/"
 
@@ -237,9 +236,12 @@ pheno_table = tibble(BIO_ID = paste0("BIO", c(1:19)),
 
 
 
-#GEA: all data
+# GEA: all data
+
 ***
+
 ## Geographic/environmental data
+
 I will use the sampling site of each isolate (as precisely as I can manage) to approximate environmental parameters such as temperature, or precipitation. One possibility to find such data is this website, https://www.worldclim.org/data/worldclim21.html (published in Fick and Hijmans, 2017), which gives access to climate data for 1970-2018. These can be transformed into bioclimatic variables using the biovars function from the R package dismo (https://rdrr.io/cran/dismo/man/biovars.html).
 
 ```{r Get Bioclim data}
@@ -528,60 +530,7 @@ ggplot(significant, aes(Locus_length)) +
 ## Minor allele frequencies of significant variants
 In many different GWAS, it has been found that significant variants are often found at low minor allele frequencies. My threshold to keep a variant in the analysis was initially 0.01, but often it is 0.05. Here, I want to see how many of the significant variants we have found previously as significant fall below/above 0.05. 
 
-```{r signif MAF}
-#Read MAF data for the significant alleles
-temp = read_tsv(paste0(GEA_dir, "Significant_GEMMA.ann.tab"), na = ".") %>%
-  unite(col = SNP, CHROM, POS) %>%
-  pivot_longer(-c(REF, ALT, SNP), names_to = "ID_file", values_to = "Allele") %>%
-  group_by(SNP) %>%  
-  mutate(Allele = ifelse(Allele == 0, "REF", "ALT")) %>%
-  filter(Allele != "NA") %>%
-  dplyr::count(Allele) %>%
-  pivot_wider(names_from = Allele, values_from = n, values_fill = 0) %>%
-  mutate(Nb_genotypes = ALT + REF,
-         REF_prop = REF/Nb_genotypes, ALT_prop = ALT/Nb_genotypes, 
-         MAF = min(REF_prop, ALT_prop)) %>%
-  dplyr::select(-ALT, -REF)
-
-
-significant = left_join(significant, temp)
-
-#Violin plot MAF
-ggplot(data = significant, aes(x = Phenotype, y = MAF, col = Phenotype, fill = Phenotype)) +
-  geom_violin(alpha = .5) +
-  theme_bw() + 
-  theme(legend.position = "none") + 
-  scale_y_continuous(trans='log2') +
-  coord_flip() +
-  labs(title = "Distribution of the MAF of significant variants",
-       subtitle = "Beware! Logarithmic scale.",
-       x = "")
-
-
-# Basic barplot
-data <- significant %>% 
-  mutate(group = ifelse(MAF < 0.05, "1to5%", ">5%")) %>%
-  filter(!is.na(group))
-
-temp = dplyr::count(data, Phenotype, group)
-
-ggplot(data, aes(x=Phenotype, fill=group)) +
-  geom_bar(position = "fill") +
-  coord_flip() +
-  theme_bw() +
-  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + 
-  scale_fill_manual(values = c("#82c0cc", "#EDE7E3")) +
-  labs(y = "Proportion of significant variants", 
-       fill = "MAF category", x = "") +
-  geom_label(data = temp %>% filter(group == ">5%"),
-            aes(label = n, y = 1.13), colour = "white")  +
-  ylim(c(0, 1.2)) +
-  labs(title = str_wrap("Proportion and numbers of significant variants with a MAF > 5%", 40))
-
-
-```
-As expected a large proportion of variants with a significant association to one of the bioclimatic variable have a low MAF. I would like to put this in perspective by comparing with variants from the pool of tested variants, that is biallelic variants without any missing data and 
-```{r maf comparison}
+```{r read MAF }
 prefix = "Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-100.biall"
 biall_maf_ann = full_join(read_tsv(paste0(vcf_dir, prefix, ".frq.count"), 
                                    col_names = c("CHR", "BP", "N_ALL", "Total", "REF_count", "ALT_count"),
@@ -602,8 +551,64 @@ biall_maf_ann = full_join(read_tsv(paste0(vcf_dir, prefix, ".frq.count"),
   full_join(., significant %>% dplyr::select(CHR, BP, SNP_type))  %>%
   mutate(SNP_type = ifelse(is.na(SNP_type), "All variants", SNP_type))%>%
   filter(MAF >= 0.01) 
+```
+
+```{r signif MAF}
+#Read MAF data for the significant alleles
+#temp = read_tsv(paste0(GEA_dir, "Significant_GEMMA.ann.tab"), na = ".") %>%
+#  unite(col = SNP, CHROM, POS) %>%
+#  pivot_longer(-c(REF, ALT, SNP), names_to = "ID_file", values_to = "Allele") %>%
+#  group_by(SNP) %>%  
+#  mutate(Allele = ifelse(Allele == 0, "REF", "ALT")) %>%
+#  filter(Allele != "NA") %>%
+#  dplyr::count(Allele) %>%
+#  pivot_wider(names_from = Allele, values_from = n, values_fill = 0) %>%
+#  mutate(Nb_genotypes = ALT + REF,
+#         REF_prop = REF/Nb_genotypes, ALT_prop = ALT/Nb_genotypes, 
+#         MAF = min(REF_prop, ALT_prop)) %>%
+#  dplyr::select(-ALT, -REF)
 
 
+#significant = left_join(significant, temp)
+significant = left_join(significant, biall_maf_ann %>% filter(SNP_type == "significant"))
+  
+
+#Violin plot MAF
+ggplot(data = significant, aes(x = Phenotype, y = MAF, col = Phenotype, fill = Phenotype)) +
+  geom_violin(alpha = .5) +
+  theme_bw() + 
+  theme(legend.position = "none") + 
+  scale_y_continuous(trans='log2') +
+  coord_flip() +
+  labs(title = "Distribution of the MAF of significant variants",
+       subtitle = "Beware! Logarithmic scale.",
+       x = "")
+
+
+# Basic barplot
+data <- significant %>% 
+  mutate(group = ifelse(MAF <= 0.05, "1to5%", ">5%")) %>%
+  filter(!is.na(group))
+
+temp = dplyr::count(data, Phenotype, group)
+
+ggplot(data, aes(x=Phenotype, fill=group)) +
+  geom_bar(position = "fill") +
+  coord_flip() +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + 
+  scale_fill_manual(values = c("#82c0cc", "#EDE7E3")) +
+  labs(y = "Proportion of significant variants", 
+       fill = "MAF category", x = "") +
+  geom_label(data = temp %>% filter(group == ">5%"),
+            aes(label = n, y = 1.13), colour = "white")  +
+  ylim(c(0, 1.2)) +
+  labs(title = str_wrap("Proportion and numbers of significant variants with a MAF >= 5%", 40))
+
+
+```
+As expected a large proportion of variants with a significant association to one of the bioclimatic variable have a low MAF. I would like to put this in perspective by comparing with variants from the pool of tested variants, that is biallelic variants without any missing data and 
+```{r maf comparison}
 
 ggplot(biall_maf_ann, aes(MAF, fill = SNP_type)) + 
     geom_density(alpha = .4) + 
@@ -625,7 +630,26 @@ Each SNP also has a predicted effect on the protein sequences it affects. snpEff
 
 Provided we do have the causal variants in our GEMMA analysis, we could expect that variants with a stronger effect on the protein sequence would have higher p-values than synonymous variants for instance. Alternatively, if the climate adaptation response involves mistly changes in regulation, then we would instead expect a lot of modifier mutations to have high p-values. 
 ```{r snpeff vs logP}
-
+signif_ann = significant  %>%
+  dplyr::select(-c(Locus_nb, SNP_type, Phenotype, P, zscore, Nb, Subset, n, Bonferroni_threshold, Count, Locus_length)) %>%
+  distinct() %>%
+  pivot_longer(cols = c(-CHR, -BP, -REF, -ALT, -MAF), names_to = "ANN", values_to = "Annotation") %>%
+  filter(!is.na(Annotation)) %>%
+  separate(Annotation, into = c("ALT2", "Variant_type", "Effect_strength", "Gene", "Rest"), sep = "\\|", extra = "merge") %>%
+  filter(!str_detect(Gene, "-")) %>%
+  separate(Gene, into = c("temp", "Chrom", "Gene_nb"), remove = FALSE)  %>%
+  dplyr::select(-ANN, -ALT2, -temp) %>%
+  mutate(Gene_nb = as.numeric(Gene_nb)) %>%
+  left_join(., read_tsv(effectors_annotation_file) %>% 
+              filter(Sample == "Zt09") %>% 
+              mutate(Gene = str_replace(Protein_ID, "_chr", ""))) %>%
+  mutate(Ranked_effect_strength = Effect_strength)
+signif_ann$Ranked_effect_strength[signif_ann$Ranked_effect_strength == "HIGH"] = 1
+signif_ann$Ranked_effect_strength[signif_ann$Ranked_effect_strength == "MODERATE"] = 2
+signif_ann$Ranked_effect_strength[signif_ann$Ranked_effect_strength == "LOW"] = 3
+signif_ann$Ranked_effect_strength[signif_ann$Ranked_effect_strength == "MODIFIER"] = 4
+signif_ann$Ranked_effect_strength[is.na(signif_ann$Effect_strength)] = 5
+signif_ann$Effect_strength[is.na(signif_ann$Effect_strength)] = "NO_EFFECT"
 
 #Translating SnpEff effects in a numerical scale
 gene_detected = inner_join(pheno_table, significant) %>%
@@ -771,26 +795,6 @@ I now want to compare the distributions of effects in significant vs all variant
 
 ```{r effect comparison}
 
-signif_ann = right_join(biall_maf_ann, significant %>% dplyr::select(CHR, BP))  %>%
-  pivot_longer(cols = c(-CHR, -BP, -REF, -ALT, -MAF, -SNP_type), names_to = "ANN", values_to = "Annotation") %>%
-  filter(!is.na(Annotation)) %>%
-  separate(Annotation, into = c("ALT2", "Variant_type", "Effect_strength", "Gene", "Rest"), sep = "\\|", extra = "merge") %>%
-  filter(!str_detect(Gene, "-")) %>%
-  separate(Gene, into = c("temp", "Chrom", "Gene_nb"), remove = FALSE)  %>%
-  dplyr::select(-ANN, -ALT2, -temp) %>%
-  mutate(Gene_nb = as.numeric(Gene_nb)) %>%
-  left_join(., read_tsv(effectors_annotation_file) %>% 
-              filter(Sample == "Zt09") %>% 
-              mutate(Gene = str_replace(Protein_ID, "_chr", ""))) %>%
-  mutate(Ranked_effect_strength = Effect_strength)
-signif_ann$Ranked_effect_strength[signif_ann$Ranked_effect_strength == "HIGH"] = 1
-signif_ann$Ranked_effect_strength[signif_ann$Ranked_effect_strength == "MODERATE"] = 2
-signif_ann$Ranked_effect_strength[signif_ann$Ranked_effect_strength == "LOW"] = 3
-signif_ann$Ranked_effect_strength[signif_ann$Ranked_effect_strength == "MODIFIER"] = 4
-signif_ann$Ranked_effect_strength[is.na(signif_ann$Effect_strength)] = 5
-signif_ann$Effect_strength[is.na(signif_ann$Effect_strength)] = "NO_EFFECT"
-
-
 effect_counts_signif = signif_ann %>%
     group_by(CHR, BP) %>%
     mutate(Rank = rank(Ranked_effect_strength, ties.method = "first")) %>%
@@ -801,11 +805,10 @@ effect_counts_signif = signif_ann %>%
     dplyr::count(Effect_strength) %>%
     mutate(Total = sum(n), Percent = 100*n/Total)
 
-temp1 = biall_maf_ann %>% filter(MAF >= min_maf_signif)
 nb = sum(effect_counts_signif$n)
 effect_counts = list()
 for (i in c(1:100)) {
-  temp = dplyr::slice_sample(as.tibble(temp1), n  = nb) %>%
+  temp = dplyr::slice_sample(as.tibble(biall_maf_ann), n  = nb) %>%
     pivot_longer(cols = c(-CHR, -BP, -REF, -ALT, -MAF, -SNP_type), names_to = "ANN", values_to = "Annotation") %>%
     filter(!is.na(Annotation)) %>%
     separate(Annotation, into = c("ALT2", "Variant_type", "Effect_strength", "Gene", "Rest"), sep = "\\|", extra = "merge") %>%
@@ -864,17 +867,19 @@ cowplot::plot_grid(title_gg, row, nrow = 2, rel_heights = c(0.15, 1))
 ```{r}
 # Table with genes affected by significant variants with high MAF
 # with all the functional annotations
-temp = gene_detected %>% 
-  filter( MAF > 0.05 ) %>%
+annotations_gene_detected = gene_detected %>% 
+  filter( MAF >= 0.05 ) %>%
   filter(Category %in% c("Temperature", "Precipitation"))  %>%
   filter(Sub_category != "Annual") %>%
   dplyr::select("Phenotype","Category","Sub_category", "SNP" , "Variant_type","Effect_strength",
                 "Gene", "Secretion", "Transmembrane", "Cell_location", "Cluster(nb, function)", "Effector", "CAZyme", 
                 "Summary_RNAseq") %>%
   left_join(eggnog_functions, by = c("Gene" = "query_name"))
+
+write_tsv(annotations_gene_detected, file = past0(GEA_dir, "Gene_associated.tsv"))
 ```
 
-### Functional enrichment
+
 The genes found in each of the GWAS could have some type of enrichment. 
 ```{r GO enrichment}
 
@@ -1169,6 +1174,8 @@ top_SNPs_density <- function(pheno, min_length_locus, custom_colors, min_MAF = 0
     filter(Rank == 1) %>%
     dplyr::select(SNP, CHR, BP)
   
+  if (nrow(temp >= 1)) {
+  
   relevant_climate = climate_per_coordinates %>%
     pivot_longer(-c(X,Y), names_to = "phenotype", values_to = "Bioclim") %>%
     filter(phenotype == pheno) %>%
@@ -1189,7 +1196,7 @@ top_SNPs_density <- function(pheno, min_length_locus, custom_colors, min_MAF = 0
     theme_bw() +
     scale_color_manual(values = custom_colors) +
     scale_fill_manual(values = custom_colors)
-
+}
 }
 
 
@@ -1494,6 +1501,7 @@ for (pheno_category in c("Temperature", "Precipitation")){
 
 
 ### Genes per chromosomes
+
 ```{r genes MAF 5}
 
 #Translating SnpEff effects in a numerical scale
@@ -1832,6 +1840,7 @@ GWASTools::qqPlot(temp, thinThreshold = 2)
 
 ```
 
+
 ```{r}
 head(results_GEMMA_wo_extr) 
 Bonferroni_threshold_wo_extr = results_GEMMA_wo_extr %>% 
@@ -1859,12 +1868,12 @@ temp2 = results_GEMMA %>%
   dplyr::select(Phenotype, Nb_signif_variants = n)
 
 inner_join(temp, temp2)
-temp = bind_rows(results_GEMMA_wo_extr %>% mutate(Isolate_group = "No_extreme"),
-          results_GEMMA %>% mutate(Isolate_group = "ALL")) %>%
-  filter(Nb %in% subset_BIO) %>%
-  mutate(logP =  -log10(P)) %>%
-  filter(logP > 2) %>%
+temp = bind_rows(results_GEMMA_wo_extr %>% mutate(Isolate_group = "No_extreme") %>% 
+                   filter(Nb %in% subset_BIO) %>% mutate(logP =  -log10(P)) %>% filter(logP > 2),
+          results_GEMMA %>% mutate(Isolate_group = "ALL")%>% 
+                   filter(Nb %in% subset_BIO) %>% mutate(logP =  -log10(P)) %>% filter(logP > 2)) %>%
   dplyr::select(Isolate_group, SNP, logP, Phenotype, Nb) %>%
+  distinct() %>%
   pivot_wider(names_from = Isolate_group, values_from = logP) %>%
   filter(!is.na(ALL)) %>%
   filter(!is.na(No_extreme))
@@ -1880,7 +1889,7 @@ ggplot(temp, aes(x = ALL, y = No_extreme)) +
 #Prep for simplified function
 results_GEMMA_wo_extr = results_GEMMA_wo_extr %>% 
     #inner_join(., chromosomes_lengths)  %>%
-    left_join(., significant_wo_extr %>% dplyr::filter(Phenotype == pheno) ) %>%
+    left_join(., significant_wo_extr) %>%
     mutate(SNP_type = ifelse(is.na(SNP_type), "Other", SNP_type)) %>%
     mutate(MAF_type = "1") %>%
     #mutate(MAF_type = ifelse(is.na(MAF), "1", ifelse(MAF < 0.05, "1", "19"))) %>%
