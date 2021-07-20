@@ -38,8 +38,10 @@ library('pophelper')
 library(ggbiplot)
 library(igraph)
 library(ggraph)
+library(ggrepel)
 library(ggtext)
 library(scatterpie)
+library(pheatmap)
 
 
 library(ggtree)
@@ -102,6 +104,7 @@ Sys.setenv(VARDIR=VAR_dir)
 Sys.setenv(VCFDIR=vcf_dir)
 Sys.setenv(POPSTR=PopStr_dir)
 Sys.setenv(MITOPOPSTR=mito_PS_dir)
+Sys.setenv(TERIP=TE_RIP_dir)
 
 Sys.setenv(SUMST=Sumstats_dir)
 Sys.setenv(GEADIR=GEA_dir)
@@ -144,7 +147,9 @@ Zt_meta = read_tsv(paste0(metadata_dir, metadata_name, "_with_collection.tab"),
   mutate(Country = ifelse(Country == "Australia", paste(Country, Region, sep = "_"), Country)) %>%
   mutate(Country = ifelse(Country == "NZ", "New Zealand", Country)) %>%
   mutate(Country = ifelse(Country == "CH", "Switzerland", Country)) %>%
-  mutate(Latitude2 = round(Latitude, 2), Longitude2 = round(Longitude, 2))
+  mutate(Latitude2 = round(Latitude, 2), Longitude2 = round(Longitude, 2)) %>%
+  dplyr::select(ID_file, Continent, Country, Latitude, Longitude, Latitude2, Longitude2,
+                Sampling_Date, Collection)
 
 temp = read_tsv(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.tsv")) %>%
   dplyr::select(ID_file = Sample, Cluster)
@@ -164,6 +169,12 @@ myColors <- c("#DA4167", "grey", "#ffba0a", "#A20106", "#3F6E0C", "#129eba", "#8
 names(myColors) = levels(factor(Zt_meta$Continent))
 Color_Continent = ggplot2::scale_colour_manual(name = "Continent", values = myColors)
 Fill_Continent = ggplot2::scale_fill_manual(name = "Continent", values = myColors)
+
+myColors2 <- c("#129eba", "#3F6E0C", "#DA4167", "#ffba0a", "#129eba", "#129eba", 
+               "#8fa253", "#A20106", "#A20106", "#3F6E0C", "#8fa253")
+names(myColors2) = levels(factor(Zt_meta$Cluster))
+Color_Cluster = ggplot2::scale_colour_manual(name = "Cluster", values = myColors2)
+Fill_Cluster = ggplot2::scale_fill_manual(name = "Cluster", values = myColors2)
 
 ## For clustering
 K_colors = c("#f9c74f", "#f9844a", "#90be6d", "#f5cac3", 
@@ -199,20 +210,20 @@ rsync -avP   alice@130.125.25.244:/data2/alice/WW_project/4_TE_RIP/1_Blast_from_
 
 ```
 
-# Repeat-induced point mutations and transposable elements
 ***
 Previously, based on the study of TE and RIP in fully-assembled *Z.tritici* genomes, a hypothesis was drawn. The lower RIP in TEs of European samples, as compared to Iranian isolates, could indicate a loss of RIP in *Z.tritici* when it spread out of its area of origin. Here, I would like to investigate this possibility in the different pop.
 
 
-## RIP and TE content between populations
+# Transposable elements: distribution, population structure, and genomic architecture
 The data plotted here are based on the following steps:
 
+ * Detect the TE insertions using ngs_TE_mapper version 2.
  * Map the reads on TE consensus (from Lorrain et al. 2020, so it includes only Iranian and European samples) and create two bins: reads mapping on TEs and reads that are not mapping.
  * Measuring the RIP composite index for reads that mapped on TE.
  * Estimating the index median in TE reads per isolate.
 
-
-First, I mapped the reads on the TE consensus created by Ursula based on Thomas's pangenome. I visualize the results here in terms of percentage of reads mapping on these consensus.
+## TE content estimation: method comparison
+First, I mapped the reads on the TE consensus created by Ursula based on Thomas's pangenome. I also detected reference andnon-reference TE insertions with ngs_te_mapper2. I visualize the results here in terms of percentage of reads mapping on these consensus and of number of insertions. I try here to see if there are biases between collections, as well as to compare the different TE content estimations that I have used.
 ```{r TE content estimation plots}
 
 #Reading in the data
@@ -227,57 +238,9 @@ world_avg <-
   dplyr::summarize(avg = mean(as.numeric(Percent_TE_Reads), na.rm = T)) %>%
   pull(avg)
 
-#Building the basic violin plot per continent
-TE_prop =  TE_qty %>%
-  filter(!is.na(Continent)) %>%
-  ggplot(aes(x = Continent, y = Percent_TE_Reads, fill = Continent)) +
-  geom_hline(aes(yintercept = world_avg),
-             color = "gray30", size = 0.6, linetype = "dashed") +
-    geom_violin(alpha = .8) +
-  stat_summary(fun = mean, geom = "point", size = 2, color = "grey30") +
-    theme_classic() + Fill_Continent + Color_Continent +
-  theme_cowplot()  +
-    theme(axis.text.x = element_text(angle = 40, hjust = 1)) +
-  labs (x = "", y = str_wrap("Percentage of reads", width = 30),
-        title = "Amount of reads mapping on TE consensus per continent",
-        subtitle = str_wrap(paste(""), width = 70))
 
-#TE_prop
-
-
-#One-way ANOVA with blocks
-##Define linear model
-model = lm(Percent_TE_Reads ~ Continent + Collection ,
-          data=TE_qty)
-summary(model)   ### Will show overall p-value and r-squared
-
-##Conduct analysis of variance
-Anova(model,type = "II")  
-summary(model)
-
-hist(residuals(model), col="darkgray")
-
-#Post-hoc analysis:  mean separation tests
-marginal = lsmeans(model, ~ Continent)
-
-pairs(marginal, adjust="tukey")
-
-CLD = cld(marginal,
-          alpha   = 0.05,
-          Letters = letters,  ### Use lower-case letters for .group
-          adjust  = "tukey")  ### Tukey-adjusted p-values
-
-CLD
-
-CLD$.group=gsub(" ", "", CLD$.group)
-
-### Plot
-TE_prop +
-  geom_text(data = CLD, aes(x = Continent, label = .group, y = 34), color   = "black")
 
 ```
-
-At this stage, I have three different TE quantity measure: the percentage of reads that mapped on the consensus reads and the number of  insertions (both reference and non-reference) identified by ngs_te_mapper2. Let's see how they compare.
 
 ```{bash, eval = F}
 #Summarize numbers
@@ -344,24 +307,42 @@ cowplot::plot_grid(p1, p2, p3, p4, ncol = 2, nrow = 2)
 
 ```{r collec bias}
 #Collections comparisons
+
 ggplot(TE_qty, aes(x = Total_insertions, y = Percent_TE_Reads, col = Collection)) +
   geom_point(alpha = .8) +
-  theme_bw() 
+  theme_bw()  +
+  labs(title = "Comparison of whole TE content estimation per sample")
+
 p1 = ggplot(TE_qty, aes(x = Percent_TE_Reads, col = Collection, fill = Collection)) +
   geom_density(alpha = .4) +
   theme_bw() 
-p2 = ggplot(TE_qty, aes(x = Ref_insertions, col = Collection, fill = Collection)) +
+p2 = ggplot(TE_qty, aes(x = Total_insertions, col = Collection, fill = Collection)) +
   geom_density(alpha = .4) +
   theme_bw() 
-p3 = ggplot(TE_qty, aes(x = Non_ref_insertions, col = Collection, fill = Collection)) +
-  geom_density(alpha = .4) +
-  theme_bw() 
+comment = ggplot() + theme_void() + 
+                     geom_text(aes(x = 1, y = 1, label = "Comparison of whole TE content estimation per collection"),
+                               size = 6)
+cowplot::plot_grid(comment, 
+                   p1 + theme(legend.position = "None"), 
+                   p2 + theme(legend.position = "None"),
+                   get_legend(p1 + theme(legend.position = "bottom")),
+                   ncol = 1, nrow = 4, rel_heights = c(.3, 1, 1, .5))
 
-cowplot::plot_grid(p1+
-    theme(legend.position = "None"), p2+
-    theme(legend.position = "None"), p3+
-    theme(legend.position = "None"), get_legend(p1 + theme(legend.position = "bottom")),
-    ncol = 1, nrow = 4, rel_heights = c(1, 1, 1, .5))
+p1 = ggplot(TE_qty, aes(x = Ref_insertions, col = Collection, fill = Collection)) +
+  geom_density(alpha = .4) +
+  theme_bw() 
+p2 = ggplot(TE_qty, aes(x = Non_ref_insertions, col = Collection, fill = Collection)) +
+  geom_density(alpha = .4) +
+  theme_bw() 
+comment = ggplot() + theme_void() + 
+                     geom_text(aes(x = 1, y = 1, label = "Comparison of reference and non-reference insertions numbers"),
+                               size = 6)
+cowplot::plot_grid(comment, 
+                   p1 + theme(legend.position = "None"), 
+                   p2 + theme(legend.position = "None"),
+                   get_legend(p1 + theme(legend.position = "bottom")),
+                   ncol = 1, nrow = 4, rel_heights = c(.3, 1, 1, .5))
+
 
 temp = TE_qty %>% filter(!is.na(Continent))%>% filter(!is.na(Collection))
 model1 = lm(Non_ref_insertions ~  Collection,
@@ -411,91 +392,515 @@ anova(model31, model32)
 ```
 The fit is indeed improved by adding the collection information, with both TE quantity estimations. 
 
-```{r plots te insertions}
+```{r}
+depth = read_tsv(paste0(vcf_dir, "Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.idepth"))
+GC = read_delim(paste0(RIP_DIR, "GC_percent.txt"), col_names = c("ID_file", "TE", "Estimate", "Median_GC", "Mean_GC"), delim = " ") %>%
+  dplyr::select(-TE, -Estimate)
 
-#Check collections on plot
-model = lm(Non_ref_insertions ~  Collection, data=TE_qty)
-CLD = cld(lsmeans(model, ~ Collection),  alpha   = 0.05, Letters = letters, adjust  = "tukey") 
-CLD$.group=gsub(" ", "", CLD$.group)
+biases = inner_join(TE_qty, depth, by = c("ID_file" = "INDV")) %>%
+  inner_join(GC)
 
-TE_qty %>%
-  filter(!is.na(Collection)) %>%
-  ggplot(aes(x = Collection, y = Non_ref_insertions, fill = Collection)) +
-    geom_violin(alpha = .8)  +
-  theme_cowplot()  +
-    theme(axis.text.x = element_text(angle = 40, hjust = 1)) +
-  labs (x = "", y = str_wrap("Non-reference insertions", width = 30),
-        title = "TE insertions per collection",
-        subtitle = str_wrap(paste(""), width = 70)) +
-  geom_text(data = CLD, aes(x = Collection, label = .group, y = 430), color   = "black")
+
+p1 = biases %>%
+  ggplot(aes(x = Mean_GC, y = Percent_TE_Reads, col = Collection)) +
+     geom_point(alpha = .5) +
+     theme_bw()
+p2 = biases %>%
+  ggplot(aes(x = Mean_GC, y = Total_insertions, col = Collection)) +
+     geom_point(alpha = .5) +
+     theme_bw()
+
+p3 = biases %>%
+  ggplot(aes(x = MEAN_DEPTH, y = Percent_TE_Reads, col = Collection)) +
+     geom_point(alpha = .5) +
+     theme_bw()
+
+p4 = biases %>%
+  ggplot(aes(x = MEAN_DEPTH, y = Total_insertions, col = Collection)) +
+     geom_point(alpha = .5) +
+     theme_bw() 
+
+bloc = cowplot::plot_grid(p1 + theme(legend.position = "none"), p2+ theme(legend.position = "none"))
+cowplot::plot_grid(bloc, get_legend(p3 + theme(legend.position = "bottom")), 
+                   rel_heights = c(1, .2), ncol = 1)
+
+bloc = cowplot::plot_grid(p3 + theme(legend.position = "none"), p4 + theme(legend.position = "none"))
+cowplot::plot_grid(bloc, get_legend(p3 + theme(legend.position = "bottom")), 
+                   rel_heights = c(1, .2), ncol = 1)
+
+
+p1 = biases %>%
+  filter(MEAN_DEPTH < 80) %>%
+  ggplot(aes(x = MEAN_DEPTH, y = Total_insertions)) +
+     geom_point(alpha = .5) +
+     theme_bw()  +
+     geom_smooth()
+p2 = biases %>%
+  filter(MEAN_DEPTH < 25) %>%
+  ggplot(aes(x = MEAN_DEPTH, y = Total_insertions)) +
+     geom_point(alpha = .5) +
+     theme_bw()  +
+     geom_smooth()
+bloc = cowplot::plot_grid(p1 + theme(legend.position = "none"), p2+ theme(legend.position = "none"))
+titre = ggplot() + geom_text(aes(x = 1, y = 1, label = "Depth bias is mostly found below 20 or 25."), size = 6) + theme_void()
+cowplot::plot_grid(titre, bloc, ncol = 1, rel_heights = c(0.1, 1))
+
+
+
+model = lm(Percent_TE_Reads ~ Mean_GC + MEAN_DEPTH, data = biases)
+summary(model)
+
+model = lm(Total_insertions ~ Mean_GC + MEAN_DEPTH, data = biases)
+summary(model)
+
+```
+
+
+## Frequency of TE insertions between samples and populations
+What are the frequency of the TE insertions we found. Are they shared by several samples?
+```{r reading TE insert}
+TE_insertions = bind_rows(read_tsv(paste0(TE_RIP_dir, "Non-ref_all_strains.bed"), 
+           col_names = c("ID_file", "chromosome", "position", "end", "info", "score", "strand")) %>%
+             mutate(insertion_type = "non_ref"),
+          read_tsv(paste0(TE_RIP_dir, "Ref_all_strains.bed"), 
+           col_names = c("ID_file", "chromosome", "position", "end", "info", "score", "strand")) %>%
+             mutate(insertion_type = "ref")) %>%
+  separate(col = chromosome, into = c("X1", "CHR", "X2", "X3", "X4"), sep = "_") %>%
+  separate(col = info, into = c("TE_family", "TSD", "Allele_Frequency", "3_support", "5_support", "ref_reads"), sep = "\\|") %>%
+  dplyr::select(-c(X1, X2, X3, X4, score, strand)) %>%
+  left_join(Zt_meta %>% dplyr::select(ID_file, Continent, Cluster, Sampling_Date, Collection)) %>%
+  filter(!is.na(Continent)) %>% filter(Continent != "Asia") %>%
+  mutate(position = 100*round(position/100), end = 100*round(end/100)) %>%
+  unite(TE_family, CHR, position, end, col = "TE_insertion", sep = ":", remove = F) %>%
+  separate(TE_family, into = c("Superfamily", "TE_id"), sep = "_", remove = F, extra = "merge") %>%
+  dplyr::mutate(Order = ifelse(grepl('^D',TE_family), "Class II (DNA transposons)", "Class I (retrotransposons)"))
+
+
+threshold = 0.9
+subset_nb = 10000
+subset = slice_sample(TE_insertions, n = subset_nb)
+
+nb_non_filtered = nrow(TE_insertions)
+nb_filtered = nrow(filter(TE_insertions, is.na(Allele_Frequency) | Allele_Frequency > threshold))
+
+temp = nrow(filter(subset, as.numeric(Allele_Frequency) < threshold))
+ggplot(subset, aes(as.numeric(Allele_Frequency))) +
+  geom_density() +
+  geom_vline(aes(xintercept = threshold), color = "#82C0CC") +
+  geom_label(x = 0.5, y = 100, fill = "white", 
+            label = str_wrap(paste0((100*temp/subset_nb), "% TE with allelic frequency below ", threshold,
+                             ". \n   The dataset goes from ", nb_non_filtered, " detected_TE_insertions to ",
+                             nb_filtered, " after filtering."), 70)) +
+  theme_bw()
+
+TE_insertions = filter(TE_insertions, is.na(Allele_Frequency) | Allele_Frequency > threshold)
+```
+
+```{r freq insertions}
+TE_insertions_counts = TE_insertions %>%
+  unite(Continent, ID_file, col = "for_display", remove = F) %>%
+   dplyr::count(TE_insertion)
+
+
+# SFS
+cowplot::plot_grid(ggplot() + theme_void() + 
+                     geom_text(aes(x = 1, y = 1, label = "Most TE insertions are found at low frequency."),
+                               size = 6),
+                   ggplot(TE_insertions_counts, aes(x = n)) +
+                     geom_density( col = "#2EC4B6", fill = "#CBF3F0") +  theme_bw() +
+                     labs(x = "TE insertion count"),
+                   TE_insertions_counts %>%  
+                     filter(n > 50) %>%
+                     ggplot(aes(x = n)) +  geom_density(col = "#2EC4B6", fill = "#CBF3F0") +  theme_bw()+
+                     labs(x = "TE insertion count (above 11)"),
+                   rel_heights = c(0.4, 1, 1), ncol = 1)
+
+
+# Doughnut chart of frequencies
+data = TE_insertions_counts %>%
+  mutate(for_bar = case_when(n == 1 ~ "01", 
+                             n == 2 ~ "02",
+                             n <= 10 ~ "10",
+                             n <= 100 ~ "100",
+                             n >= 100 ~ "100 +")) %>%
+  dplyr::count(for_bar)
+  
+data$fraction = data$n / sum(data$n)
+data$ymax = cumsum(data$fraction) # Compute the cumulative percentages (top of each rectangle)
+data$ymin = c(0, head(data$ymax, n=-1)) # Compute the bottom of each rectangle
+data$labelPosition <- (data$ymax + data$ymin) / 2
+data$label1 <- ifelse(round(data$fraction*100) > 2, paste0(round(data$fraction*100), "%"), "")
+data$label2 <- ifelse(round(data$fraction*100) > 2, "", paste0(round(data$fraction*100), "%"))
+
+ggplot(data, aes(ymax=ymax, ymin=ymin, xmax=4, xmin=3, fill=for_bar)) +
+  geom_rect() +
+  coord_polar(theta="y") + 
+  xlim(c(2, 4)) +
+  theme_void() +
+  geom_text( x=3.5, aes(y=labelPosition, label=label1), size=4) +
+  geom_text( x=4.2, aes(y=labelPosition, label=label2), size=4) +
+  scale_fill_manual(values = c("#CBF3F0", "#2EC4B6", "#1F847A", "#1B746B", "#041F1E")) +
+  labs(fill = "Number of strains",
+       title = "Three quarter of all TE insertions are singletons.")
+```
+
+
+Among the TE insertions which are found multiple times, are the insertions shared by different clusters or are they always found in a single cluster?
+```{r TE insertion sharedness}
+theshold = 5
+
+#Filtering only insertions found more than 5 times
+insertions_per_pop = TE_insertions %>%
+  filter(!is.na(Cluster)) %>%
+  dplyr::count(Cluster, TE_insertion) %>%
+  filter(n > theshold) %>%
+  pivot_wider(names_from = Cluster, values_from = n) %>%
+  mutate(n = 1) %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(NA_count = sum(is.na(c(V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11))),
+                Nb_population = 11 - NA_count)
+
+temp2 = insertions_per_pop %>% 
+  dplyr::count(Nb_population, name = "Insertion_number") %>%
+  mutate(Insertion_type = ifelse(Nb_population == 1, "Population specific", 
+                                 ifelse(Nb_population == 11, "Shared by all populations", "Intermediate")),
+         label = ifelse(Nb_population == 1, paste0("N=", Insertion_number), 
+                                 ifelse(Nb_population == 11, paste0("N=", Insertion_number), "")))
+prop_non_spe = round(sum(temp2$Insertion_number[temp2$Insertion_type != "Population specific"])/sum(temp2$Insertion_number)*100)
+
+ggplot(temp2, aes(x = reorder(as.character(Nb_population), Nb_population), y = Insertion_number, fill = Insertion_type)) + 
+  geom_bar(stat = "identity") +
+  geom_text(aes(y = Insertion_number + 30, label = label), size=3) +
+  geom_label(x = 7, y = max(temp2$Insertion_number)/2, 
+            label = str_wrap(paste0(prop_non_spe, "% of insertions are found in two or more populations"), 20),
+            fill = "white") + 
+  theme_bw() + 
+  scale_fill_manual(values = c("grey", "#ff9f1c", "#2ec4b6")) +
+  labs(x = "Number of populations displaying an insertion", 
+       y = "Number of TE insertions",
+       title = str_wrap(paste0("Two thirds of TE insertions found in more than ", 
+                               theshold, " isolates are population-specific."),55))
+
+non_pop_spe = insertions_per_pop %>% filter(NA_count < 10)
+nb_per_cluster = dplyr::count(Zt_meta, Cluster, name = "Nb_in_cluster")
+
+
+
+insertions_per_pop %>% 
+  filter(Nb_population == 1) %>%
+  dplyr::select(-NA_count, -Nb_population) %>%
+  pivot_longer(cols = -c(TE_insertion, n), names_to = "Cluster", values_to = "Nb_present") %>%
+  filter(!is.na(Nb_present)) %>%
+  dplyr::count(Cluster, name = "Nb_cluster_specific") %>%
+  full_join(nb_per_cluster) %>%
+  ggplot(aes(x = Nb_in_cluster, y = Nb_cluster_specific, col = Cluster, label = Cluster)) +
+   geom_point() +
+   geom_label_repel(box.padding = 0.35, point.padding = 0.5,
+                  segment.color = 'grey50') +
+   theme_bw() +
+   Color_Cluster + 
+   labs(x = "Number of isolate per population", y = "Number of population-specific insertion",
+        title = "More TE insertions are detected in heavily sampled populations.")
+
+
+```
+
+## TE across space: population differentiation
+
+### TE content per population and per continent
+
+Let's compare the TE content per population and per continent. First, I will make the comparison using the read mapping method.
+```{r per pop map}
+
+### Plot
+#Building the basic violin plot per continent
 
 
 #Continents
-model = lm(Non_ref_insertions ~  Continent, data=TE_qty)
-CLD = cld(lsmeans(model, ~ Continent), alpha   = 0.05, Letters = letters, adjust  = "tukey")
+model = lm(Percent_TE_Reads ~ Continent + Collection,
+          data=TE_qty %>%  filter(!is.na(Continent), !is.na(Cluster)))
+CLD = cld(lsmeans(model, ~ Continent),  alpha   = 0.05, Letters = letters, adjust  = "sidak") 
+CLD$.group=gsub(" ", "", CLD$.group)
+TE_prop = ggplot(TE_qty %>%  filter(!is.na(Continent), !is.na(Cluster))) +
+  geom_hline(aes(yintercept = world_avg),
+             color = "gray30", size = 0.6, linetype = "dashed")  +
+  theme_cowplot()  +
+  theme(axis.text.x = element_text(angle = 40, hjust = 1)) +
+  labs (x = "", y = str_wrap("Percentage of reads", width = 30),
+        subtitle = str_wrap(paste(""), width = 70)) +
+  geom_text(data = CLD, aes(x = Continent, label = .group, y = 34), color   = "black")+
+  geom_violin(aes(x = Continent, y = Percent_TE_Reads, fill = Continent), alpha = .8) +
+  Fill_Continent + Color_Continent +
+  stat_summary(aes(x = Continent, y = Percent_TE_Reads), fun = mean, geom = "point", size = 2, color = "grey30") +
+  labs(title = "Amount of reads mapping on TE consensus per continent")
+TE_prop
+
+#Clusters
+model = lm(Percent_TE_Reads ~  Cluster + Collection, data=TE_qty)
+CLD = cld(lsmeans(model, ~ Cluster),  alpha   = 0.05, Letters = letters, adjust  = "sidak") 
+CLD$.group=gsub(" ", "", CLD$.group)
+TE_qty %>%  
+  filter(!is.na(Continent), !is.na(Cluster)) %>%
+  ggplot() +
+    geom_hline(aes(yintercept = world_avg),
+               color = "gray30", size = 0.6, linetype = "dashed")  +
+    theme_cowplot()  +
+    theme(axis.text.x = element_text(angle = 40, hjust = 1)) +
+    labs (x = "", y = str_wrap("Percentage of reads", width = 30),
+          subtitle = str_wrap(paste(""), width = 70)) +
+    geom_text(data = CLD, aes(x = Cluster, label = .group, y = 34), color   = "black")+
+    geom_violin(aes(x = Cluster, y = Percent_TE_Reads, fill = Cluster), alpha = .8) +
+    stat_summary(aes(x = Cluster,  y = Percent_TE_Reads), fun = mean, geom = "point", size = 2, color = "grey30") +
+    labs(title = "Amount of reads mapping on TE consensus per cluster") +
+    Fill_Cluster
+```
+The statistics used here are a one-way [ANOVA with block](https://rcompanion.org/handbook/I_06.html). Blocks are used in an analysis of variance or similar models in order to account for suspected variation from factors other than the treatments or main independent variables being investigated. Here I considered the collection as the confounding factor. It definitely has an effect and was thus accounted for in the statistics related to TE content and to RIP level.
+
+Genomes from isolates in Oceania and the Americas seem to contain more TE than those from the Middle-East, in particular. 
+
+
+Let's see if the same result is obtained with the TE insertions as detected by ngs_te_mapper2. 
+
+```{r per pop insertions}
+TE_insertion_wrld_average = TE_qty  %>%
+  dplyr::summarize(avg = mean(as.numeric(Total_insertions), na.rm = T)) %>%
+  pull(avg)
+
+
+#Continents
+model = lm(Total_insertions ~  Continent + Collection, data=TE_qty)
+CLD = cld(lsmeans(model, ~ Continent), alpha   = 0.05, Letters = letters, adjust  = "sidak")
+CLD$.group=gsub(" ", "", CLD$.group)
+TE_qty %>%
+  filter(!is.na(Continent)) %>%
+  ggplot(aes(x = Continent, y = Total_insertions, fill = Continent)) +
+    geom_violin(alpha = .8)  +
+  geom_text(data = CLD, aes(x = Continent, label = .group, y = 750), color   = "black") +
+  Fill_Continent + Color_Continent +
+  theme_cowplot()  +
+    theme(axis.text.x = element_text(angle = 40, hjust = 1)) +
+  labs (x = "", y = str_wrap("Number of insertions per sample", width = 30),
+        title = "TE insertions per continent",
+        subtitle = str_wrap(paste(""), width = 70)) +
+  stat_summary(aes(x = Continent,  y = Total_insertions), fun = mean, geom = "point", size = 2, color = "grey30") +
+  geom_hline(aes(yintercept = TE_insertion_wrld_average), color = "gray30", size = 0.6, linetype = "dashed")
+
+
+#Cluster
+model = lm(Total_insertions ~  Cluster, data=TE_qty)
+CLD = cld(lsmeans(model, ~ Cluster), alpha   = 0.05, Letters = letters, adjust  = "sidak")
 CLD$.group=gsub(" ", "", CLD$.group)
 
 TE_qty %>%
-  filter(!is.na(Continent)) %>%
+  filter(!is.na(Cluster)) %>%
+  ggplot(aes(x = Cluster, y = Total_insertions, fill = Cluster)) +
+    geom_violin(alpha = .8)  +
+  theme_cowplot()  +
+    theme(axis.text.x = element_text(angle = 40, hjust = 1)) +
+  labs (x = "", y = str_wrap("Number of insertions per sample", width = 30),
+        title = "TE insertions per cluster",
+        subtitle = str_wrap(paste(""), width = 70)) +
+  geom_text(data = CLD, aes(x = Cluster, label = .group, y = 750), color   = "black") +
+  Fill_Cluster +
+  stat_summary(aes(x = Cluster,  y = Total_insertions), fun = mean, geom = "point", size = 2, color = "grey30") +
+  geom_hline(aes(yintercept = TE_insertion_wrld_average), color = "gray30", size = 0.6, linetype = "dashed")
+
+```
+The pattern is somewhat different with the TE insertions. In this case, the Oceania samples don't look particularly high. However, the pattern with the African and Middle-Eastern samples being lower is even clearer.
+
+ngs_te_mapper2 distinguishes between reference and non-reference insertions. I am curious to see how they differ, so I create the same plot but with the two values separately.
+
+```{r violin ref and nonref}
+
+p1 = TE_qty %>%
+  filter(!is.na(Continent) & Continent != "Asia") %>%
   ggplot(aes(x = Continent, y = Non_ref_insertions, fill = Continent)) +
     geom_violin(alpha = .8)  +
   Fill_Continent + Color_Continent +
   theme_cowplot()  +
     theme(axis.text.x = element_text(angle = 40, hjust = 1)) +
-  labs (x = "", y = str_wrap("Non-reference insertions", width = 30),
-        title = "TE insertions per continent",
-        subtitle = str_wrap(paste(""), width = 70)) +
-  geom_text(data = CLD, aes(x = Continent, label = .group, y = 430), color   = "black")
-TE_qty %>%
-  filter(!is.na(Continent)) %>%
+  labs (x = "", y = str_wrap("Non-reference insertions", width = 30))
+p2 = TE_qty %>%
+  filter(!is.na(Continent) & Continent != "Asia") %>%
   ggplot(aes(x = Continent, y = Ref_insertions, fill = Continent)) +
     geom_violin(alpha = .8)  +
   Fill_Continent + Color_Continent +
   theme_cowplot()  +
     theme(axis.text.x = element_text(angle = 40, hjust = 1)) +
-  labs (x = "", y = str_wrap("Reference insertions", width = 30),
-        title = "TE insertions per continent",
-        subtitle = str_wrap(paste(""), width = 70))
+  labs (x = "", y = str_wrap("Reference insertions", width = 30))
 
-#Cluster
-model = lm(Non_ref_insertions ~  Cluster, data=TE_qty)
-CLD = cld(lsmeans(model, ~ Cluster), alpha   = 0.05, Letters = letters, adjust  = "tukey")
-CLD$.group=gsub(" ", "", CLD$.group)
-
-TE_qty %>%
-  filter(!is.na(Cluster)) %>%
-  ggplot(aes(x = Cluster, y = Non_ref_insertions, fill = Cluster)) +
-    geom_violin(alpha = .8)  +
-  theme_cowplot()  +
-    theme(axis.text.x = element_text(angle = 40, hjust = 1)) +
-  labs (x = "", y = str_wrap("Non-reference insertions", width = 30),
-        title = "TE insertions per cluster",
-        subtitle = str_wrap(paste(""), width = 70)) +
-  geom_text(data = CLD, aes(x = Cluster, label = .group, y = 430), color   = "black")
-
+cowplot::plot_grid(p1 + coord_flip() + theme(legend.position = "none"),
+                   p2 + coord_flip(), rel_widths = c(1, 1.9))
 ```
+Aside from the repeating pattern of low TE content in the Middle-East/Africa, the most striking difference is the European samples containing more reference insertions. Considering, that the reference genome is a sample isolated from Denmark, it is expected that other European samples would be closer.
 
-The statistics used here are a one-way [ANOVA with block](https://rcompanion.org/handbook/I_06.html). Blocks are used in an analysis of variance or similar models in order to account for suspected variation from factors other than the treatments or main independent variables being investigated. Here I considered the collection as the confounging factor. It definitely has an effect and was thus accounted for in the statistics related to TE content and to RIP level.
+As a last confirmation, I want to try and compare the clusters intra-collection to ensure that the results observed previously can be confirmed within each collection.
 
-
-#####
 ```{r}
-non_ref_insertions = read_tsv(paste0(TE_RIP_dir, "Non-ref_all_strains.bed"), 
-           col_names = c("ID_file", "chromosome", "position", "end", "info", "score", "strand")) %>%
-  separate(col = chromosome, into = c("X1", "CHR", "X2", "X3", "X4"), sep = "_") %>%
-  separate(col = info, into = c("TE_family", "TSD", "Allele_Frequency", "3_support", "5_support", "ref_reads"), sep = "\\|") %>%
-  dplyr::select(-c(X1, X2, X3, X4, score, strand))
+temp = TE_qty %>%
+  filter(Cluster != "NA") %>%
+  dplyr::count(Collection, Cluster) %>%
+  mutate(n = ifelse(n < 5, NA, n)) %>%
+  pivot_wider(names_from = Cluster, values_from = n)%>%
+  rowwise() %>%
+  dplyr::mutate(NA_count = sum(is.na(c(V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11))))
+                
+temp
+collections_multiple = temp %>% 
+  filter(NA_count <= 9) %>% 
+  pivot_longer(cols = -c(Collection, NA_count), names_to = "Cluster", values_to = "n") %>% 
+  filter(!is.na(n))
 
+inner_join(TE_qty, dplyr::select(collections_multiple, Collection, Cluster)) %>%  
+ggplot() +
+  theme_cowplot()  +
+  theme(axis.text.x = element_text(angle = 40, hjust = 1)) +
+  labs (x = "", y = str_wrap("Percentage of reads", width = 30),
+        subtitle = str_wrap(paste(""), width = 70)) +
+  geom_boxplot(aes(x = Cluster, y = Percent_TE_Reads, fill = Cluster), alpha = .8) +
+  Fill_Cluster + Color_Cluster +
+  labs(title = "Amount of reads mapping on TE consensus  per collection per cluster") + 
+  facet_wrap(vars(Collection), scales = "free")
 
-ggplot(non_ref_insertions, aes(as.numeric(Allele_Frequency))) +
-  geom_density() +
-  theme_bw()
+inner_join(TE_qty, dplyr::select(collections_multiple, Collection, Cluster)) %>%  
+ggplot() +
+  theme_cowplot()  +
+  theme(axis.text.x = element_text(angle = 40, hjust = 1)) +
+  labs (x = "", y = str_wrap("Percentage of reads", width = 30),
+        subtitle = str_wrap(paste(""), width = 70)) +
+  geom_boxplot(aes(x = Cluster, y = Total_insertions, fill = Cluster), alpha = .8) +
+  Fill_Cluster + Color_Cluster +
+  labs(title = "TE insertions per collection per cluster") + 
+  facet_wrap(vars(Collection), scales = "free")
+
 ```
 
-#####
 
-I would like to go finer in the TE content analysis and look at the reads aligning on each consensus sequence.
-```{r reads per TE}
+### Non-guided clustering
+
+We can see that different clusters and continent have a different overall TE content. However, I am curious to see if there is a geographical clustering intrinsic to the TE content that can be uncovered without an *a priori* sorting of samples.
+
+First, I will use the ngs_te_mapper2 results, and use each insertion identified in more than 5 samples to create different clustering. First, I'll simply create a heatmap, then I'll move on to PCAs, first by cluster, then with each isolate.
+
+```{r clustering insertions}
+matrice = TE_insertions %>%
+  filter(!is.na(Cluster)) %>%
+  inner_join(dplyr::select(non_pop_spe, TE_insertion)) %>%
+  inner_join(filter(TE_insertions_counts, n > 5))%>%
+  dplyr::count(TE_insertion, Cluster) %>%
+  left_join(nb_per_cluster) %>%
+  mutate(Freq = n/Nb_in_cluster) %>%
+  dplyr::select(Cluster, TE_insertion, Freq) %>%
+  pivot_wider(names_from = TE_insertion, values_from = Freq, values_fill = 0) 
+
+
+temp = as.matrix(matrice[,c(3:ncol(matrice))])[, which(apply(as.matrix(matrice[,c(3:ncol(matrice))]), 2, var) != 0)]
+
+rownames(temp) = matrice$Cluster
+pheatmap(temp, show_colnames = F)
+
+TE.pca = prcomp(temp, center = TRUE,scale. = TRUE)
+
+#And now all against all but not interactive
+temp = as.tibble(cbind(matrice, as.data.frame(TE.pca$x))) %>%
+  dplyr::select(Cluster, PC1, PC2, PC3, PC4, PC5, PC6, PC7, PC8)
+
+p1 = ggplot(temp, aes(x = PC1, y = PC2, label = Cluster, col = Cluster)) +
+  geom_text() +
+  Color_Cluster +
+  theme_bw() + theme(legend.position = "none")
+p2 = ggplot(temp, aes(x = PC3, y = PC4, label = Cluster, col = Cluster)) +
+  geom_text() +
+  Color_Cluster +
+  theme_bw()+ theme(legend.position = "none")
+p3 = ggplot(temp, aes(x = PC5, y = PC6, label = Cluster, col = Cluster)) +
+  geom_text() +
+  Color_Cluster +
+  theme_bw()+ theme(legend.position = "none")
+p4 = ggplot(temp, aes(x = PC7, y = PC8, label = Cluster, col = Cluster)) +
+  geom_text() +
+  Color_Cluster +
+  theme_bw()+ theme(legend.position = "none")
+cowplot::plot_grid(p1, p2, p3, p4)
+
+
+matrice = TE_insertions %>%
+  filter(!is.na(Cluster)) %>%
+  inner_join(filter(TE_insertions_counts, n > 10)) %>%
+  dplyr::count(TE_insertion, ID_file, Cluster) %>%
+  group_by(ID_file) %>%
+  mutate(Count_strain = sum(n)) %>%
+  pivot_wider(names_from = TE_insertion, values_from = n, values_fill = 0) 
+
+
+temp = as.matrix(matrice[,c(3:ncol(matrice))])[, which(apply(as.matrix(matrice[,c(3:ncol(matrice))]), 2, var) != 0)]
+
+TE.pca = prcomp(temp, center = TRUE, scale. = TRUE)
+
+#And now all against all but not interactive
+temp = as.tibble(cbind(matrice, as.data.frame(TE.pca$x))) %>%
+  dplyr::select(ID_file, Cluster, PC1, PC2, PC3, PC4, PC5, PC6, PC7, PC8)
+
+p1 = ggplot(temp, aes(x = PC1, y = PC2, col = Cluster)) +
+  geom_point() +
+  Color_Cluster +
+  theme_bw() + theme(legend.position = "none")
+p2 = ggplot(temp, aes(x = PC3, y = PC4, col = Cluster)) +
+  geom_point() +
+  Color_Cluster +
+  theme_bw() + theme(legend.position = "none")
+p3 = ggplot(temp, aes(x = PC5, y = PC6, col = Cluster)) +
+  geom_point() +
+  Color_Cluster +
+  theme_bw() + theme(legend.position = "none")
+p4 = ggplot(temp, aes(x = PC7, y = PC8, col = Cluster)) +
+  geom_point() +
+  Color_Cluster +
+  theme_bw() + theme(legend.position = "none")
+cowplot::plot_grid(p1, p2, p3, p4)
+
+```
+
+It does look like there is clustering of samples according to geography. This is interesting as it shows that the types of TEs are different in different populations.
+
+```{r}
+
+
+
+temp = TE_insertions %>%
+  filter(Allele_Frequency >= threshold | is.na(Allele_Frequency))  %>%
+  dplyr::count(Continent, Order, Superfamily) %>%
+  group_by(Continent, Order) %>%
+  mutate(Count_Order = sum(n)) %>%
+  group_by(Continent) %>%
+  mutate(Count_Continent = sum(n)) %>%
+  ungroup() %>%
+  mutate(Prop_superfamily = n/Count_Continent, 
+         Prop_Order = n/Count_Continent) 
+
+ggplot(temp, aes(x = Continent, y = Prop_superfamily, fill = Superfamily)) +
+  geom_bar(stat = "identity") +
+  theme_bw() +
+  facet_grid(rows = vars(Order))
+
+
+temp = TE_insertions %>%
+  filter(Allele_Frequency >= threshold | is.na(Allele_Frequency))  %>%
+  dplyr::count(Continent, insertion_type) %>%
+  group_by(Continent, insertion_type) %>%
+  mutate(Count_type = sum(n)) %>%
+  group_by(Continent) %>%
+  mutate(Count_Continent = sum(n)) %>%
+  ungroup() %>%
+  mutate(Prop_type  = n/Count_Continent) 
+ggplot(temp, aes(x = Continent, y = Prop_type, fill = insertion_type)) +
+  geom_bar(stat = "identity") +
+  theme_bw() 
+```
+
+
+Let's do the same with the mapping TE content method! In this case, I don't know which reads belong to which exact copy of a TE, but I can look at the reads aligning on each consensus sequence. I will thus make a PCA based on the proportion of reads mapping on each TE. 
+```{r PCA prop reads TE}
 reads_per_TE = read_delim(paste0(RIP_DIR, "Nb_reads_per_TE.txt"), delim = "\t",
                     col_names = c("ID_file", "TE", "Length",
                                   "# mapped read-segments",  "# unmapped read-segments")) %>%
@@ -513,26 +918,15 @@ reads_per_TE = left_join(reads_per_TE, temp) %>%
 
 
 
-#reads_per_TE %>%
-#  mutate(ID_file = fct_reorder(ID_file, Continent)) %>%
-#  ggplot(aes(x = ID_file, y = Normalized_nb_reads_mapped, fill = Superfamily)) +
-#    geom_bar(stat = "identity")
-```
-
-
-
-Let's try to make a PCA based on the proportion of reads mapping on each TE. Is there a geographical clustering in the TE content?
-```{r PCA prop reads TE}
 TE_PCA_mat = reads_per_TE %>%
   dplyr::select(ID_file, Continent, Collection, for_display, TE, Normalized_nb_reads_mapped) %>%
   spread(key = TE, value = as.numeric(Normalized_nb_reads_mapped))
 
-temp =as.matrix(sapply(TE_PCA_mat[,c(5:ncol(TE_PCA_mat))], as.numeric))
-temp = temp[,apply(temp, 2, var, na.rm=TRUE) != 0]
+temp = as.matrix(TE_PCA_mat[,c(5:ncol(TE_PCA_mat))])[, which(apply(as.matrix(TE_PCA_mat[,c(5:ncol(TE_PCA_mat))]), 2, var) != 0)]
 
 TE.pca = prcomp(temp, center = TRUE,scale. = TRUE)
 
-#And now all against all but not interactive
+
 temp = as.tibble(cbind(TE_PCA_mat, as.data.frame(TE.pca$x))) %>%
   dplyr::select(for_display, Continent, PC1, PC2, PC3, PC4)
 
@@ -549,7 +943,6 @@ for(i in 1:p$nrow) {
 p
 ```
 
-It does look like there is clustering of samples according to geography. This is interesting as it shows that the types of TEs are different in different populations.
 
 ``` {r PCA prop TE ggpairs per collec}
 #And now all against all but not interactive
@@ -572,10 +965,277 @@ p
 <br>
 
 
+
+
+
+## TE insertions per chromosomes
+```{r}
+chromosomes_lengths = readxl::read_excel(paste0(metadata_dir, "Chromosomes_cumulative_lengths.xlsx")) 
+
+p1 = TE_insertions %>%
+  dplyr::count(Order, CHR, ID_file) %>%
+  inner_join(dplyr::select(chromosomes_lengths, CHR, Length) %>% mutate(CHR = as.character(CHR))) %>%
+  ggplot(aes(x = reorder(as.character(CHR), as.numeric(CHR)), y = n/(Length/1000000))) + 
+    geom_boxplot() + 
+    theme_bw() + 
+  theme(axis.title = element_text(size = 10))+
+  facet_wrap(vars(Order), scales = "free") +
+  labs(x = "", y = "Per-sample insertions per Mb")
+
+p2 = TE_insertions %>%
+  dplyr::count(CHR, insertion_type, Order) %>%
+  inner_join(dplyr::select(chromosomes_lengths, CHR, Length) %>% mutate(CHR = as.character(CHR))) %>%
+  ggplot(aes(x = reorder(as.character(CHR), as.numeric(CHR)), y = n/(Length/1000000), fill = insertion_type)) + 
+    geom_bar(stat = "identity") + 
+    theme_bw() +
+  facet_wrap(vars(Order), scales = "free") +
+  scale_fill_manual(values = c("#FFD399", "#cbf3f0")) + 
+  theme(legend.position = "bottom", axis.title = element_text(size = 10)) +
+  labs(x = "", y = "Number insertions per Mb", fill = "Insertion type")
+
+cowplot::plot_grid(p1, p2, ncol = 1, rel_heights = c(1, 1.2), align = "hv")
+
+```
+
+```{r, TE along chr}
+TE_insertions_per_window = TE_insertions %>%
+  mutate(CHR = as.numeric(CHR),
+         window = round(((position + end)/2)/10000)) %>%
+  dplyr::select(TE_insertion, CHR, window) %>%
+  distinct() %>%
+  group_by(CHR, window) %>%
+  dplyr::count() 
+
+summar = ungroup(TE_insertions_per_window) %>% 
+  summarise(median_TE = median(n),
+            sd_TE = sd(n))
+
+TE_insertions_per_window  = TE_insertions_per_window %>%
+  #inner_join(summar) %>%
+  mutate(outlier = ifelse(n >= summar$median_TE + 3*summar$sd_TE, "outlier", "non_outlier")) 
+
+
+filter(TE_insertions_per_window, as.numeric(CHR) < 8) %>%
+  ggplot(aes(x = window, y = n, col = as.character(outlier))) +
+    theme_bw() + 
+    theme(legend.position = "none") +
+    scale_color_manual(values = c("#f5cac3", "#f28482")) +
+    geom_point(alpha = .8) +
+    geom_hline(yintercept = summar$median_TE + 2*summar$sd_TE,
+               linetype="dashed", col = "grey80") +
+    facet_grid(rows = vars(CHR), scales = "free_x") 
+
+filter(TE_insertions_per_window, as.numeric(CHR) >= 8 & as.numeric(CHR) < 14) %>%
+  ggplot(aes(x = window, y = n, col = outlier)) +
+    theme_bw() + 
+    theme(legend.position = "none") +
+    scale_color_manual(values = c("#f5cac3", "#f28482")) +
+    geom_point(alpha = .8) +
+    geom_hline(yintercept = summar$median_TE + 2*summar$sd_TE,
+               linetype="dashed", col = "grey80") +
+    facet_grid(rows = vars(CHR), scales = "free_x")
+
+filter(TE_insertions_per_window, as.numeric(CHR) >= 14) %>%
+  ggplot(aes(x = window, y = n, col = outlier)) +
+    theme_bw() + 
+    theme(legend.position = "none") +
+    scale_color_manual(values = c("#f5cac3", "#f28482")) +
+    geom_point(alpha = .8) +
+    geom_hline(yintercept = summar$median_TE + 2*summar$sd_TE,
+               linetype="dashed", col = "grey80") +
+    facet_grid(rows = vars(CHR), scales = "free_x")
+
+
+```
+
+```{r acc vs core TE}
+p1 = ungroup(TE_insertions_per_window) %>%
+  filter(!is.na(CHR)) %>%
+  group_by(CHR) %>%
+  dplyr::summarize(Average = mean(n)) %>%
+  dplyr::mutate(Chromosome_type = ifelse(CHR < 14, "core", "accessory")) %>%
+  ggplot(aes(x = reorder(as.character(CHR), CHR), y = Average, fill = Chromosome_type)) +
+  geom_bar(stat = "identity") +
+  theme_bw() + 
+  scale_fill_manual(values = c("#2ec4b6","#cbf3f0")) +
+  labs(title = "Number of insertions per 10kb window", 
+       x = "Chromosome", y = "Mean # insertions") +
+  theme(legend.position = "none")
+
+
+p2 = ungroup(TE_insertions_per_window) %>%
+  dplyr::count(CHR, outlier) %>%
+  group_by(CHR) %>%
+  dplyr::mutate(Tot_window = sum(n)) %>%
+  mutate(prop = 100*n/Tot_window) %>%
+  mutate(Chromosome_type = ifelse(CHR < 14, "core", "accessory")) %>%
+  filter(outlier == "outlier") %>%
+  ggplot(aes(x = reorder(as.character(CHR), CHR), y = prop, fill = Chromosome_type)) +
+  geom_bar(stat = "identity") +
+  theme_bw() + 
+  scale_fill_manual(values = c("#2ec4b6","#cbf3f0")) +
+  labs(title = "Proportion of outlier windows", 
+       x = "Chromosome", y = "% outlier windows") +
+  theme(legend.position = "none") +
+  geom_text(aes(y = 22, label = paste0(round(prop, 2), "%")), size = 3)
+
+cowplot::plot_grid(p1 + coord_flip(), p2 + coord_flip())
+
+ungroup(TE_insertions_per_window) %>%
+  dplyr::count(CHR, outlier) %>%
+  group_by(CHR) %>%
+  dplyr::mutate(Tot_window = sum(n)) %>%
+  mutate(prop = 100*n/Tot_window) %>%
+  filter(outlier == "outlier")
+
+ungroup(TE_insertions_per_window) %>% dplyr::count(outlier) 
+```
+
+
+```{r weird outlier chr12}
+temp = TE_insertions %>% filter(CHR == 12) %>%
+  mutate(window = round(((position + end)/2)/10000)) %>% filter(window == 52)
+
+p1 = temp %>% 
+  dplyr::select(Superfamily, TE_family, TE_insertion ) %>% 
+  distinct() %>% 
+  ggplot(aes(x = Superfamily, fill = TE_family)) + 
+  geom_bar() + 
+  scale_fill_manual(values = rep(c("#f6bd60", "#f6ca83", "#f7ede2", "#f5cac3", "#84a59d", "#73683b", "#d0d38f", "#cd5b72", "#f28482"), 10)) 
+p1 + theme(legend.position = "none")
+cowplot::plot_grid(get_legend(p1))
+
+temp %>% 
+  mutate(pos = round((position + end)/200)) %>%
+  group_by(TE_insertion, TE_family, Superfamily, insertion_type, pos) %>% 
+  ggplot(aes(x = pos*100, fill = Continent)) +
+  geom_bar() + 
+  theme_bw() +
+  facet_grid(rows = vars(Superfamily), scales = "free_y") +
+  Fill_Continent
+  
+ 
+```
+
+
+```{r}
+bind_rows(read_tsv(paste0(TE_RIP_dir, "Non-ref_all_strains.bed"), 
+           col_names = c("ID_file", "chromosome", "position", "end", "info", "score", "strand")) %>%
+             mutate(insertion_type = "non_ref"),
+          read_tsv(paste0(TE_RIP_dir, "Ref_all_strains.bed"), 
+           col_names = c("ID_file", "chromosome", "position", "end", "info", "score", "strand")) %>%
+             mutate(insertion_type = "ref")) %>%
+  separate(col = chromosome, into = c("X1", "CHR", "X2", "X3", "X4"), sep = "_") %>%
+  separate(col = info, into = c("TE_family", "TSD", "Allele_Frequency", "3_support", "5_support", "ref_reads"), sep = "\\|") %>%
+  dplyr::select(-c(X1, X2, X3, X4, score, strand)) %>%
+  dplyr::select(CHR, position, end, TE_family) %>%
+  distinct() %>%
+  write_tsv(paste0(TE_RIP_dir, "Insertions.real.bed"), col_names = F)
+  
+
+gff = read_tsv(gff_file, col_names = c("CHR", "X1", "mRNA", "Start", "Stop", "X2", "X3", "X4", "Annot"))  %>%
+  filter(mRNA == "mRNA") %>%
+  separate(col = Annot, into = c("ID", "Parent", "Name"), sep = ";") %>%
+  mutate(Name = str_remove(Name, "Name=")) 
+```
+
+```{bash, eval = F}
+~/Documents/Software/bedtools2/bin/bedtools  sort -i ~/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/Zymoseptoria_tritici.MG2.Grandaubert2015.no_CDS.gff3 | grep "mRNA" > ~/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/Zymoseptoria_tritici.MG2.Grandaubert2015.no_CDS.mRNA.gff3
+
+~/Documents/Software/bedtools2/bin/bedtools  sort -i /Users/afeurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/Insertions.real.bed > /Users/afeurtey/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/Insertions.sorted.bed
+
+ ~/Documents/Software/bedtools2/bin/bedtools closest -a ~/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/Insertions.sorted.bed -b ~/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/Zymoseptoria_tritici.MG2.Grandaubert2015.no_CDS.mRNA.gff3 -d > ~/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/Insertions_closest_genes.tab
+ 
+```
+```{r}
+distance_TE_genes = read_tsv(paste0(TE_RIP_dir, "Insertions_closest_genes.tab"),
+         col_names = c("CHR", "position", "end", "TE_family", "X5", "X1", "mRNA", 
+                       "Start", "Stop", "X2", "X3", "X4", "Annot", "Distance")) %>%
+  dplyr::select(-c(X1, X2, X3, X4, X5, mRNA)) %>% 
+  mutate(CHR = as.character(CHR)) %>%  
+  mutate(position = 100*round(position/100), end = 100*round(end/100)) %>%
+  unite(TE_family, CHR, position, end, col = "TE_insertion", sep = ":", remove = F) 
+  
+temp = distance_TE_genes %>%  
+  full_join(TE_insertions)
+
+TE_insertions %>%
+  unite(Continent, ID_file, col = "for_display", remove = F) %>%
+   dplyr::count(TE_insertion)
+
+
+#Categories based on allelic frequencies
+p1 = TE_insertions_counts %>%
+  mutate(for_bar = case_when(n == 1 ~ "01", 
+                             n == 2 ~ "02",
+                             n <= 10 ~ "10",
+                             n <= 100 ~ "100",
+                             n >= 100 ~ "100 +")) %>%
+  inner_join(distance_TE_genes) %>%
+  ggplot(aes(x = for_bar, y = log(Distance))) + 
+  geom_violin()  +
+  geom_boxplot(width = .2) +
+  theme_bw()
+
+#Categories based on population specificity
+temp  = insertions_per_pop %>%
+  filter(Nb_population == 1) %>%
+  dplyr::select(-c(NA_count, Nb_population, n)) %>%
+  pivot_longer(cols = -TE_insertion, names_to = "Specificity_category", values_to = "Nb") %>%
+  filter(!is.na(Nb)) %>%
+  dplyr::select(-Nb)
+
+p2 = insertions_per_pop %>%
+  filter(Nb_population > 1) %>%
+  dplyr::select(TE_insertion) %>%
+  mutate(Specificity_category = "Non_specific") %>%
+  bind_rows(temp) %>%
+  inner_join(distance_TE_genes) %>%
+  ggplot(aes(x = Specificity_category, y = log(Distance))) + 
+  geom_violin() +
+  geom_boxplot(width = .2) + 
+  theme_bw()
+
+
+cowplot::plot_grid(p1, p2)
+
+
+
+
+#
+temp = inner_join(read_tsv(paste0(TE_RIP_dir, "Insertions_closest_genes.downstream.tab"),
+         col_names = c("CHR", "position", "end", "TE_family", "X5", "X1", "mRNA", 
+                       "Start", "Stop", "X2", "X3", "X4", "Annot", "Distance")) %>% 
+  mutate(CHR = as.character(CHR)) %>%  
+  mutate(position = 100*round(position/100), end = 100*round(end/100)) %>%
+  unite(TE_family, CHR, position, end, col = "TE_insertion", sep = ":", remove = F) %>%
+  dplyr::select(TE_insertion, Distance_downstream = Distance),
+  read_tsv(paste0(TE_RIP_dir, "Insertions_closest_genes.upstream.tab"),
+         col_names = c("CHR", "position", "end", "TE_family", "X5", "X1", "mRNA", 
+                       "Start", "Stop", "X2", "X3rm", "X4", "Annot", "Distance")) %>% 
+  mutate(CHR = as.character(CHR)) %>%  
+  mutate(position = 100*round(position/100), end = 100*round(end/100)) %>%
+  unite(TE_family, CHR, position, end, col = "TE_insertion", sep = ":", remove = F) %>%
+  dplyr::select(TE_insertion, Distance_upstream = Distance))
+
+
+ggplot(temp, aes(x = log(abs(Distance_downstream)), y = log(abs(Distance_upstream)))) +
+  geom_hex()
+```
+
+
+
+
+
+<br><br>
+<br><br>
+
+# Repeat-Induced Point mutation
+
 I now look at the repeat-induced point mutations in reads that map on the different TE consensus. We expect to see differences in the different geographical groups so I start by visualizing this.
 ```{r RIP input and plot per geography}
 
-#while read p; do fichier_list=$(ls -1 /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/3_RIP_estimation/${p}*txt) ; for fichier in $fichier_list; do short_name=$(echo $fichier | cut -f 8 -d "/" | cut -f 2 -d "." ) ; comp=$(grep Composite $fichier) ; echo $p $short_name $comp ;  done; done < Keep_lists_samples/Ztritici_global_March2021.genotyped.good_samples.args > /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/Composite_index.txt 
+#while read p; do fichier_list=$(ls -1 /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/3_RIP_estimation/${p}\.*txt) ; for fichier in $fichier_list; do short_name=$(echo $fichier | cut -f 8 -d "/" | cut -f 2 -d "." ) ; comp=$(grep Composite $fichier) ; echo $p $short_name $comp ;  done; done < Keep_lists_samples/Ztritici_global_March2021.genotyped.good_samples.args > /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/Composite_index.txt 
 
 RIP=read_delim(paste0(RIP_DIR, "Composite_index.txt"),
              col_names = c("ID_file", "TE",  "Variable", "Composite_median", "Composite_mean" ), delim = " ") %>%
@@ -636,12 +1296,12 @@ hist(residuals(model), col="darkgray")
 #Post-hoc analysis:  mean separation tests
 marginal = lsmeans(model, ~ Continent)
 
-pairs(marginal, adjust="tukey")
+pairs(marginal, adjust="sidak")
 
 CLD_RIP = cld(marginal,
           alpha   = 0.05,
           Letters = letters,  ### Use lower-case letters for .group
-          adjust  = "tukey")  ### Tukey-adjusted p-values
+          adjust  = "sidak")  ### sidak-adjusted p-values
 
 CLD_RIP
 
@@ -768,12 +1428,21 @@ t = ggplot(TE_RIP, aes(as.numeric(Percent_TE_Reads),
   geom_point(data = temp, aes(as.numeric(TE_qty),
                                 as.numeric(Composite_median),
                                 color = Continent), size = 5)
-ggplotly(t)
-
-
+#ggplotly(t)
 t
+TE_RIP %>%
+  filter(Collection != "Hartmann_FstQst_2015") %>%
+ggplot(aes(as.numeric(Total_insertions),
+                          as.numeric(Composite_median),
+                          color = Continent,
+                          text = for_display))+
+  theme_cowplot()  +
+  geom_point(alpha = 0.6) + Color_Continent +
+  labs(color = "Geographical group",
+       x = "TE insertion number", y = "RIP composite median",
+       title = "Amount of transposable elements vs RIP level") 
 
-bias1 = TE_RIP %>% ggplot(aes(Percent_TE_Reads, as.numeric(Composite_median), color =Collection, text = for_display)) +
+bias1 = TE_RIP %>% ggplot(aes(Percent_TE_Reads, as.numeric(Composite_median), color = Collection, text = for_display)) +
   theme_cowplot() +
   geom_point(alpha = 0.8)
 
@@ -784,17 +1453,17 @@ bias1 = TE_RIP %>% ggplot(aes(Percent_TE_Reads, as.numeric(Composite_median), co
 ggplotly(bias1)
 
 cowplot::plot_grid(RIP_plot +
-                     labs (title = "", subtitle = "") +
-                     geom_text(data = CLD_RIP, aes(x = Continent,
-                                               y = text_y,
-                                               label = .group),
-                               color = "black"),
+                     labs (title = "", subtitle = ""), #+
+                     #geom_text(data = CLD_RIP, aes(x = Continent,
+                      #                         y = text_y,
+                      #                         label = .group),
+                      #         color = "black"),
                    TE_prop +
                      labs (title = "", subtitle = "") +
-                     geom_text(data = CLD, aes(x = Continent,
-                                               label = .group,
-                                               y = 34),
-                               color   = "black") +
+                     #geom_text(data = CLD, aes(x = Continent,
+                      #                         label = .group,
+                      #                         y = 34),
+                      #         color   = "black") +
                      theme(legend.position = "none") +
                      coord_flip())
 
@@ -802,7 +1471,7 @@ cowplot::plot_grid(RIP_plot +
 
 ```{r}
 subset = TE_RIP %>%
-  filter(Collection != "Hartmann")
+  filter(Collection != "Hartmann_FstQst_2015")
 
 temp = subset %>%
   group_by(Continent) %>%
@@ -823,40 +1492,6 @@ t = ggplot(subset, aes(as.numeric(Percent_TE_Reads),
                                 as.numeric(Composite_median),
                                 color = Continent), size = 5)
 ggplotly(t)
-```
-
-
-Besides geographical origin and collection, I also wanted to check time for subsets of the genomes. The Oceanian samples have often shown their own pattern, so I looked at them separately. Additionally, I am curious about the North American samples since Ursula saw a temporal pattern.
-```{r RIP and TE together per region}
-#Checking the Oceanian samples
-TE_RIP %>%
-  filter(Continent == "Oceania") %>%
-  ggplot(aes(Percent_TE_Reads, as.numeric(Composite_median), color = as.character(Sampling_Date), shape = Country, text = for_display)) +
-  geom_point(alpha = 0.8) +
-  theme_cowplot() +
-      scale_color_manual(values = blues) +
-  labs(color = "Group",
-       x = "Percentage of TE reads", y = "RIP composite median",
-       title = "TE vs RIP level in Oceania",
-       subtitle = str_wrap(paste0("Oceanian samples have shown a clear ",
-                                  "temporal and geographical substructure ",
-                                  "based on SNPs. How about RIP/TE content?"),
-                                  width = 70))
-
-t = TE_RIP %>%
-    filter(Country == "United States") %>%
-    ggplot(aes(Percent_TE_Reads, as.numeric(Composite_median),
-               color = Collection, shape = as.character(Sampling_Date))) +
-    geom_point(alpha = 0.8) +
-    theme_bw() +
-  labs(color = "Geographical group",
-       x = "Percentage of TE reads", y = "RIP composite median",
-       title = "TE vs RIP level in North America",
-       subtitle = str_wrap(paste0("Ursula's data shows a geographical and a ",
-                                  "temporal pattern in the TE content. ",
-                                  "Can this be recovered here?"),
-                                  width = 70))
-t
 ```
 
 
@@ -1209,7 +1844,7 @@ cowplot::plot_grid(p3, bottom_row, labels = c('A', ''), label_size = 12, ncol = 
 ```{r RIP vs dim2 separate Hartman}
 
 p1 = sum_dim2_blast %>%
-  filter(Collection == "Hartmann") %>%
+  filter(Collection == "Hartmann_FstQst_2015") %>%
   ggplot(aes(as.numeric(Composite_median), pident_wm, color = Continent))+
   geom_point() + Color_Continent +
   theme_bw() + theme(legend.position = "none") +
@@ -1220,7 +1855,7 @@ p1 = sum_dim2_blast %>%
                       width = 20))
 
 p2 = sum_dim2_blast %>%
-  filter(Collection != "Hartmann") %>%
+  filter(Collection != "Hartmann_FstQst_2015") %>%
   ggplot(aes(as.numeric(Composite_median), pident_wm, color = Continent))+
   geom_point() + Color_Continent +
   theme_bw() + theme(legend.position = "none") +
@@ -1231,39 +1866,6 @@ p2 = sum_dim2_blast %>%
                       width = 20))
 
 cowplot::plot_grid(p1, p2, labels = c('A', 'B'), label_size = 12)
-
-
-```
-```{r}
-
-#Statistical test
-#One-way ANOVA with blocks
-##Define linear model
-model = lm(as.numeric(pident_wm) ~ Continent + Collection ,
-          data=sum_dim2_blast)
-summary(model)   ### Will show overall p-value and r-squared
-
-##Conduct analysis of variance
-Anova(model,type = "II")  
-summary(model)
-
-hist(residuals(model), col="darkgray")
-
-#Post-hoc analysis:  mean separation tests
-marginal = lsmeans(model, ~ Continent)
-
-pairs(marginal, adjust="tukey")
-
-CLD_dim = cld(marginal,
-          alpha   = 0.05,
-          Letters = letters,  ### Use lower-case letters for .group
-          adjust  = "tukey")  ### Tukey-adjusted p-values
-
-CLD_dim
-
-CLD_dim$.group=gsub(" ", "", CLD_dim$.group)
-
-text_y = (max(as.numeric(temp$Composite_median), na.rm = T) + 0.1*max(as.numeric(temp$Composite_median), na.rm = T))
 
 
 ```
@@ -1287,10 +1889,7 @@ p1 = sum_dim2_blast %>%
     axis.text.x = element_text(size = 10, angle = 40, hjust = 1)) +
    coord_flip() +
   labs(x = NULL,
-       y = "Identity of the native copy to Zt10dim2") +
-  geom_text(data = CLD_dim, aes(x = Continent,
-                            y = 102,
-                            label = .group), color = "black")
+       y = "Identity of the native copy to Zt10dim2")
 
 
 p2 = ggplot(sum_dim2_blast, aes(Continent, n_long_matches,
@@ -1595,6 +2194,37 @@ ggplot(temp, aes(as.numeric(Composite_median),
          y = str_wrap("Number of duplicated genes", width = 20)) +
   facet_wrap(vars(Continent), scales = "free")
 ```
+```{r}
+temp = inner_join(core_duplicated_genes, TE_qty, by = c("Sample" = "ID_file")) %>%
+  filter(M < 100) %>%
+  filter(!is.na(Cluster))
+
+ggplot(temp, aes(M, Total_insertions, col = Continent)) + 
+  geom_point()+ 
+  Color_Continent +
+  theme_bw() 
+
+ggplot(temp, aes(M, Percent_TE_Reads, col = Continent)) + 
+  geom_point()+ 
+  Color_Continent +
+  theme_bw() 
+
+
+p1 = ggplot(temp, aes(Cluster, M, fill = Cluster)) + 
+  geom_violin()+ 
+  geom_boxplot(col = "white", width = .2) +
+  Fill_Cluster+
+  theme_bw() 
+p2 = ggplot(temp, aes(Cluster, D, fill = Cluster)) + 
+  geom_violin()+ 
+  geom_boxplot(col = "white", width = .2) +
+  Fill_Cluster+
+  theme_bw() 
+
+cowplot::plot_grid(p1 + coord_flip() + theme(legend.position = "none"),
+                   p2 + coord_flip() + theme(legend.position = "none"))
+```
+
 
 
 
@@ -1629,7 +2259,7 @@ duplicated_loci = core_duplicated_genes %>%
 
 #Create standardized values for the environment variables
 stand = left_join(TE_RIP, duplicated_loci) %>% 
-  dplyr::select(ID_file, Percent_TE_Reads, Composite_median, Composite_mean, Acc_chr, Duplicated_genes) %>%
+  dplyr::select(ID_file, Percent_TE_Reads, Composite_median, Composite_mean, Acc_chr, Duplicated_genes, Non_ref_insertions) %>%
   pivot_longer(cols = -c(ID_file), names_to = "Variable", values_to = "Value") %>%
   group_by(Variable) %>%
   mutate(Standard_value = scale(Value)) %>%
@@ -1641,7 +2271,7 @@ stand = left_join(TE_RIP, duplicated_loci) %>%
 temp2 = left_join(read_tsv(Zt_list, col_names = "ID_file") %>% mutate(ID2 = ID_file), 
                             Zt_meta %>% dplyr::select(ID_file, Latitude, Longitude)) %>%
   bind_cols(., tibble(X1 = rep(0, nrow(Zt_meta)), X2 = rep(0, nrow(Zt_meta)), X3 = rep(0, nrow(Zt_meta)))) %>%
-  left_join(., stand) 
+  inner_join(., stand) 
 
 dplyr::select(temp2, -Latitude, -Longitude) %>%
  write_delim(., paste0(TE_RIP_dir, "Phenotypes_for_GWAS.fam"), delim = " ", col_names = F)
@@ -1667,13 +2297,12 @@ left_join(read_tsv(Zt_list, col_names = "ID_file"), read_tsv(paste0(PopStr_dir, 
 ```
 
 ```{r GEMMA results}
-phenotypes = c("TE", "RIP_med", "RIP_mean", "Accessory_chr", "Duplicated_genes")
-
+phenotypes = c("TE", "RIP_med", "RIP_mean", "Accessory_chr", "Duplicated_genes", "TE_insertions")
 
 results_GWAS = list()
 for (i in c(1:length(phenotypes))) {
   temp = list.files(path = paste0(TE_RIP_dir, "2_GWAS/"), 
-                    pattern = paste0("*_for_phenotype_", i,".assoc.txt")) %>% 
+                    pattern = paste0("*phenotype_", i,"..subset_ALL.assoc.txt")) %>% 
     map_df(~read_tsv(file = paste0(paste0(TE_RIP_dir, "2_GWAS/"), .), 
                      col_types = c("dcddccdddddd"))) %>%
     unite(col = SNP, chr, ps, sep = "_", remove = F) %>%
@@ -1947,8 +2576,8 @@ p = Manhattan_one_pheno("TE", c("#FFD399", "#ff9f1c")) +
   labs(y = str_wrap("TE content (-logP)", 25)) + 
   geom_vline(data = temp, aes(xintercept = Pos), alpha =.4, col = "grey20")
 
-q = Manhattan_one_pheno("RIP_med", c("#cbf3f0", "#2ec4b6")) +
-  labs(y = str_wrap("RIP (-logP)", 25)) + 
+q = Manhattan_one_pheno("TE_insertions", c("#cbf3f0", "#2ec4b6")) +
+  labs(y = str_wrap("TE insertions (-logP)", 25)) + 
   geom_vline(data = temp, aes(xintercept = Pos), alpha =.4, col = "grey20") +
       geom_text(data = temp, aes(label = Gene, x= Pos), 
                 y = -5, # Set the position of the text to always be at '14.25'
@@ -1959,21 +2588,33 @@ q = Manhattan_one_pheno("RIP_med", c("#cbf3f0", "#2ec4b6")) +
 
 cowplot::plot_grid(p, q, ncol = 1)
 
+
+
+Manhattan_one_pheno("RIP_med", c("#cbf3f0", "#2ec4b6")) +
+  labs(y = str_wrap("RIP (-logP)", 25)) + 
+  geom_vline(data = temp, aes(xintercept = Pos), alpha =.4, col = "grey20") +
+      geom_text(data = temp, aes(label = Gene, x= Pos), 
+                y = -5, # Set the position of the text to always be at '14.25'
+                size = 4, angle = 90,
+                vjust = 0, hjust = 0) +
+      coord_cartesian(ylim = c(-3.8, 27), # This focuses the x-axis on the range of interest
+                      clip = 'off')
 ```
 
 
 ```{r}
 #Set parameters for the plot
-chromosome = 5
-min_coord = 220000
-max_coord = 270000
+#chromosome = 5
+#min_coord = 220000
+#max_coord = 270000
+
 #chromosome = 13
 #min_coord = 800048
 #max_coord = 1129645
 
-#chromosome = 3
-#min_coord = 3210000
-#max_coord = 3216000
+chromosome = 3
+min_coord = 3190000
+max_coord = 3218000
 genes_to_highlight = c("Zt09_model_5_00047")
 TE_gff = "~/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/Cecile_IPO323_refTEs_match.gff"
 gene_gff = "~/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/Zymoseptoria_tritici.MG2.Grandaubert2015.mRNA.gff3"
@@ -2021,83 +2662,6 @@ b = results_GWAS %>% filter(CHR == chromosome) %>%
 cowplot::plot_grid(b,  d, c, ncol = 1, align = 'v', axis = 'lr', rel_heights = c(1, 0.3, 0.3))
 ```
 
-```{r}
-#SNP_name = "5_69389"
-SNP_name = "5_245550"
-#SNP_name = "5_90258"
-#SNP_name = "6_820378"
-#SNP_name = "1_758601"
-#pheno = "RIP_med"
-pheno = "TE"
-
-allele = significant_TE %>% 
-    filter(Phenotype == pheno) %>% 
-    filter(SNP == SNP_name) %>%
-    dplyr::select(SNP, CHR, BP) %>%
-    inner_join(., read_tsv(paste0(TE_RIP_dir, "2_GWAS/Significant_TE.ann.tab"), na = "."), 
-               by = c("CHR" = "CHROM", "BP" = "POS")) %>%
-    pivot_longer(-c(CHR, BP, REF, ALT, SNP), 
-                 names_to = "ID_file", values_to = "Allele") %>%
-    inner_join(., Zt_meta %>% dplyr::select(ID_file, Latitude, Longitude)) %>%
-    mutate(Latitude = round(Latitude/2)*2, Longitude = round(Longitude/2)*2)%>%
-    mutate(Allele = ifelse(Allele == 0, "REF", ifelse(Allele == 1, "ALT1", "ALT2"))) %>%
-    group_by(Allele, Longitude, Latitude) %>%
-    dplyr::count() %>%
-    pivot_wider(names_from = Allele, values_from = n, values_fill = 0) %>%
-    filter(!is.na(Longitude)) %>%
-    mutate(Radius = 1.5) 
-
-#Add if column alt2
-if ("ALT2" %in% colnames(allele)) {
-  allele = allele
-} else {
-  allele = allele %>% mutate(ALT2 = 0)
-}
-
-
-map1 = ggplot() + 
-  theme_void() +
-  geom_polygon(data = map_data("world"), aes(x=long, y = lat, group = group), fill="#ede7e3")  +
-  theme(legend.position = "None", 
-        panel.border  = element_rect(fill=NA, colour = "grey",size = 0.5, linetype = 1)) +
-    scale_fill_manual(values = c("grey", K_colors) )
-p1 = map1 + coord_cartesian(xlim=c(-20, 60), ylim=c(20, 70)) + 
-  geom_scatterpie(data = allele, mapping = aes(x=Longitude, y=Latitude, r = Radius), 
-                  cols = c("REF", "ALT1", "ALT2"), color=NA, alpha=.8) +
-  theme(panel.background = element_rect(fill = "transparent"), # bg of the panel
-    plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
-    panel.grid.major = element_blank(), # get rid of major grid
-    panel.grid.minor = element_blank(), # get rid of minor grid
-    legend.background = element_rect(fill = "transparent"), # get rid of legend bg
-    legend.box.background = element_rect(fill = "transparent"))
-
-p2 = map1 + coord_cartesian(xlim=c(-160, -40), ylim=c(-80, 80)) + 
-  geom_scatterpie(data = allele, mapping = aes(x=Longitude, y=Latitude, r = Radius*2), 
-                  cols = c("REF", "ALT1", "ALT2"), color=NA, alpha=.8)+
-  theme(panel.background = element_rect(fill = "transparent"), # bg of the panel
-    plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
-    panel.grid.major = element_blank(), # get rid of major grid
-    panel.grid.minor = element_blank(), # get rid of minor grid
-    legend.background = element_rect(fill = "transparent"), # get rid of legend bg
-    legend.box.background = element_rect(fill = "transparent"))
-
-p3 = map1 + coord_cartesian(xlim=c(105, 175), ylim=c(-65, 10)) + 
-  geom_scatterpie(data = allele, mapping = aes(x=Longitude, y=Latitude, r = Radius*2), 
-                  cols = c("REF", "ALT1", "ALT2"), color=NA, alpha=.8)+
-  theme(panel.background = element_rect(fill = "transparent"), # bg of the panel
-    plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
-    panel.grid.major = element_blank(), # get rid of major grid
-    panel.grid.minor = element_blank(), # get rid of minor grid
-    legend.background = element_rect(fill = "transparent"), # get rid of legend bg
-    legend.box.background = element_rect(fill = "transparent"))
-
-#Plotting all the maps together! 
-aus_map = cowplot::plot_grid(p3 + theme(legend.position = "None"), get_legend(p1), ncol = 2, rel_widths = c(1.1, 1))
-ligne = cowplot::plot_grid(p1 + theme(legend.position = "None"), aus_map, ncol = 1,  rel_heights = c(1, 0.7))
-cowplot::plot_grid(p2 + theme(legend.position = "None"), ligne, ncol = 2, rel_widths = c(0.7, 1)) 
-ggsave(paste0(fig_dir, "Allele_", SNP_name,"_", pheno, ".pdf"), width = 18, height = 10, units = "cm")
-
-```
 
 
 <br><br>
