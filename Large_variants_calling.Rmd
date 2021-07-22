@@ -169,6 +169,21 @@ cowplot::plot_grid(heatmap_depth, bottom_row, labels = c('A', ''), label_size = 
 ```
 
 
+```{r accCHR depth continent}
+metadata_file %>% dplyr::select(Sample = ID_file, Continent) %>%
+  filter(Continent != "\\N") %>%
+  filter(Continent != "Asia") %>%
+  inner_join(chrom_depth) %>%
+  filter(CHROM != "mt") %>%
+  filter(as.numeric(CHROM) > 13) %>%
+  dplyr::mutate(Depth_is = ifelse(Relative_depth > Hthres, "High",ifelse(Relative_depth < Lthres, "Low", "Normal"))) %>%
+  ggplot(aes(x = Continent, fill = Depth_is)) + 
+    geom_bar(position = "fill") +
+  theme_bw() + 
+  facet_wrap(vars(CHROM), scales = "free")+
+  scale_fill_manual(values = c("#16697a", "#82c0cc", "#EDE7E3")) 
+```
+
 
 
 # Depth per window and GC bias
@@ -614,6 +629,8 @@ summary_filtered %>%
     > ${DEPTHGENEDIR}Sabina_gcnv_event.filtered.tsv
 ```
 
+
+## CNV variants
 ```{r}
   
 #temp = read_tsv(file = paste0(depth_per_gene_dir, "Sabina_gcnv_event.filtered.tsv"),
@@ -629,6 +646,8 @@ variant_list = read_tsv(file = paste0(depth_per_gene_dir, "Sabina_gcnv_event.fil
   mutate(Nb_allele = n()) %>%
   pivot_wider(names_from = Allele, values_from = n, values_fill = 0) %>%
   mutate(max = max(M, P, D, PD, PM), sum = sum(M, P, D, PD, PM)) 
+write_tsv(variant_list, 
+          file = paste0(depth_per_gene_dir, "Sabina_gcnv_event.filtered.per_gene.tsv"))
 
 
 temp = depth_per_gene %>% filter(Sample %in% Zt_list$ID_file) %>% 
@@ -687,6 +706,116 @@ full_join(Alice_CNV_per_sample %>% dplyr::select(Sample, variant_Alice = sum),
 
 bind_rows(Alice_CNV_per_sample, Sabina_CNV_per_sample) %>% dplyr::select(-sum, -max, -P) %>% pivot_longer(-c(Sample, Method), names_to = "Variant_type", values_to = "Count") %>% ggplot(aes(fill = Method, col = Method, x = Variant_type, y = log2(Count))) + geom_violin(alpha = .4) + theme_bw()
 ```
+
+
+```{r}
+temp = variant_list %>%
+  filter(sum > 1000) %>%
+  filter(P != sum) 
+
+temp %>% 
+  dplyr::select(CHROM, D, sum) %>%
+  mutate(prop = 100*D/sum) %>%
+  ggplot(aes(reorder(as.character(CHROM), CHROM), prop)) +
+    geom_boxplot() + 
+    theme_bw()
+  
+temp = variant_list %>%
+  dplyr::select(CHROM, POS, D, sum) %>%
+  mutate(window = trunc(POS/10000)*10000, 
+         prop = 100*D/sum, Core_accessory = ifelse(prop > 1, "accessory", "core")) %>%
+  group_by(CHROM, window) %>%
+  summarize(Nb_genes = n(), Mean_D_prop = mean(prop),
+            Nb_accessory_genes = sum(Core_accessory == "accessory"),
+            Prop_acc_genes = 100*Nb_accessory_genes/Nb_genes) 
+
+
+filter(temp, Mean_D_prop > 0 & Prop_acc_genes > 0) %>%
+  filter(CHROM < 14) %>%
+ggplot(aes(Mean_D_prop, Prop_acc_genes)) +
+  geom_point(alpha = .4) +
+  theme_bw()
+
+filter(temp, CHROM < 6) %>%
+  ggplot(aes(x = window, y = Mean_D_prop)) + 
+  geom_point() +
+  theme_bw() +
+  facet_grid(rows = vars(CHROM))
+
+filter(temp, CHROM >= 6 & CHROM <= 13) %>%
+  ggplot(aes(x = window, y = Prop_acc_genes)) + 
+  geom_point() +
+  theme_bw() +
+  facet_grid(rows = vars(CHROM))
+
+filter(temp, CHROM > 13) %>%
+  ggplot(aes(x = window, y = Mean_D_prop)) + 
+  geom_point() +
+  theme_bw()+
+  facet_grid(rows = vars(CHROM))
+
+
+```
+
+```{r}
+PAV_Middle_East = read_tsv(file = paste0(depth_per_gene_dir, "Sabina_gcnv_event.filtered.tsv"),
+                        col_names = c("CHROM", "POS", "Gene", "Sample", "Allele"), skip = 1) %>%
+  filter(Sample %in% Zt_list$ID_file) %>%
+  inner_join(filter(metadata_file, Continent == "Middle East"), by = c("Sample" = "ID_file")) %>%
+  select(CHROM, POS, Gene, Sample, Allele, Continent) %>%
+  group_by(CHROM, POS, Gene) %>%
+  dplyr::count(Allele) %>%
+  mutate(Nb_allele = n()) %>%
+  pivot_wider(names_from = Allele, values_from = n, values_fill = 0) %>%
+  mutate(max = max(M, P, D, PD, PM), sum = sum(M, P, D, PD, PM)) %>%
+  dplyr::select(CHROM, POS, D, sum) %>%
+  mutate(window = trunc(POS/10000)*10000, 
+         prop = 100*D/sum, Core_accessory = ifelse(prop > 1, "accessory", "core")) %>%
+  group_by(CHROM, window) %>%
+  summarize(Nb_genes = n(), Mean_D_prop = mean(prop),
+            Nb_accessory_genes = sum(Core_accessory == "accessory"),
+            Prop_acc_genes = 100*Nb_accessory_genes/Nb_genes) 
+PAV_Europe = read_tsv(file = paste0(depth_per_gene_dir, "Sabina_gcnv_event.filtered.tsv"),
+                        col_names = c("CHROM", "POS", "Gene", "Sample", "Allele"), skip = 1) %>%
+  filter(Sample %in% Zt_list$ID_file) %>%
+  inner_join(filter(metadata_file, Continent == "Europe"), by = c("Sample" = "ID_file")) %>%
+  select(CHROM, POS, Gene, Sample, Allele, Continent) %>%
+  group_by(CHROM, POS, Gene) %>%
+  dplyr::count(Allele) %>%
+  mutate(Nb_allele = n()) %>%
+  pivot_wider(names_from = Allele, values_from = n, values_fill = 0) %>%
+  mutate(max = max(M, P, D, PD, PM), sum = sum(M, P, D, PD, PM)) %>%
+  dplyr::select(CHROM, POS, D, sum) %>%
+  mutate(window = trunc(POS/10000)*10000, 
+         prop = 100*D/sum, Core_accessory = ifelse(prop > 1, "accessory", "core")) %>%
+  group_by(CHROM, window) %>%
+  summarize(Nb_genes = n(), Mean_D_prop = mean(prop),
+            Nb_accessory_genes = sum(Core_accessory == "accessory"),
+            Prop_acc_genes = 100*Nb_accessory_genes/Nb_genes) 
+
+full_join(PAV_Europe %>% dplyr::select(window, CHROM, D_prop_EU = Mean_D_prop), 
+          PAV_Middle_East  %>% dplyr::select(window, D_prop_ME = Mean_D_prop)) %>%
+  filter(D_prop_ME != 0 & D_prop_EU != 0) %>%
+  ggplot(aes(x = D_prop_ME, y = D_prop_EU, col = as.factor(CHROM))) +
+  geom_point() + 
+  theme_bw()
+
+filter(temp, CHROM < 6) %>%
+  ggplot(aes(x = window, y = Mean_D_prop)) + 
+  geom_point() +
+  theme_bw() +
+  facet_grid(rows = vars(CHROM))
+
+filter(temp, CHROM > 13) %>%
+  ggplot(aes(x = window, y = Mean_D_prop)) + 
+  geom_point() +
+  theme_bw() +
+  facet_grid(rows = vars(CHROM))
+```
+
+
+
+## CNV per functional categories
 
 
 ```{r CNV effectors}
