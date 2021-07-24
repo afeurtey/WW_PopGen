@@ -1,5 +1,5 @@
 ---
-title: "World-wide popgen Zt"
+title: "Z.tritici transposable elements"
 author: "Alice Feurtey"
 date: "5/5/2020"
 output:
@@ -42,6 +42,7 @@ library(ggrepel)
 library(ggtext)
 library(scatterpie)
 library(pheatmap)
+library(ggridges)
 
 
 library(ggtree)
@@ -189,6 +190,68 @@ greens=c("#1B512D", "#669046", "#8CB053", "#B1CF5F", "#514F59")
 blues=c("#08386E", "#1C89C9", "#28A7C0", "#B0DFE8", "grey")
 ```
 
+```{bash perwin stats, eval =F}
+#Run on the cluster
+
+#Create bed file with 10kb windows
+#(including the last window which can be smaller)
+while read chr length temp temp2 temp3; do 
+  start=0; 
+  while [ "$start" -le "$length" ] ; do 
+    if [ "$(($start + 10000))" -le  "$length" ] ; 
+    then 
+      echo -e "${chr}\t${start}\t$(($start + 10000))" ; 
+    else  echo -e "${chr}\t${start}\t$length" ;  
+    fi ; 
+    start=`expr $start + 10000` ; 
+  done ; 
+done < /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa.fai > /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.bed
+
+
+#GC etc from bedtools nuc
+~/Software/bedtools nuc \
+    -fi /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa \
+    -bed /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.bed \
+    > /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.nuc_GC.tab
+
+
+#RIP per window 
+#(my script makes a summary for all seq in a multifasta, so I tricked it my giving it a single window at a time)
+ #columns are "CHROM", "Start", "End", "GC", "Product index", "Substrate index", "Composite"
+ while read chr start end ; 
+    do 
+    echo -e "${chr}\t${start}\t${end}" > temp.bed ; 
+    ~/Software/bedtools getfasta -fi /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa \
+       -bed temp.bed -fo temp.fa ; 
+    python GC_RIP_per_read_fastq.py --input_format fasta --out temp temp.fa ; 
+    values=$(cat temp.txt | ~/Software/datamash-1.3/datamash transpose | grep "Median" | cut -f 2,3,4,5) ; 
+    echo -e "${chr}\t${start}\t${end}\t$values" \
+    >> /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.RIP.tsv ; 
+done < /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.bed
+
+
+#Count variants
+#columns are CHROM, Start(IN 10KB UNITS), Variant_number
+zcat /data2/alice/WW_project/1_Variant_calling/4_Joint_calling/Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.vcf.gz  | \
+   grep -v "#"  | awk 'BEGIN {FS="\t"; OFS="\t"} {print $1,$2,int($2/10000)}' | \
+   ~/Software/bedtools groupby -g 1,3 -o count -c 2 > \
+   /data2/alice/WW_project/1_Variant_calling/4_Joint_calling/Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.10kb_windows.SNP_counts.tab
+   
+   
+#Gene coverage
+#columns are CHROM, Start, End, Nb_overlapping_genes, Coverage_bp_gene, Window_length, Coverage_frac_gene
+~/Software/bedtools coverage \
+   -a /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.bed \
+   -b /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.Grandaubert2015.mRNA.gff3 \
+   > /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.gene_coverage.tab
+ 
+ #Reference TE coverage
+#columns are CHROM, Start, End, Nb_overlapping_TEs, Coverage_bp_TE, Window_length, Coverage_frac_TE
+ ~/Software/bedtools coverage \
+    -a /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.bed \
+    -b /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.Badet_Oggenfuss_2019.TE.gtf \
+    > /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.TE_coverage.tab
+```
 
 
 ```{bash Importation from cluster, eval = F}
@@ -206,8 +269,24 @@ rsync -avP \
 rsync -avP   alice@130.125.25.244:/data2/alice/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/1_Blast_dim2_deRIPped/ \
  ~/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/1_Blast_from_denovo_assemblies/
   
+#Per windows: coordinates, RIP, GC, SNP counts
+rsync -avP   alice@130.125.25.244:/data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.bed \
+ ~/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.bed
  
+rsync -avP   alice@130.125.25.244:/data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.RIP.tsv \
+ ~/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.RIP.tsv 
+ 
+rsync -avP   alice@130.125.25.244:/data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.nuc_GC.tab \
+ ~/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.nuc_GC.tab
+ 
+rsync -avP   alice@130.125.25.244:/data2/alice/WW_project/1_Variant_calling/4_Joint_calling/Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.10kb_windows.SNP_counts.tab  \
+ ~/Documents/Postdoc_Bruce/Projects/WW_project/1_Variant_calling/4_Joint_calling/
+ 
+rsync -avP   alice@130.125.25.244:/data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.gene_coverage.tab \
+~/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/
 
+rsync -avP   alice@130.125.25.244:/data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.TE_coverage.tab \
+ ~/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/
 ```
 
 ***
@@ -457,20 +536,20 @@ summary(model)
 
 
 ## Frequency of TE insertions between samples and populations
-What are the frequency of the TE insertions we found. Are they shared by several samples?
-```{r reading TE insert}
+The non reference TIPs have some sort of support estimation. As a first step, I want to filter the ones that don't seem reliable. 
+```{r reading TIP}
 TE_insertions = bind_rows(read_tsv(paste0(TE_RIP_dir, "Non-ref_all_strains.bed"), 
            col_names = c("ID_file", "chromosome", "position", "end", "info", "score", "strand")) %>%
-             mutate(insertion_type = "non_ref"),
+             mutate(ref_non_ref_TIP = "non_ref"),
           read_tsv(paste0(TE_RIP_dir, "Ref_all_strains.bed"), 
            col_names = c("ID_file", "chromosome", "position", "end", "info", "score", "strand")) %>%
-             mutate(insertion_type = "ref")) %>%
+             mutate(ref_non_ref_TIP = "ref")) %>%
   separate(col = chromosome, into = c("X1", "CHR", "X2", "X3", "X4"), sep = "_") %>%
   separate(col = info, into = c("TE_family", "TSD", "Allele_Frequency", "3_support", "5_support", "ref_reads"), sep = "\\|") %>%
   dplyr::select(-c(X1, X2, X3, X4, score, strand)) %>%
   left_join(Zt_meta %>% dplyr::select(ID_file, Continent, Cluster, Sampling_Date, Collection)) %>%
   filter(!is.na(Continent)) %>% filter(Continent != "Asia") %>%
-  mutate(position = 100*round(position/100), end = 100*round(end/100)) %>%
+  mutate(position = 100*trunc(position/100), end = 100*trunc(end/100)) %>%
   unite(TE_family, CHR, position, end, col = "TE_insertion", sep = ":", remove = F) %>%
   separate(TE_family, into = c("Superfamily", "TE_id"), sep = "_", remove = F, extra = "merge") %>%
   dplyr::mutate(Order = ifelse(grepl('^D',TE_family), "Class II (DNA transposons)", "Class I (retrotransposons)"))
@@ -491,15 +570,18 @@ ggplot(subset, aes(as.numeric(Allele_Frequency))) +
             label = str_wrap(paste0((100*temp/subset_nb), "% TE with allelic frequency below ", threshold,
                              ". \n   The dataset goes from ", nb_non_filtered, " detected_TE_insertions to ",
                              nb_filtered, " after filtering."), 70)) +
-  theme_bw()
+  theme_bw() + 
+  labs(x = "Allele Frequency of the TIPs PAV for each isolate",
+       title = "Threshold for non-reference TIP filtering")
 
 TE_insertions = filter(TE_insertions, is.na(Allele_Frequency) | Allele_Frequency > threshold)
 ```
 
-```{r freq insertions}
+Once, this is done, I want to explore some basic statistics about the TIPs. In many other studies, it seems that the TIPs SFS is biased toward lower frequency. As shown above, we have a depth bias here, so it is likely that this bias, if found in *Z. tritici* would be made even stronger by a non-detection artefact in low depth genomes. So in that context, here are some questions of interest: What are the frequency of the TE insertions we found? Are they shared by several samples?
+```{r freq TIP}
 TE_insertions_counts = TE_insertions %>%
   unite(Continent, ID_file, col = "for_display", remove = F) %>%
-   dplyr::count(TE_insertion)
+  dplyr::count(TE_insertion, ref_non_ref_TIP)
 
 
 # SFS
@@ -542,17 +624,39 @@ ggplot(data, aes(ymax=ymax, ymin=ymin, xmax=4, xmin=3, fill=for_bar)) +
   scale_fill_manual(values = c("#CBF3F0", "#2EC4B6", "#1F847A", "#1B746B", "#041F1E")) +
   labs(fill = "Number of strains",
        title = "Three quarter of all TE insertions are singletons.")
+
+
+temp = TE_insertions_counts %>% 
+  separate(TE_insertion, into = c("TE_family","CHR","Start", "End"), sep = ":", remove = F) %>%
+  separate(TE_family, into = c("Superfamily", "TE_id"), sep = "_", remove = F, extra = "merge") %>%
+  dplyr::mutate(Order = ifelse(grepl('^D',TE_family), "Class II (DNA transposons)", "Class I (retrotransposons)"),
+                Length = abs(as.numeric(Start) - as.numeric(End)), 
+                TIP_nb = n) %>%
+  filter(Length < 2000, ref_non_ref_TIP == "ref") %>%
+  mutate(for_bar = case_when(TIP_nb == 1 ~ "01", 
+                             TIP_nb == 2 ~ "02",
+                             TIP_nb <= 10 ~ "10",
+                             TIP_nb <= 100 ~ "100",
+                             TIP_nb >= 100 ~ "100 +")) 
+
+ggplot(temp, aes(x = Length, y = for_bar, fill = for_bar)) +
+  geom_density_ridges(alpha = .9) + 
+  theme_bw() +
+  scale_fill_manual(values = c("#CBF3F0", "#2EC4B6", "#1F847A", "#1B746B", "#041F1E")) +
+  labs(x = "TIP frequency category", y = "Length of the TIP",
+       title = "Length of the reference TIPs per frequency of the TIP")
+
+
 ```
 
-
-Among the TE insertions which are found multiple times, are the insertions shared by different clusters or are they always found in a single cluster?
-```{r TE insertion sharedness}
+Although most TIPs are found a low to very low frequency in our analysis, there are some that are identified in several samples. Among the TE insertions which are found multiple times, are the TIPs shared by isolates from different clusters or are they always from a single cluster?
+```{r TIP sharedness}
 theshold = 5
 
 #Filtering only insertions found more than 5 times
 insertions_per_pop = TE_insertions %>%
   filter(!is.na(Cluster)) %>%
-  dplyr::count(Cluster, TE_insertion) %>%
+  dplyr::count(Cluster, TE_insertion, ref_non_ref_TIP) %>%
   filter(n > theshold) %>%
   pivot_wider(names_from = Cluster, values_from = n) %>%
   mutate(n = 1) %>%
@@ -560,6 +664,8 @@ insertions_per_pop = TE_insertions %>%
   dplyr::mutate(NA_count = sum(is.na(c(V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11))),
                 Nb_population = 11 - NA_count)
 
+
+#Number of TIPS shared by populations
 temp2 = insertions_per_pop %>% 
   dplyr::count(Nb_population, name = "Insertion_number") %>%
   mutate(Insertion_type = ifelse(Nb_population == 1, "Population specific", 
@@ -568,7 +674,8 @@ temp2 = insertions_per_pop %>%
                                  ifelse(Nb_population == 11, paste0("N=", Insertion_number), "")))
 prop_non_spe = round(sum(temp2$Insertion_number[temp2$Insertion_type != "Population specific"])/sum(temp2$Insertion_number)*100)
 
-ggplot(temp2, aes(x = reorder(as.character(Nb_population), Nb_population), y = Insertion_number, fill = Insertion_type)) + 
+ggplot(temp2, aes(x = reorder(as.character(Nb_population), Nb_population), 
+                  y = Insertion_number, fill = Insertion_type)) + 
   geom_bar(stat = "identity") +
   geom_text(aes(y = Insertion_number + 30, label = label), size=3) +
   geom_label(x = 7, y = max(temp2$Insertion_number)/2, 
@@ -581,15 +688,59 @@ ggplot(temp2, aes(x = reorder(as.character(Nb_population), Nb_population), y = I
        title = str_wrap(paste0("Two thirds of TE insertions found in more than ", 
                                theshold, " isolates are population-specific."),55))
 
+
+#Numbers of TIPS shared by population: ref vs non-ref
+p1 = insertions_per_pop %>% 
+  dplyr::count(Nb_population, name = "Insertion_number") %>%
+  mutate(Insertion_type = ifelse(Nb_population == 1, "Population specific", 
+                                 ifelse(Nb_population == 11, "Shared by all populations", "Intermediate")),
+         label = ifelse(Nb_population == 1, paste0("N=", Insertion_number), 
+                                 ifelse(Nb_population == 11, paste0("N=", Insertion_number), ""))) %>%
+  ggplot(aes(x = reorder(as.character(Nb_population), Nb_population), 
+                  y = Insertion_number, fill = Insertion_type)) + 
+  geom_bar(stat = "identity") +
+  geom_text(aes(y = Insertion_number + 30, label = label), size=3) + 
+  theme_bw() +
+  scale_fill_manual(values = c("grey", "#ff9f1c", "#2ec4b6")) +
+  labs(x = "Number of populations displaying an insertion", 
+       y = "Number of reference TIP")
+p2 = insertions_per_pop %>% 
+  filter(ref_non_ref_TIP != "ref") %>%
+  dplyr::count(Nb_population, name = "Insertion_number") %>%
+  mutate(Insertion_type = ifelse(Nb_population == 1, "Population specific", 
+                                 ifelse(Nb_population == 11, "Shared by all populations", "Intermediate")),
+         label = ifelse(Nb_population == 1, paste0("N=", Insertion_number), 
+                                 ifelse(Nb_population == 11, paste0("N=", Insertion_number), ""))) %>%
+  ggplot(aes(x = reorder(as.character(Nb_population), Nb_population), 
+                  y = -Insertion_number, fill = Insertion_type)) + 
+  geom_bar(stat = "identity") +
+  geom_text(aes(y = -Insertion_number - 30, label = label), size=3)  + 
+  theme_bw() +
+  scale_fill_manual(values = c("grey", "#ff9f1c", "#2ec4b6")) +
+  labs(x = "Number of populations displaying an insertion", 
+       y = "Number of non-reference TIP")
+
+cowplot::plot_grid(p2 + coord_flip() + theme(legend.position = "none",
+                                             plot.margin = unit(c(0, 0, 0, 0), "cm")), 
+                   p1 + coord_flip() + theme(legend.position = "none",
+                                             plot.margin = unit(c(0, 0, 0, 0), "cm"),
+                                             axis.title.y = element_blank(),
+                                             axis.text.y = element_blank(),
+                                             axis.ticks.y = element_blank()),
+                   align = "hv")
+
+
+
+
 non_pop_spe = insertions_per_pop %>% filter(NA_count < 10)
 nb_per_cluster = dplyr::count(Zt_meta, Cluster, name = "Nb_in_cluster")
 
 
-
+#Number of population-specific TIPs per population
 insertions_per_pop %>% 
   filter(Nb_population == 1) %>%
   dplyr::select(-NA_count, -Nb_population) %>%
-  pivot_longer(cols = -c(TE_insertion, n), names_to = "Cluster", values_to = "Nb_present") %>%
+  pivot_longer(cols = -c(TE_insertion, n, ref_non_ref_TIP), names_to = "Cluster", values_to = "Nb_present") %>%
   filter(!is.na(Nb_present)) %>%
   dplyr::count(Cluster, name = "Nb_cluster_specific") %>%
   full_join(nb_per_cluster) %>%
@@ -604,6 +755,50 @@ insertions_per_pop %>%
 
 
 ```
+
+So far, I've looked at TIPs from all TE categories together. I'm curious to see how it matches with the superfamilies and orders of TEs. 
+```{r freq TIP and classif}
+temp2 = insertions_per_pop %>%
+  mutate(Insertion_type = ifelse(Nb_population == 1, "Population specific",
+                                 ifelse(Nb_population == 11, "Shared by all populations", "Intermediate"))) %>%
+  dplyr::select(TE_insertion, Insertion_type)
+
+#TE insertions per Superfamily and frequency
+full_join(TE_insertions_counts, temp2) %>% 
+  separate(TE_insertion, into = c("TE_family","CHR","Start", "End"), sep = ":", remove = F) %>%
+  separate(TE_family, into = c("Superfamily", "TE_id"), sep = "_", remove = F, extra = "merge") %>%
+  dplyr::mutate(Order = ifelse(grepl('^D',TE_family), "Class II (DNA transposons)", "Class I (retrotransposons)"),
+                Length = abs(as.numeric(Start) - as.numeric(End)), 
+                TIP_nb = n) %>%
+  dplyr::count(Order, Superfamily, Insertion_type, TIP_nb) %>%
+  mutate(for_bar = case_when(TIP_nb == 1 ~ "01", 
+                             TIP_nb == 2 ~ "02",
+                             TIP_nb <= 10 ~ "10",
+                             TIP_nb <= 100 ~ "100",
+                             TIP_nb >= 100 ~ "100 +")) %>%
+  ggplot(aes(x = Superfamily, y = n, fill = for_bar)) +
+  geom_bar(stat= "identity") + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1)) + 
+  facet_wrap(vars(Order), scales = "free_x")+
+  scale_fill_manual(values = c("#CBF3F0", "#2EC4B6", "#1F847A", "#1B746B", "#041F1E")) 
+
+#TE insertions per Superfamily and ref/non-ref 
+#The insertions per pop were filtered for only TIP higher than 5, so temp2 and the following plot as well
+right_join(TE_insertions_counts, temp2) %>% 
+  separate(TE_insertion, into = c("TE_family","CHR","Start", "End"), sep = ":", remove = F) %>%
+  separate(TE_family, into = c("Superfamily", "TE_id"), sep = "_", remove = F, extra = "merge") %>%
+  dplyr::mutate(Order = ifelse(grepl('^D',TE_family), "Class II (DNA transposons)", "Class I (retrotransposons)"),
+                Length = abs(as.numeric(Start) - as.numeric(End))) %>%
+  dplyr::count(Order, Superfamily, Insertion_type, ref_non_ref_TIP) %>%
+  ggplot(aes(x = Superfamily, y = n, fill = Insertion_type)) +
+  geom_bar(stat= "identity") + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1)) + 
+  facet_wrap(vars(Order, ref_non_ref_TIP), scales = "free")+ 
+  scale_fill_manual(values = c("grey", "#ff9f1c", "#2ec4b6"))
+```
+
 
 ## TE across space: population differentiation
 
@@ -886,14 +1081,14 @@ ggplot(temp, aes(x = Continent, y = Prop_superfamily, fill = Superfamily)) +
 
 temp = TE_insertions %>%
   filter(Allele_Frequency >= threshold | is.na(Allele_Frequency))  %>%
-  dplyr::count(Continent, insertion_type) %>%
-  group_by(Continent, insertion_type) %>%
+  dplyr::count(Continent, ref_non_ref_TIP) %>%
+  group_by(Continent, ref_non_ref_TIP) %>%
   mutate(Count_type = sum(n)) %>%
   group_by(Continent) %>%
   mutate(Count_Continent = sum(n)) %>%
   ungroup() %>%
   mutate(Prop_type  = n/Count_Continent) 
-ggplot(temp, aes(x = Continent, y = Prop_type, fill = insertion_type)) +
+ggplot(temp, aes(x = Continent, y = Prop_type, fill = ref_non_ref_TIP)) +
   geom_bar(stat = "identity") +
   theme_bw() 
 ```
@@ -983,9 +1178,9 @@ p1 = TE_insertions %>%
   labs(x = "", y = "Per-sample insertions per Mb")
 
 p2 = TE_insertions %>%
-  dplyr::count(CHR, insertion_type, Order) %>%
+  dplyr::count(CHR, ref_non_ref_TIP, Order) %>%
   inner_join(dplyr::select(chromosomes_lengths, CHR, Length) %>% mutate(CHR = as.character(CHR))) %>%
-  ggplot(aes(x = reorder(as.character(CHR), as.numeric(CHR)), y = n/(Length/1000000), fill = insertion_type)) + 
+  ggplot(aes(x = reorder(as.character(CHR), as.numeric(CHR)), y = n/(Length/1000000), fill = ref_non_ref_TIP)) + 
     geom_bar(stat = "identity") + 
     theme_bw() +
   facet_wrap(vars(Order), scales = "free") +
@@ -1000,7 +1195,7 @@ cowplot::plot_grid(p1, p2, ncol = 1, rel_heights = c(1, 1.2), align = "hv")
 ```{r, TE along chr}
 TE_insertions_per_window = TE_insertions %>%
   mutate(CHR = as.numeric(CHR),
-         window = round(((position + end)/2)/10000)) %>%
+         window = trunc(((position + end)/2)/10000)) %>%
   dplyr::select(TE_insertion, CHR, window) %>%
   distinct() %>%
   group_by(CHR, window) %>%
@@ -1014,6 +1209,11 @@ TE_insertions_per_window  = TE_insertions_per_window %>%
   #inner_join(summar) %>%
   mutate(outlier = ifelse(n >= summar$median_TE + 3*summar$sd_TE, "outlier", "non_outlier")) 
 
+TE_insertions_per_window %>%
+  ungroup() %>%
+  mutate(Start = window*10000, End = Start + 10000) %>%
+  dplyr::select(-window, TIP_count = n, TIP_category = outlier) %>%
+  write_tsv(file = paste0(TE_RIP_dir, "Ztritici_global_March2021.good_samples.10kb_windows.TIP_counts.tab"))
 
 filter(TE_insertions_per_window, as.numeric(CHR) < 8) %>%
   ggplot(aes(x = window, y = n, col = as.character(outlier))) +
@@ -1094,7 +1294,7 @@ ungroup(TE_insertions_per_window) %>% dplyr::count(outlier)
 
 ```{r weird outlier chr12}
 temp = TE_insertions %>% filter(CHR == 12) %>%
-  mutate(window = round(((position + end)/2)/10000)) %>% filter(window == 52)
+  mutate(window = trunc(((position + end)/2)/10000)) %>% filter(window == 52)
 
 p1 = temp %>% 
   dplyr::select(Superfamily, TE_family, TE_insertion ) %>% 
@@ -1106,8 +1306,8 @@ p1 + theme(legend.position = "none")
 cowplot::plot_grid(get_legend(p1))
 
 temp %>% 
-  mutate(pos = round((position + end)/200)) %>%
-  group_by(TE_insertion, TE_family, Superfamily, insertion_type, pos) %>% 
+  mutate(pos = trunc((position + end)/200)) %>%
+  group_by(TE_insertion, TE_family, Superfamily, ref_non_ref_TIP, pos) %>% 
   ggplot(aes(x = pos*100, fill = Continent)) +
   geom_bar() + 
   theme_bw() +
@@ -1121,10 +1321,10 @@ temp %>%
 ```{r}
 bind_rows(read_tsv(paste0(TE_RIP_dir, "Non-ref_all_strains.bed"), 
            col_names = c("ID_file", "chromosome", "position", "end", "info", "score", "strand")) %>%
-             mutate(insertion_type = "non_ref"),
+             mutate(ref_non_ref_TIP = "non_ref"),
           read_tsv(paste0(TE_RIP_dir, "Ref_all_strains.bed"), 
            col_names = c("ID_file", "chromosome", "position", "end", "info", "score", "strand")) %>%
-             mutate(insertion_type = "ref")) %>%
+             mutate(ref_non_ref_TIP = "ref")) %>%
   separate(col = chromosome, into = c("X1", "CHR", "X2", "X3", "X4"), sep = "_") %>%
   separate(col = info, into = c("TE_family", "TSD", "Allele_Frequency", "3_support", "5_support", "ref_reads"), sep = "\\|") %>%
   dplyr::select(-c(X1, X2, X3, X4, score, strand)) %>%
@@ -1147,13 +1347,14 @@ gff = read_tsv(gff_file, col_names = c("CHR", "X1", "mRNA", "Start", "Stop", "X2
  ~/Documents/Software/bedtools2/bin/bedtools closest -a ~/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/Insertions.sorted.bed -b ~/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/Zymoseptoria_tritici.MG2.Grandaubert2015.no_CDS.mRNA.gff3 -d > ~/Documents/Postdoc_Bruce/Projects/WW_project/4_TE_RIP/Insertions_closest_genes.tab
  
 ```
+
 ```{r}
 distance_TE_genes = read_tsv(paste0(TE_RIP_dir, "Insertions_closest_genes.tab"),
          col_names = c("CHR", "position", "end", "TE_family", "X5", "X1", "mRNA", 
                        "Start", "Stop", "X2", "X3", "X4", "Annot", "Distance")) %>%
   dplyr::select(-c(X1, X2, X3, X4, X5, mRNA)) %>% 
   mutate(CHR = as.character(CHR)) %>%  
-  mutate(position = 100*round(position/100), end = 100*round(end/100)) %>%
+  mutate(position = 100*trunc(position/100), end = 100*trunc(end/100)) %>%
   unite(TE_family, CHR, position, end, col = "TE_insertion", sep = ":", remove = F) 
   
 temp = distance_TE_genes %>%  
@@ -1181,7 +1382,7 @@ p1 = TE_insertions_counts %>%
 temp  = insertions_per_pop %>%
   filter(Nb_population == 1) %>%
   dplyr::select(-c(NA_count, Nb_population, n)) %>%
-  pivot_longer(cols = -TE_insertion, names_to = "Specificity_category", values_to = "Nb") %>%
+  pivot_longer(cols = -c(TE_insertion, ref_non_ref_TIP), names_to = "Specificity_category", values_to = "Nb") %>%
   filter(!is.na(Nb)) %>%
   dplyr::select(-Nb)
 
@@ -1207,20 +1408,44 @@ temp = inner_join(read_tsv(paste0(TE_RIP_dir, "Insertions_closest_genes.downstre
          col_names = c("CHR", "position", "end", "TE_family", "X5", "X1", "mRNA", 
                        "Start", "Stop", "X2", "X3", "X4", "Annot", "Distance")) %>% 
   mutate(CHR = as.character(CHR)) %>%  
-  mutate(position = 100*round(position/100), end = 100*round(end/100)) %>%
+  mutate(position = 100*trunc(position/100), end = 100*trunc(end/100)) %>%
   unite(TE_family, CHR, position, end, col = "TE_insertion", sep = ":", remove = F) %>%
   dplyr::select(TE_insertion, Distance_downstream = Distance),
   read_tsv(paste0(TE_RIP_dir, "Insertions_closest_genes.upstream.tab"),
          col_names = c("CHR", "position", "end", "TE_family", "X5", "X1", "mRNA", 
                        "Start", "Stop", "X2", "X3rm", "X4", "Annot", "Distance")) %>% 
   mutate(CHR = as.character(CHR)) %>%  
-  mutate(position = 100*round(position/100), end = 100*round(end/100)) %>%
+  mutate(position = 100*trunc(position/100), end = 100*trunc(end/100)) %>%
   unite(TE_family, CHR, position, end, col = "TE_insertion", sep = ":", remove = F) %>%
   dplyr::select(TE_insertion, Distance_upstream = Distance))
 
+ggplot(temp, aes(x = abs(Distance_downstream), y = abs(Distance_upstream))) +
+  geom_hex() + 
+  theme_bw() + 
+  scale_x_continuous(trans = "log10")+ 
+  scale_y_continuous(trans = "log10")
 
-ggplot(temp, aes(x = log(abs(Distance_downstream)), y = log(abs(Distance_upstream)))) +
-  geom_hex()
+
+temp = inner_join(temp, TE_insertions_counts)
+p1 = temp %>% filter(ref_non_ref_TIP == "ref") %>%
+ggplot(aes(x = abs(Distance_downstream), y = abs(Distance_upstream))) +
+  geom_hex() + 
+  theme_bw() + 
+  scale_x_continuous(trans = "log10") + 
+  scale_y_continuous(trans = "log10") +
+  labs(title = "Distance to gene of reference TIP") +
+  theme(legend.position = "bottom") 
+
+p2 = temp %>% filter(ref_non_ref_TIP != "ref") %>%
+ggplot(aes(x = abs(Distance_downstream), y = abs(Distance_upstream))) +
+  geom_hex() + 
+  theme_bw() + 
+  scale_x_continuous(trans = "log10") + 
+  scale_y_continuous(trans = "log10") +
+  labs(title = "Distance to gene of non-reference TIP")+
+  theme(legend.position = "bottom")
+
+plot_grid(p1, p2)
 ```
 
 
@@ -1520,7 +1745,7 @@ temp = RIP_in_high_copies_TE %>%
 #  scale_color_viridis_c()
 
 temp %>%
-  dplyr::mutate(Nb = str_pad(round((Coord / 100000), 0), 6, pad = "0")) %>%
+  dplyr::mutate(Nb = str_pad(trunc((Coord / 100000), 0), 6, pad = "0")) %>%
   filter(Composite_index >= -2 & Composite_index<= 2) %>%
   #filter(Chrom == "chr_1") %>%
   unite(Window, Chrom, Nb) %>%
@@ -2196,21 +2421,23 @@ ggplot(temp, aes(as.numeric(Composite_median),
 ```
 ```{r}
 temp = inner_join(core_duplicated_genes, TE_qty, by = c("Sample" = "ID_file")) %>%
-  filter(M < 100) %>%
   filter(!is.na(Cluster))
 
-ggplot(temp, aes(M, Total_insertions, col = Continent)) + 
+filter(temp, M < 100) %>%
+  ggplot(aes(M, Total_insertions, col = Continent)) + 
   geom_point()+ 
   Color_Continent +
   theme_bw() 
 
-ggplot(temp, aes(M, Percent_TE_Reads, col = Continent)) + 
+filter(temp, M < 100) %>%
+  ggplot(aes(M, Percent_TE_Reads, col = Continent)) + 
   geom_point()+ 
   Color_Continent +
   theme_bw() 
 
 
-p1 = ggplot(temp, aes(Cluster, M, fill = Cluster)) + 
+p1 = filter(temp, M < 100) %>%
+  ggplot(aes(Cluster, M, fill = Cluster)) + 
   geom_violin()+ 
   geom_boxplot(col = "white", width = .2) +
   Fill_Cluster+
@@ -2224,6 +2451,7 @@ p2 = ggplot(temp, aes(Cluster, D, fill = Cluster)) +
 cowplot::plot_grid(p1 + coord_flip() + theme(legend.position = "none"),
                    p2 + coord_flip() + theme(legend.position = "none"))
 ```
+
 
 
 

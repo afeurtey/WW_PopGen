@@ -272,7 +272,6 @@ temp = Zt_meta %>%
 
 empty_map = ggplot() + theme_void() +
   geom_polygon(data = world, aes(x=long, y = lat, group = group), fill="#ede7e3", alpha=0.7)
-empty_map
 
 empty_map +
   geom_point (data = temp, aes(x=as.numeric(Longitude), y=as.numeric(Latitude),
@@ -281,6 +280,30 @@ empty_map +
                                   alpha = 0.6, color = "#16697a") +
   scale_size("Number of genomes", limits = c(1, max_circle))
 
+p1 = empty_map +
+  geom_point(data = temp, 
+             aes(x=as.numeric(Longitude), y=as.numeric(Latitude),size=Number_genomes, text = Country),
+             alpha = 0.6, color = "#ff9f1c") +
+  scale_size("Number of genomes", limits = c(1, max_circle)) + 
+  coord_cartesian(xlim=c(-20, 60), ylim=c(20, 70)) +
+  theme(legend.position = "none")
+p2 = empty_map +
+  geom_point(data = temp, 
+             aes(x=as.numeric(Longitude), y=as.numeric(Latitude),size=Number_genomes, text = Country),
+             alpha = 0.6, color = "#ff9f1c") +
+  scale_size("Number of genomes", limits = c(1, max_circle)) + coord_cartesian(xlim=c(-160, -40), ylim=c(-80, 80)) +
+  theme(legend.position = "none")
+p3 = empty_map +
+  geom_point(data = temp, 
+             aes(x=as.numeric(Longitude), y=as.numeric(Latitude),size=Number_genomes, text = Country),
+             alpha = 0.6, color = "#ff9f1c") +
+  scale_size("Number of genomes", limits = c(1, max_circle)) + coord_cartesian(xlim=c(115, 175), ylim=c(-60, 10))  
+
+
+#Plotting all the maps together! 
+aus_map = cowplot::plot_grid(p3+ theme(legend.position = "none"), get_legend(p3), ncol = 2, rel_widths = c(1, 0.9))
+ligne = cowplot::plot_grid(p1, aus_map, ncol = 1,  rel_heights = c(1, 0.7))
+cowplot::plot_grid(p2, ligne, ncol = 2, rel_widths = c(0.7, 1)) 
 
 
 ```
@@ -629,7 +652,7 @@ genofile <- snpgdsOpen(paste0(PopStr_dir, vcf_name, ".recode.gds"))
 pca <-snpgdsPCA(genofile)
 snpgdsClose(genofile)
 
-pca2 = as_tibble(pca$eigenvect) %>% dplyr::select(V1:V6)
+pca2 = as_tibble(pca$eigenvect) %>% dplyr::select(V1:V8)
 colnames(pca2) = c("PC1", "PC2", "PC3", "PC4", "PC5", "PC6", "PC7", "PC8")
 pca2 = pca2 %>%
   dplyr::mutate(sample_id = pca$sample.id ) %>%
@@ -675,11 +698,12 @@ p3 = ggplot(pca2, aes(x = PC5, y= PC6, text = for_display)) +
 
 p4 = ggplot(pca2, aes(x = PC7, y= PC8, text = for_display)) +
   geom_point(aes(color = Continent), alpha = .4) +
-  labs(x = paste0("PC 5 (", round(pca$eigenval[5]*100/eigen_sum, 2), "%)"),
-       y = paste0("PC 6 (", round(pca$eigenval[6]*100/eigen_sum, 2), "%)")) +
+  labs(x = paste0("PC 7 (", round(pca$eigenval[7]*100/eigen_sum, 2), "%)"),
+       y = paste0("PC 8 (", round(pca$eigenval[8]*100/eigen_sum, 2), "%)")) +
   Color_Continent +
   theme_bw()
-cowplot::plot_grid(p1, p2, p3, p4)
+cowplot::plot_grid(p1 + theme(legend.position = "none"), p2 + theme(legend.position = "none"), 
+                   p3 + theme(legend.position = "none"), p4 + theme(legend.position = "none"))
 
 
 

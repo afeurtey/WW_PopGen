@@ -1,0 +1,446 @@
+---
+title: "World_wide_Zt_popgen_per_windows"
+output: html_document
+---
+
+
+```{r setup, warning=FALSE, message = FALSE}
+
+library(knitr)
+library(reticulate)
+
+#Data wrangling and data viz
+library(tidyverse)
+library(purrr)
+library(RColorBrewer)
+library(plotly)
+library(cowplot)
+library(GGally)
+library(corrplot)
+library(ggstance)
+library('pophelper')
+library(ggbiplot)
+library(igraph)
+library(ggraph)
+library(ggrepel)
+library(ggtext)
+library(scatterpie)
+library(pheatmap)
+library(ggridges)
+
+
+library(ggtree)
+library(tidytree)
+library(multcomp)
+library(lsmeans)
+
+#Statistics
+library(car)
+library(corrr)
+library(lsmeans)
+library(multcomp)
+
+#Variables
+world <- map_data("world")
+project_dir="~/Documents/Postdoc_Bruce/Projects/WW_project/"
+lists_dir = "~/Documents/Postdoc_Bruce/Projects/WW_project/WW_PopGen/Keep_lists_samples/"
+
+#Data directories
+data_dir=paste0(project_dir, "0_Data/")
+metadata_dir=paste0(project_dir, "Metadata/")
+fig_dir = "~/Documents/Postdoc_Bruce/Manuscripts/Feurtey_WW_Zt/Draft_figures/"
+
+#Analysis directories
+#-___________________
+VAR_dir = paste0(project_dir, "1_Variant_calling/")
+  depth_per_window_dir = paste0(VAR_dir, "1_Depth_per_window/")
+  depth_per_gene_dir = paste0(VAR_dir, "2_Depth_per_gene/")
+  vcf_dir = paste0(VAR_dir, "4_Joint_calling/")
+  mito_SV = paste0(VAR_dir, "6_Mito_SV/")
+  chipseq_dir = paste0(VAR_dir, "7_ChipSeq_peaks/")
+PopStr_dir = paste0(project_dir, "2_Population_structure/")
+  nuc_PS_dir=paste0(PopStr_dir, "0_Nuclear_genome/")
+  mito_PS_dir = paste0(PopStr_dir, "1_Mitochondrial_genome/")
+Sumstats_dir = paste0(project_dir, "3_Sumstats_demography/")
+TE_RIP_dir=paste0(project_dir, "4_TE_RIP/")
+   RIP_DIR=paste0(TE_RIP_dir, "0_RIP_estimation/")
+   DIM2_DIR=paste0(TE_RIP_dir, "1_Blast_from_denovo_assemblies/")
+GEA_dir=paste0(project_dir, "5_GEA/")
+fung_dir=paste0(project_dir, "6_Fungicide_resistance/")
+virulence_dir = paste0(project_dir, "7_Virulence/")
+sel_dir = paste0(project_dir, "8_Selection/")
+  gene_list_dir = paste0(sel_dir, "0_Lists_unique_copy/")
+
+
+#Files
+vcf_name="Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.biall_SNP.max-m-1.maf-0.05.thin-1000bp"
+vcf_name_nomaf="Ztritici_global_March2021.filtered-clean.AB_filtered.SNP.max-m-0.8.thin-1000bp"
+vcf_name_mito = "Ztritici_global_March2021.genotyped.mt.filtered.clean.AB_filtered.variants.good_samples.max-m-80"
+Zt_list = paste0(lists_dir, "Ztritici_global_March2021.genotyped.good_samples.args")
+effectors_annotation_file = "~/Documents/Postdoc_Eva/Manuscripts/Accepted/Alice_Cecile_Comparative_genomics/Data_for_publication/Annotations_2018_genomes_for_publication.tab"
+eggnog_annotation = paste0(data_dir, "Zymoseptoria_tritici.MG2.Grandaubert2015.eggnog")
+gff_file = paste0(data_dir, "Zymoseptoria_tritici.MG2.Grandaubert2015.no_CDS.gff3")
+ref_fasta_file = paste0(data_dir, "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa")
+metadata_name = "Main_table_from_SQL_Feb_2020"
+gene_annotation = read_tsv(paste0(data_dir, "Badet_GLOBAL_PANGENOME_TABLE.txt"))
+complete_mito = read_tsv(paste0(data_dir, "Complete_mitochondria_from_blast.txt"), col_names = c("ID_file", "Contig"))
+
+Sys.setenv(PROJECTDIR=project_dir)
+Sys.setenv(VARDIR=VAR_dir)
+Sys.setenv(VCFDIR=vcf_dir)
+Sys.setenv(POPSTR=PopStr_dir)
+Sys.setenv(MITOPOPSTR=mito_PS_dir)
+Sys.setenv(TERIP=TE_RIP_dir)
+
+Sys.setenv(SUMST=Sumstats_dir)
+Sys.setenv(GEADIR=GEA_dir)
+
+Sys.setenv(ZTLIST=Zt_list)
+Sys.setenv(GFFFILE = gff_file)
+Sys.setenv(REFFILE = ref_fasta_file)
+Sys.setenv(VCFNAME=vcf_name)
+Sys.setenv(VCFNAME_NOMAF=vcf_name_nomaf)
+Sys.setenv(VCFNAME_MITO=vcf_name_mito)
+
+#knitr::opts_chunk$set(echo = F)
+knitr::opts_chunk$set(message = F)
+knitr::opts_chunk$set(warning = F)
+knitr::opts_chunk$set(results = T)
+
+
+# Metadata and sample lists
+##Filtered_samples
+filtered_samples = bind_rows(
+  read_tsv(paste0(metadata_dir, "Sample_removed_based_on_IBS.args"), col_names = "ID_file") %>%
+  mutate(Filter = "IBS"),
+read_tsv(paste0(metadata_dir, "Sample_with_too_much_NA.args"), col_names = "ID_file") %>%
+  mutate(Filter = "High_NA"),
+read_tsv(paste0(metadata_dir, "Samples_to_filter_out.args"), col_names = "ID_file") %>%
+  mutate(Filter = "Mutants_etc"))
+
+##Samples in vcf
+genotyped_samples = read_tsv(Zt_list, col_names = "ID_file")
+
+## Metadata of genotyped samples 
+temp = read_tsv(paste0(metadata_dir, metadata_name, "_Description.tab"), col_names = F) %>% pull()
+
+Zt_meta = read_tsv(paste0(metadata_dir, metadata_name, "_with_collection.tab"), 
+                 col_names = temp,
+                 na = "\\N", guess_max = 2000) %>%
+  unite(Coordinates, Latitude, Longitude, sep = ";", remove = F) %>%
+  inner_join(., genotyped_samples)  %>%
+  mutate(Country = ifelse(Country == "USA", paste(Country, Region, sep = "_"), Country)) %>%
+  mutate(Country = ifelse(Country == "Australia", paste(Country, Region, sep = "_"), Country)) %>%
+  mutate(Country = ifelse(Country == "NZ", "New Zealand", Country)) %>%
+  mutate(Country = ifelse(Country == "CH", "Switzerland", Country)) %>%
+  mutate(Latitude2 = round(Latitude, 2), Longitude2 = round(Longitude, 2)) %>%
+  dplyr::select(ID_file, Continent, Country, Latitude, Longitude, Latitude2, Longitude2,
+                Sampling_Date, Collection)
+
+temp = read_tsv(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.tsv")) %>%
+  dplyr::select(ID_file = Sample, Cluster)
+
+Zt_meta = full_join(Zt_meta, temp)
+
+#genotyped_samples %>%
+#  filter(!(ID_file %in% filtered_samples$ID_file)) %>%
+#    write_tsv(Zt_list, col_names = F)
+
+
+
+#Define colors
+## For continents
+#myColors <- c("#04078B", "#a10208", "#FFBA08", "#CC0044", "#5C9D06", "#129EBA","#305D1B")
+myColors <- c("#DA4167", "grey", "#ffba0a", "#A20106", "#3F6E0C", "#129eba", "#8fa253" )
+names(myColors) = levels(factor(Zt_meta$Continent))
+Color_Continent = ggplot2::scale_colour_manual(name = "Continent", values = myColors)
+Fill_Continent = ggplot2::scale_fill_manual(name = "Continent", values = myColors)
+
+myColors2 <- c("#129eba", "#3F6E0C", "#DA4167", "#ffba0a", "#129eba", "#129eba", 
+               "#8fa253", "#A20106", "#A20106", "#3F6E0C", "#8fa253")
+names(myColors2) = levels(factor(Zt_meta$Cluster))
+Color_Cluster = ggplot2::scale_colour_manual(name = "Cluster", values = myColors2)
+Fill_Cluster = ggplot2::scale_fill_manual(name = "Cluster", values = myColors2)
+
+## For clustering
+K_colors = c("#f9c74f", "#f9844a", "#90be6d", "#f5cac3", 
+"#83c5be", "#f28482", "#577590", "#e5e5e5", "#a09abc",  "#52796f",
+"#219ebc", "#003049", "#82c0cc", "#283618", "white")
+
+## For correlations
+mycolorsCorrel<- colorRampPalette(c("#0f8b8d", "white", "#a8201a"))(20)
+
+#Random gradients
+greens=c("#1B512D", "#669046", "#8CB053", "#B1CF5F", "#514F59")
+blues=c("#08386E", "#1C89C9", "#28A7C0", "#B0DFE8", "grey")
+```
+
+```{bash perwin stats, eval =F}
+#Run on the cluster
+
+#Create bed file with 10kb windows
+#(including the last window which can be smaller)
+while read chr length temp temp2 temp3; do 
+  start=0; 
+  while [ "$start" -le "$length" ] ; do 
+    if [ "$(($start + 10000))" -le  "$length" ] ; 
+    then 
+      echo -e "${chr}\t${start}\t$(($start + 10000))" ; 
+    else  echo -e "${chr}\t${start}\t$length" ;  
+    fi ; 
+    start=`expr $start + 10000` ; 
+  done ; 
+done < /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa.fai > /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.bed
+
+
+#GC etc from bedtools nuc
+#columns are "CHROM", "Start", "End", "ATpercent", "GCpercent", "NbA", "NbC", "NbG, "NbT", "NbN", "NbOther", "Length"
+
+~/Software/bedtools nuc \
+    -fi /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa \
+    -bed /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.bed \
+    > /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.nuc_GC.tab
+
+#Mappability
+genmap index -F /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa -I /data2/alice/WW_project/0_Data/Zymoseptoria_tritici_genmap_index
+
+genmap map -K 30 -E 2 -I  /data2/alice/WW_project/0_Data/Zymoseptoria_tritici_genmap_index -O /data2/alice/WW_project/0_Data/Zymoseptoria_tritici_genmap_mappability -t -bg
+
+#RIP per window 
+#(my script makes a summary for all seq in a multifasta, so I tricked it my giving it a single window at a time)
+ #columns are "CHROM", "Start", "End", "GC", "Product index", "Substrate index", "Composite"
+ while read chr start end ; 
+    do 
+    echo -e "${chr}\t${start}\t${end}" > temp.bed ; 
+    ~/Software/bedtools getfasta -fi /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa \
+       -bed temp.bed -fo temp.fa ; 
+    python GC_RIP_per_read_fastq.py --input_format fasta --out temp temp.fa ; 
+    values=$(cat temp.txt | ~/Software/datamash-1.3/datamash transpose | grep "Median" | cut -f 2,3,4,5) ; 
+    echo -e "${chr}\t${start}\t${end}\t$values" \
+    >> /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.RIP.tsv ; 
+done < /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.bed
+
+
+#Count variants
+#columns are CHROM, Start(IN 10KB UNITS), Variant_number
+zcat /data2/alice/WW_project/1_Variant_calling/4_Joint_calling/Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.vcf.gz  | \
+   grep -v "#"  | awk 'BEGIN {FS="\t"; OFS="\t"} {print $1,$2,int($2/10000)}' | \
+   ~/Software/bedtools groupby -g 1,3 -o count -c 2 > \
+   /data2/alice/WW_project/1_Variant_calling/4_Joint_calling/Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.10kb_windows.SNP_counts.tab
+   
+   
+#Gene coverage
+#columns are "CHROM", "Start", "End", "Nb_overlapping_genes", "Coverage_bp_gene", "Window_length", "Coverage_frac_gene"
+~/Software/bedtools coverage \
+   -a /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.bed \
+   -b /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.Grandaubert2015.mRNA.gff3 \
+   > /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.gene_coverage.tab
+ 
+ #Reference TE coverage
+#columns are "CHROM", "Start", "End", "Nb_overlapping_TEs", "Coverage_bp_TE", "Window_length", "Coverage_frac_TE"
+ ~/Software/bedtools coverage \
+    -a /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.bed \
+    -b /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.Badet_Oggenfuss_2019.TE.gtf \
+    > /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.TE_coverage.tab
+```
+
+
+```{bash Importation from cluster, eval = F}
+# Uploading commands from the cluster to my computer.
+
+#Per windows: coordinates, RIP, GC, SNP counts
+rsync -avP   alice@130.125.25.244:/data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.bed \
+ ~/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.bed
+ 
+rsync -avP   alice@130.125.25.244:/data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.RIP.tsv \
+ ~/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.RIP.tsv 
+ 
+rsync -avP   alice@130.125.25.244:/data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.nuc_GC.tab \
+ ~/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.nuc_GC.tab
+ 
+rsync -avP   alice@130.125.25.244:/data2/alice/WW_project/1_Variant_calling/4_Joint_calling/Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.10kb_windows.SNP_counts.tab  \
+ ~/Documents/Postdoc_Bruce/Projects/WW_project/1_Variant_calling/4_Joint_calling/
+ 
+rsync -avP   alice@130.125.25.244:/data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.gene_coverage.tab \
+~/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/
+
+rsync -avP   alice@130.125.25.244:/data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.TE_coverage.tab \
+ ~/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/
+ 
+rsync -avP alice@130.125.25.244:/data2/alice/WW_project/1_Variant_calling/7_ChipSeq_peaks ../1_Variant_calling/
+```
+
+
+```{bash merge methyl, eval = F}
+
+#This is done for each histone mark
+#The data is from Klaas paper's on centromeres
+#The peaks were called by macs2 (option --nomodel) after trimming and mapping with trimmomatic and bowtie + filtering of reads mapping with a quality sup to 30
+
+grep -v "#" ../1_Variant_calling/7_ChipSeq_peaks/H3K9me3_Rep1_SRR2060839_peaks.xls  | cut -f 1,2,3,10 | \
+   grep "peak" > ../1_Variant_calling/7_ChipSeq_peaks/H3K9me3_Rep1_SRR2060839_peaks.bed
+grep -v "#" ../1_Variant_calling/7_ChipSeq_peaks/H3K9me3_Rep2_SRR2060840_peaks.xls  | cut -f 1,2,3,10 | \
+   grep "peak" > ../1_Variant_calling/7_ChipSeq_peaks/H3K9me3_Rep2_SRR2060840_peaks.bed
+
+~/Documents/Software/bedtools2/bin/bedtools intersect \
+   -a ../1_Variant_calling/7_ChipSeq_peaks/H3K9me3_Rep1_SRR2060839_peaks.bed \
+   -b ../1_Variant_calling/7_ChipSeq_peaks/H3K9me3_Rep2_SRR2060840_peaks.bed \
+   > ../1_Variant_calling/7_ChipSeq_peaks/H3K9me3_intersect_only_overlap.bed 
+
+```
+
+```{r}
+#Getting mappability per window
+mappability = read_tsv(paste0(data_dir, "Zymoseptoria_tritici_genmap_mappability.bedgraph"), 
+         col_names = c("CHR", "start", "end", "mappab")) %>%
+  dplyr::mutate(Length = (end - start), window = trunc(((start + end)/2)/10000)) %>%
+  group_by(CHR, window) %>%
+  dplyr::summarize(Mappability = weighted.mean(x = mappab, w = Length)) %>% 
+  mutate(Start = window*10000) %>%
+  ungroup() %>%
+  dplyr::select(-window)
+
+#Getting 
+chipseq = bind_rows(read_tsv(paste0(chipseq_dir, "H3K27me3_intersect_only_overlap.bed"), 
+         col_names = c("CHR", "start", "end", "peak")),
+    read_tsv(paste0(chipseq_dir, "H3K4me2_intersect_only_overlap.bed"), 
+         col_names = c("CHR", "start", "end", "peak"))) %>%
+    bind_rows(read_tsv(paste0(chipseq_dir, "H3K9me2_intersect_only_overlap.bed"), 
+         col_names = c("CHR", "start", "end", "peak"))) %>%
+      separate(col = peak, into = c("Mark"), sep ="_", remove = FALSE, extra = "drop") %>%
+  dplyr::mutate(Length = (end - start), window = trunc(((start + end)/2)/10000)) %>%
+  group_by(CHR, window, Mark) %>%
+  dplyr::summarize(Coverage = sum(Length)) %>% 
+  mutate(Start = window*10000) %>%
+  ungroup() %>%
+  dplyr::select(-window) %>%
+  pivot_wider(names_from = Mark, values_from = Coverage, values_fill = 0)
+``` 
+
+```{r}
+data = read_tsv(paste0(data_dir, "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.bed"), col_names = c("CHR", "Start", "End")) %>%
+full_join(read_tsv(paste0(data_dir, "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.nuc_GC.tab"), skip = 1,
+         col_names = c("CHR", "Start", "End", "ATpercent", "GCpercent", "NbA", "NbC", "NbG", "NbT", "NbN", "NbOther", "Window_length"))) %>%
+  dplyr::select(CHR, Start, End, GCpercent, Window_length) %>%
+full_join(read_tsv(paste0(data_dir, "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.RIP.tsv"), 
+         col_names = c("CHR", "Start", "End", "GC", "Product_index", "Substrate_index", "Composite_index")))  %>%
+full_join(read_tsv(paste0(data_dir, "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.gene_coverage.tab"), 
+         col_names = c("CHR", "Start", "End", "Nb_overlapping_genes", "Coverage_bp_gene", "Window_length", "Coverage_frac_gene"))) %>%
+full_join(read_tsv(paste0(data_dir, "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.10kb_windows.TE_coverage.tab"), 
+         col_names = c("CHR", "Start", "End", "Nb_overlapping_TEs", "Coverage_bp_TE", "Window_length", "Coverage_frac_TE"))) %>%
+full_join(read_tsv(paste0(TE_RIP_dir, "Ztritici_global_March2021.good_samples.10kb_windows.TIP_counts.tab"))) %>%
+full_join(read_tsv(paste0(vcf_dir, 
+                 "Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.10kb_windows.SNP_counts.tab"),
+          col_names = c("CHR", "Start", "Short_variant_number")) %>% mutate(Start = Start*10000)) %>%
+  full_join(mappability) %>%
+  full_join(chipseq)
+
+data_PCA = data %>% 
+  unite(CHR, Start, col = Window, sep = ":") %>%
+  filter(Window_length > 7500) %>%
+  filter(TIP_count < 150) %>%
+  dplyr::select(Window, GC, Composite_index, Coverage_frac_gene, Coverage_frac_TE, 
+                TIP_count, Short_variant_number, Mappability, H3K27me3, H3K9me2, H3K4me2) 
+data_PCA[is.na(data_PCA)] <- 0
+
+temp = as.matrix(data_PCA[,c(2:(ncol(data_PCA)-1))])[, which(apply(as.matrix(data_PCA[,c(2:(ncol(data_PCA)-1))]), 2, var) != 0)]
+
+per_win.pca = prcomp(temp, center = TRUE,scale. = TRUE)
+ggbiplot(pcobj = per_win.pca, alpha = 0.1, varname.size = 3) + 
+  theme_bw() +
+  coord_cartesian(xlim = c(-2, 5))
+
+temp = as.tibble(cbind(data_PCA, as.data.frame(per_win.pca$x)))
+
+ggplot(temp, aes(x = PC1, y = PC2, col = Mappability)) + 
+  geom_point(alpha = .3) + 
+  theme_bw()
+
+
+
+
+```
+```{r}
+threshold = 0.85
+data_PCA %>%
+  ggplot(aes(Mappability)) + 
+  geom_density(fill = "#EDE7E3", col ="#ADA7A9") + 
+  geom_vline(xintercept = threshold, col = "#82c0cc") + 
+  theme_bw()
+
+temp = data %>% mutate(Map_filter = ifelse(Mappability < threshold, "Not_map", "Mappable")) %>%
+  group_by(Map_filter) %>% 
+  dplyr::summarize(Length_map = sum(Window_length, na.rm = T))
+
+data_PCA2 = data_PCA %>%
+  filter(Mappability > threshold) 
+
+bind_rows(data_PCA %>%
+    pivot_longer(cols = -Window, names_to = "Measure", values_to = "Estimate") %>% 
+    mutate(Filter = "Pre"),
+          data_PCA2 %>%
+      pivot_longer(cols = -Window, names_to = "Measure", values_to = "Estimate")  %>% 
+      mutate(Filter = "Post")) %>%
+  filter(Measure != "Mappability") %>%
+   ggplot(aes(x = Estimate, col = Filter)) +
+  geom_density() + 
+  theme_bw() + 
+  facet_wrap(vars(Measure), scales = "free")
+
+
+temp = data_PCA2 %>% #mutate(across(GC:H3K4me2, base::scale())) %>%
+  dplyr::select(-Mappability) 
+
+#%>%
+#  mutate(Coverage_frac_TE = log(Coverage_frac_TE + 1),
+#         H3K9me2 = log(H3K9me2 + 1),
+#         H3K27me3 = log(H3K27me3 + 1)) %>%
+#  pivot_longer(cols = -Window, names_to = "Measure", values_to = "Estimate")  %>%
+#  group_by(Measure) %>%
+#  dplyr::mutate(Estimate = scale(Estimate)) %>%
+ # pivot_wider(Window, names_from = Measure, values_from = Estimate) %>%
+  
+
+temp %>%
+  pivot_longer(cols = -Window, names_to = "Measure", values_to = "Estimate")%>%
+   ggplot(aes(x = Estimate)) +
+  geom_density() + 
+  theme_bw() + 
+  facet_wrap(vars(Measure), scales = "free")
+
+temp = as.matrix(temp[,c(2:ncol(temp))])[, which(apply(as.matrix(temp[,c(2:ncol(temp))]), 2, var) != 0)]
+
+per_win.pca = prcomp(temp, center = TRUE,scale. = TRUE)
+ggbiplot(pcobj = per_win.pca, alpha = 0.1, varname.size = 3) + 
+  theme_bw() + 
+  coord_cartesian(xlim = c(-5, 8.5), ylim = c(-10, 6))
+arrows = as_tibble(as.data.frame(per_win.pca$rotation)) %>%
+  mutate(label = rownames(per_win.pca$rotation))
+
+temp = as.tibble(cbind(data_PCA2, as.data.frame(per_win.pca$x)))
+
+for_plot = temp %>%
+  separate(col = Window, into = c("CHR"), remove = F, extra = "drop", sep = ":") %>%
+  mutate(CHR_type = ifelse(as.numeric(CHR) < 14, "Core", "Accessory"))
+ggplot() + 
+    geom_point(data = for_plot, aes(x = PC1, y = PC2, col = CHR_type), alpha = .3) + 
+    theme_bw() + 
+    geom_segment(data = arrows, aes(x = 0, y = 0, xend = PC1*10, yend = PC2*10 ),
+                 arrow = arrow(length = unit(0.03, "npc"))) +
+    geom_text(data = arrows, aes(x = PC1*10, y = PC2*10, label = label))
+
+ggbiplot(pcobj = per_win.pca, alpha = 0.1, varname.size = 3) + 
+  theme_bw() + 
+  coord_cartesian(xlim = c(-3, 8.5), ylim = c(-8, 6))
+
+ggplot(temp, aes(Short_variant_number, Coverage_frac_gene)) +
+  geom_point(alpha = .2) + 
+  theme_bw() 
+
+ggplot(data, aes(TIP_count, Coverage_frac_gene, col = Mappability)) +
+  geom_point(alpha = .2) + 
+  theme_bw() 
+summary(lm(Short_variant_number ~ Coverage_frac_gene, data = data))
+summary(lm(TIP_count ~ Coverage_frac_gene, data = temp))
+```
+

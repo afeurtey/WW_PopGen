@@ -1,0 +1,917 @@
+---
+title: "World-wide popgen Zt"
+author: "Alice Feurtey"
+date: "5/5/2020"
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    css: ~/Documents/epur_css.css
+    number_sections: no
+    code_folding: hide
+  #html_document:
+   # toc: yes
+   # df_print: paged
+logo: ~/Documents/Postdoc_Bruce/Communication/Logo_WWZt.png
+---
+
+
+<br><br>
+
+> Here, I analyse and document my progress with the analysis of a world-wide whole genome sampling of *Zymoseptoria tritici*. Some of the analysis are just exploratory while some other are lined up in a clear path to answering questions related to the history of *Z.tritici* and to better understand its adaptation to various climates.
+
+```{r setup, warning=FALSE, message = FALSE}
+
+library(knitr)
+library(reticulate)
+
+#Spatial analyses packages
+library(raster)
+library(sp)
+library(rgdal)
+library(maps)
+library(geosphere)
+
+#Data wrangling and data viz
+library(tidyverse)
+library(purrr)
+library(RColorBrewer)
+library(plotly)
+library(cowplot)
+library(GGally)
+library(corrplot)
+library(pheatmap)
+library(ggstance)
+library('pophelper')
+library(ggbiplot)
+library(igraph)
+library(ggraph)
+library(ggtext)
+
+#Pop structure and pop genomic
+library(GenomicFeatures)
+library(SNPRelate) #PCA
+library(LEA) #Clustering
+library(pophelper)
+library(PopGenome) #Summary statistics
+library(gridExtra)
+
+library(ggtree)
+library(tidytree)
+library(multcomp)
+library(lsmeans)
+
+
+
+#GEA
+library(lfmm)
+
+#Statistics
+library(car)
+library(corrr)
+library(lsmeans)
+library(multcomp)
+
+
+#Variables
+world <- map_data("world")
+project_dir="~/Documents/Postdoc_Bruce/Projects/WW_project/"
+lists_dir = "~/Documents/Postdoc_Bruce/Projects/WW_project/WW_PopGen/Keep_lists_samples/"
+
+#Data directories
+data_dir=paste0(project_dir, "0_Data/")
+metadata_dir=paste0(project_dir, "Metadata/")
+fig_dir = "~/Documents/Postdoc_Bruce/Manuscripts/Feurtey_WW_Zt/Draft_figures/"
+
+#Analysis directories
+#-___________________
+VAR_dir = paste0(project_dir, "1_Variant_calling/")
+  depth_per_window_dir = paste0(VAR_dir, "1_Depth_per_window/")
+  vcf_dir = paste0(VAR_dir, "4_Joint_calling/")
+  mito_SV = paste0(VAR_dir, "6_Mito_SV/")
+PopStr_dir = paste0(project_dir, "2_Population_structure/")
+  nuc_PS_dir=paste0(PopStr_dir, "0_Nuclear_genome/")
+  mito_PS_dir = paste0(PopStr_dir, "1_Mitochondrial_genome/")
+Sumstats_dir = paste0(project_dir, "3_Sumstats_demography/")
+TE_RIP_dir=paste0(project_dir, "4_TE_RIP/")
+   RIP_DIR=paste0(TE_RIP_dir, "0_RIP_estimation/")
+   DIM2_DIR=paste0(TE_RIP_dir, "1_Blast_from_denovo_assemblies/")
+GEA_dir=paste0(project_dir, "5_GEA/")
+fung_dir=paste0(project_dir, "6_Fungicide_resistance/")
+virulence_dir = paste0(project_dir, "7_Virulence/")
+sel_dir = paste0(project_dir, "8_Selection/")
+  gene_list_dir = paste0(sel_dir, "0_Lists_unique_copy/")
+
+#Files
+vcf_name="Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.biall_SNP.max-m-1.maf-0.05.thin-1000bp"
+vcf_name_nomaf="Ztritici_global_March2021.filtered-clean.AB_filtered.SNP.max-m-0.8.thin-1000bp"
+vcf_name_mito = "Ztritici_global_March2021.genotyped.mt.filtered.clean.AB_filtered.variants.good_samples.max-m-80"
+Zt_list = paste0(lists_dir, "Ztritici_global_March2021.genotyped.good_samples.args")
+gff_file = paste0(data_dir, "Zymoseptoria_tritici.MG2.Grandaubert2015.no_CDS.gff3")
+ref_fasta_file = paste0(data_dir, "Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa")
+metadata_name = "Main_table_from_SQL_Feb_2020"
+gene_annotation = read_tsv(paste0(data_dir, "Badet_GLOBAL_PANGENOME_TABLE.txt"))
+complete_mito = read_tsv(paste0(data_dir, "Complete_mitochondria_from_blast.txt"), col_names = c("ID_file", "Contig"))
+
+Sys.setenv(PROJECTDIR=project_dir)
+Sys.setenv(VARDIR=VAR_dir)
+Sys.setenv(VCFDIR=vcf_dir)
+Sys.setenv(POPSTR=PopStr_dir)
+Sys.setenv(MITOPOPSTR=mito_PS_dir)
+
+Sys.setenv(SUMST=Sumstats_dir)
+Sys.setenv(GEADIR=GEA_dir)
+
+Sys.setenv(ZTLIST=Zt_list)
+Sys.setenv(GFFFILE = gff_file)
+Sys.setenv(REFFILE = ref_fasta_file)
+Sys.setenv(VCFNAME=vcf_name)
+Sys.setenv(VCFNAME_NOMAF=vcf_name_nomaf)
+Sys.setenv(VCFNAME_MITO=vcf_name_mito)
+
+#knitr::opts_chunk$set(echo = F)
+knitr::opts_chunk$set(message = F)
+knitr::opts_chunk$set(warning = F)
+knitr::opts_chunk$set(results = T)
+
+
+# Metadata and sample lists
+##Filtered_samples
+filtered_samples = bind_rows(
+  read_tsv(paste0(metadata_dir, "Sample_removed_based_on_IBS.args"), col_names = "ID_file") %>%
+  mutate(Filter = "IBS"),
+read_tsv(paste0(metadata_dir, "Sample_with_too_much_NA.args"), col_names = "ID_file") %>%
+  mutate(Filter = "High_NA"),
+read_tsv(paste0(metadata_dir, "Samples_to_filter_out.args"), col_names = "ID_file") %>%
+  mutate(Filter = "Mutants_etc"))
+
+##Samples in vcf
+genotyped_samples = read_tsv(Zt_list, col_names = "ID_file")
+
+## Metadata of genotyped samples 
+temp = read_tsv(paste0(metadata_dir, metadata_name, "_Description.tab"), col_names = F) %>% pull()
+
+Zt_meta = read_tsv(paste0(metadata_dir, metadata_name, "_with_collection.tab"), 
+                 col_names = temp,
+                 na = "\\N", guess_max = 2000) %>%
+  unite(Coordinates, Latitude, Longitude, sep = ";", remove = F) %>%
+  inner_join(., genotyped_samples)  %>%
+  mutate(Country = ifelse(Country == "USA", paste(Country, Region, sep = "_"), Country)) %>%
+  mutate(Country = ifelse(Country == "Australia", paste(Country, Region, sep = "_"), Country)) %>%
+  mutate(Country = ifelse(Country == "NZ", "New Zealand", Country)) %>%
+  mutate(Country = ifelse(Country == "CH", "Switzerland", Country)) %>%
+  mutate(Latitude2 = round(Latitude, 2), Longitude2 = round(Longitude, 2))
+
+#genotyped_samples %>%
+#  filter(!(ID_file %in% filtered_samples$ID_file)) %>%
+#    write_tsv(Zt_list, col_names = F)
+
+
+
+#Define colors
+## For continents
+#myColors <- c("#04078B", "#a10208", "#FFBA08", "#CC0044", "#5C9D06", "#129EBA","#305D1B")
+myColors <- c("#DA4167", "grey", "#ffba0a", "#A20106", "#3F6E0C", "#129eba", "#8fa253" )
+names(myColors) = levels(factor(Zt_meta$Continent))
+Color_Continent = ggplot2::scale_colour_manual(name = "Continent", values = myColors)
+Fill_Continent = ggplot2::scale_fill_manual(name = "Continent", values = myColors)
+
+## For clustering
+K_colors = c("#f9c74f", "#f9844a", "#90be6d", "#f5cac3", 
+"#83c5be", "#f28482", "#577590", "#e5e5e5", "#a09abc",  "#52796f",
+"#219ebc", "#003049", "#82c0cc", "#283618", "white")
+
+## For correlations
+mycolorsCorrel<- colorRampPalette(c("#0f8b8d", "white", "#a8201a"))(20)
+
+#Random gradients
+greens=c("#1B512D", "#669046", "#8CB053", "#B1CF5F", "#514F59")
+blues=c("#08386E", "#1C89C9", "#28A7C0", "#B0DFE8", "grey")
+```
+
+
+
+# Mitochondrial genome
+
+##PCA with the mitochondrial genome
+```{bash filter mito vcf, eval = F}
+vcftools --gzvcf ${VCFDIR}${VCFNAME_MITO}.recode.vcf.gz  \
+  --non-ref-ac-any 1 \
+  --min-alleles 2 --max-alleles 2 \
+  --remove-filtered-all --recode --recode-INFO-all \
+  --out ${VCFDIR}${VCFNAME_MITO}.biall
+
+```
+
+
+
+
+```{r PCA mito run and plot, results = F}
+snpgdsVCF2GDS(paste0(vcf_dir, vcf_name_mito, ".biall.recode.vcf"),
+              paste0(PopStr_dir, vcf_name_mito, ".biall.recode.gds"), method="biallelic.only")
+genofile_mito <- snpgdsOpen(paste0(PopStr_dir, vcf_name_mito, ".biall.recode.gds"))
+pca_mito <-snpgdsPCA(genofile_mito, autosome.only=FALSE)
+snpgdsClose(genofile_mito)
+
+pca_mito2 = as_tibble(pca_mito$eigenvect) %>% dplyr::select(V1:V4)
+colnames(pca_mito2) = c("PC1", "PC2", "PC3", "PC4")
+pca_mito2 = pca_mito2 %>%
+  dplyr::mutate(sample_id = pca_mito$sample.id ) %>%
+  dplyr::right_join(., Zt_meta, by = c("sample_id" = "ID_file")) %>%
+  unite(sample_id, Country, col = "for_display", remove = F) %>%
+  filter(!is.na(PC1))
+
+as.tibble(pca_mito$eigenval[!is.na(pca_mito$eigenval)]) %>%
+  ggplot(aes(x = c(1:length(pca_mito$eigenval[!is.na(pca_mito$eigenval)])),
+             y =value)) + geom_point() +
+  theme_bw()
+
+
+eigen_sum = sum(pca_mito$eigenval[!is.na(pca_mito$eigenval)])
+p = ggplot(pca_mito2, aes(x = PC1, y= PC2, text = for_display)) +
+  geom_point(aes(color = Continent)) +
+  labs(x = paste0("PC 1 (", round(pca_mito$eigenval[1]*100/eigen_sum, 2), "%)"),
+       y = paste0("PC 2 (", round(pca_mito$eigenval[2]*100/eigen_sum, 2), "%)")) +
+  Color_Continent +
+  theme_bw() + theme(legend.position = "none")
+
+
+q = ggplot(pca_mito2, aes(x = PC3, y= PC4, text = for_display)) +
+  geom_point(aes(color = Continent)) +
+  labs(x = paste0("PC 3 (", round(pca_mito$eigenval[3]*100/eigen_sum, 2), "%)"),
+       y = paste0("PC 4 (", round(pca_mito$eigenval[4]*100/eigen_sum, 2), "%)")) +
+  Color_Continent +
+  theme_bw()+ theme(legend.position = "bottom")
+
+cowplot::plot_grid(p, q, ncol = 1, rel_heights = c(1, 1.2))
+
+
+#Let's make groups of samples from the PCA.
+p +
+  geom_vline(aes(xintercept = -0.04)) +
+  geom_label(aes(x = -0.02, y = 0.03, label = "Mito_group = 1")) +
+  geom_label(aes(x = -0.07, y = 0.03, label = "Mito_group = 0"))
+
+pca_mito2 = pca_mito2 %>% 
+  mutate(Mito_group = ifelse(PC1 < -0.04, "0", "1")) 
+
+Nb_per_mito_group = pca_mito2 %>%
+  group_by(Mito_group) %>%
+  dplyr::count() %>% dplyr::select(Nb_per_group = n)
+
+Nb_per_mito_group
+
+
+#Write files for separating vcf files
+pca_mito2 %>% 
+  filter(Mito_group == "0") %>%
+  dplyr::select(sample_id) %>%
+  write_tsv(., paste0(mito_PS_dir, "Sample_list_mito_group0.txt"))
+
+pca_mito2 %>% 
+  filter(Mito_group == "1") %>%
+  dplyr::select(sample_id) %>%
+  write_tsv(., paste0(mito_PS_dir, "Sample_list_mito_group1.txt"))
+```
+
+
+Now that my groups are defined, I want to investigate the origin of this clustering. Is the variation homogeneously distributed along the mitochondrial genome? Are there areas with a higher differentiation between the two groups?
+There are around 10 percent of the samples belong to group 0. I would thus expect that alleles that are shared between these samples and specific to these samples would have a minor allele frequency of around 0.1. 
+
+```{bash MAF mito run, eval = F}
+~/Documents/Software/bcftools/bcftools query \
+  -f '%CHROM\t%POS\n' \
+  ${VCFDIR}${VCFNAME_MITO}.biall.recode.vcf > \
+  ${VCFDIR}${VCFNAME_MITO}.biall.positions
+
+tail ${VCFDIR}${VCFNAME_MITO}.biall.positions
+
+~/Documents/Software/bcftools/bcftools query \
+  -f '%CHROM\t%POS\t%REF[\t%SAMPLE=%GT]\n' \
+  ${VCFDIR}${VCFNAME_MITO}.biall.recode.vcf > \
+  ${VCFDIR}${VCFNAME_MITO}.biall.genotypes
+  
+vcftools \
+--vcf ${VCFDIR}${VCFNAME_MITO}.biall.recode.vcf \
+--freq --min-alleles 2 --max-alleles 2 \
+--out ${VCFDIR}${VCFNAME_MITO}.biall
+```
+
+```{r MAF mito}
+#First let's look at the distribution of SNPs and the maf 
+temp = read_tsv(paste0(vcf_dir, vcf_name_mito, ".biall.positions"), 
+                          col_names = c("CHROM", "POS")) %>%
+  mutate(window = trunc(POS/1000)*1000)
+
+mito_positions = read_tsv(paste0(vcf_dir, vcf_name_mito, ".biall.frq"), col_names = T) %>%
+  separate(`{ALLELE:FREQ}`, into = c("ALLELE", "FREQ"), sep = ":") %>%
+  mutate(rev_FREQ = 1-as.numeric(FREQ)) %>%
+  group_by(POS) %>%
+  mutate(maf = min(rev_FREQ, FREQ)) %>%
+  full_join(., temp) %>%
+  ungroup()
+
+mito_positions %>%
+  ggplot(aes(x = POS, y = as.numeric(maf)))+ 
+    theme_bw() + 
+  annotate("rect", 
+           xmin=26989, xmax=28160, 
+           ymin=0, ymax=0.5, 
+           alpha=0.4, fill=blues[[4]]) + 
+    geom_point() +
+  labs(x = "Position along the mitochondrial genome",
+       y = "Minor allele frequency",
+       title = "Distribution of variants and MAF along the mitochondria",
+       subtitle = str_wrap(paste0("One region surrounding the cytb gene (shaded in blue) ",
+                                  "contains a lot of variants with the same MAF.")))
+
+
+# Looking at the genotypes for all samples: 
+# are there loci where the two groups contain different alleles?
+temp = read_tsv(paste0(vcf_dir, vcf_name_mito, ".biall.genotypes"), 
+                          col_names = F) %>%
+  pivot_longer(-c(X1, X2, X3)) %>%
+  separate(value, into=c("sample_id", "Genotype"), sep = "=") %>%
+  dplyr::select(CHROM = X1, POS = X2, REF = X3, sample_id, Genotype) %>%
+  #pivot_wider(names_from = sample_id, values_from = Genotype) %>%
+  filter(POS > 0) %>%
+  filter(POS < 46000) 
+
+temp = temp %>%
+  inner_join(., pca_mito2) %>%
+  full_join(., Nb_per_mito_group)
+
+ temp %>% 
+  group_by(Mito_group, POS,Nb_per_group) %>%
+  dplyr::count(Genotype) %>%
+  mutate(Freq = n/Nb_per_group) %>%
+  filter(Genotype == 1 | Genotype == 0)  %>%
+  ggplot(aes(x = POS, y = Freq, color = Mito_group)) + 
+  annotate("rect", 
+           xmin=26989, xmax=28160, 
+           ymin=0, ymax=1, 
+           alpha=0.3, fill=blues[[4]]) +
+  geom_point(alpha = 0.5) +
+  theme_bw() + 
+   scale_color_manual(values = c("#ff9f1c", "#2ec4b6")) + #c("#16697a", "#82c0cc", "#EDE7E3")) +
+  facet_grid(vars(Genotype)) +
+   labs(title = "Frequency of alleles in the two mitocondrial groups",
+        subtitles = "The locus with a stable MAF at 0.1 seems to correspond to group 0-specific alleles.")
+
+```
+
+I strongly suspect that the locus of high differentiation observed around the cytb gene is responsible for most if not all of the clustering signal in the PCA. To check this, I will run a PCA again but this time filtering the SNPs between the positions 25500 and 30000, thus effectively erasing all signal from this particular locus.
+```{bash mito filter high diff, eval = F}
+echo "#chrom chromStart  chromEnd" > ${VCFDIR}${VCFNAME_MITO}_positions_to_exclude.bed
+echo "mt  25500 30000" >> ${VCFDIR}${VCFNAME_MITO}_positions_to_exclude.bed
+
+vcftools \
+  --vcf ${VCFDIR}${VCFNAME_MITO}.biall.recode.vcf \
+  --keep $ZTLIST \
+  --non-ref-ac-any 1 \
+  --min-alleles 2 --max-alleles 2 \
+  --remove-filtered-all --recode --recode-INFO-all \
+  --exclude-bed  ${VCFDIR}${VCFNAME_MITO}_positions_to_exclude.bed \
+  --out ${VCFDIR}${VCFNAME_MITO}.biall.no_high_diff_region
+```
+
+
+
+```{r PCA mito wo high diff, results = F}
+snpgdsVCF2GDS(paste0(vcf_dir, vcf_name_mito, ".biall.no_high_diff_region.recode.vcf"),
+              paste0(PopStr_dir, vcf_name, ".biall.no_high_diff_region.recode.gds"),
+              method="biallelic.only")
+genofile_mito_wo_diff <- snpgdsOpen(paste0(PopStr_dir, vcf_name, 
+                                   ".biall.no_high_diff_region.recode.gds"))
+pca_mito_wo_diff <-snpgdsPCA(genofile_mito_wo_diff, autosome.only=FALSE)
+snpgdsClose(genofile_mito_wo_diff)
+
+pca_mito_wo_diff2 = as_tibble(pca_mito_wo_diff$eigenvect) %>% dplyr::select(V1:V4)
+colnames(pca_mito_wo_diff2) = c("PC1", "PC2", "PC3", "PC4")
+pca_mito_wo_diff2 = pca_mito_wo_diff2 %>%
+  dplyr::mutate(sample_id = pca_mito_wo_diff$sample.id ) %>%
+  dplyr::right_join(., Zt_meta, by = c("sample_id" = "ID_file")) %>%
+  unite(sample_id, Country, col = "for_display", remove = F) %>%
+  filter(!is.na(PC1))
+
+as.tibble(pca_mito_wo_diff$eigenval[!is.na(pca_mito_wo_diff$eigenval)]) %>%
+  ggplot(aes(x = c(1:length(pca_mito_wo_diff$eigenval[!is.na(pca_mito_wo_diff$eigenval)])),
+             y =value)) + geom_point() +
+  theme_bw()
+
+
+eigen_sum = sum(pca_mito_wo_diff$eigenval[!is.na(pca_mito_wo_diff$eigenval)])
+p = pca_mito2 %>%
+  dplyr::select(sample_id, Mito_group) %>%
+  full_join(., pca_mito_wo_diff2) %>%
+  ggplot(aes(x = PC1, y= PC2, text = for_display)) +
+  geom_point(aes(color = Continent, shape = Mito_group)) +
+  labs(x = paste0("PC 1 (", round(pca_mito_wo_diff$eigenval[1]*100/eigen_sum, 2), "%)"),
+       y = paste0("PC 2 (", round(pca_mito_wo_diff$eigenval[2]*100/eigen_sum, 2), "%)")) +
+  Color_Continent +
+  theme_bw()
+
+p + labs(title = "PCA from the mitochondrial genome of *Z.tritici*",
+         subtitle = "Without the SNPs between the positions 25500 and 30000") +
+  theme(plot.title = ggtext::element_markdown())
+
+```
+
+As a note, there does not seem to be a clear relationship between the known mutation G143A in the cytb gene and these two groups.
+
+At first glance, it does not look like the structure is related to geography, but I want to compare the structure obtained with both types of genomes to get a clearer idea of the comparison.
+
+```{r mito vs nuclear str}
+high_anc_coef_snmf = read_tsv(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.tsv"), col_names = T)
+
+pca2 = read_tsv(paste0(PopStr_dir, vcf_name, ".PCA_results.tab"), col_names = T)
+
+p1 = pca_mito2 %>%
+  dplyr::select(PC1_mito = PC1, PC2_mito = PC2, for_display, ID_file = sample_id) %>%
+  full_join(., pca2) %>%
+  full_join(., high_anc_coef_snmf %>% dplyr::select(-for_display)) %>%
+  ggplot(aes(x = PC1, y= PC1_mito, text = for_display)) +
+  geom_point(aes(color = Continent)) +
+  labs(x = paste0("PC 1 nuclear genome"),
+       y = paste0("PC 1 mitochondrial genome"),
+       title = "Comparison between the PC1 for the nuclear and mitochondrial genomes") +
+  Color_Continent +
+  theme_bw() 
+
+p1
+
+temp = pca_mito2 %>%
+  dplyr::select(Sample = sample_id, Mito_group) %>%
+  full_join(., high_anc_coef_snmf) %>%
+  group_by(Mito_group, Cluster) %>%
+  dplyr::count() %>%
+  filter(!is.na(Mito_group)) %>% 
+  pivot_wider(names_from = Mito_group, values_from = n) %>%
+  replace_na(list(Cluster = "Mixed", `0` = 0, `1` = 0)) %>%
+  pivot_longer(-Cluster,  names_to = "Mito_group", values_to = "Isolate_count")
+
+temp2 = temp %>% 
+  pivot_wider(names_from = Mito_group, values_from = Isolate_count) %>%
+  mutate(`0` = ifelse(is.na(`0`), 0, `0`)) %>%
+  mutate(total = (`0` + `1`), 
+         Percent = paste0(round(100*`0`/(`0` + `1`), 2), "%"))
+
+temp %>%
+  ggplot(aes(x = Cluster, y=Isolate_count)) +
+  geom_bar(aes(fill = Mito_group), stat = "identity")  +
+  theme_bw() + 
+  geom_text(data = temp2, aes(x = Cluster, y = total + 10, label = Percent),  size=3.5) +
+  scale_fill_manual(values = c("#ff9f1c", "#2ec4b6")) +
+  labs(title = str_wrap(paste0("Number of samples belonging to the two mitochondrial",
+                               " groups per nuclear genetic cluster"), width = 60))
+
+
+```
+The proportions of the mitochondrial haplotypes across the genetic clusters defined with the nuclear genome is not equal: some clusters have only one mitochondrial group, while some others are 50/50. Not sure what to make of it.
+
+
+I got curious about the distance from each mitochondrial haplotype to the wild species. So I picked one isolate from each group, including IPO323 as an example of the mitogroup 1. 
+```{r mito Zb}
+temp = bind_rows(read_tsv("~/Documents/Software/mummer-4.0.0rc1/Za.B01_vs_SRR5194479.snps", 
+         col_names = F),
+         read_tsv("~/Documents/Software/mummer-4.0.0rc1/Za.B01_vs_IPO323.snps", 
+                  col_names = F)) %>%
+  mutate(window = round(X1/100)*100)
+
+
+IPO323_windows = temp %>% 
+  filter(X12 ==  "mt") %>%
+  dplyr::select(X1, X2, X4) %>%
+  mutate(IPO323_window = round(X4/100)*100) %>%
+  dplyr::select(-X4)
+
+
+p1 = full_join(temp, IPO323_windows) %>%
+  group_by(IPO323_window, X12) %>%
+  dplyr::count() %>%
+  ggplot(aes(x = IPO323_window, y = n, col = X12)) +
+  geom_point(alpha = 0.4)  +
+  geom_line(alpha = 0.4) + 
+  theme_bw() +
+  theme(legend.position = "bottom") +
+  scale_color_manual(values = c("#ff9f1c", "#2ec4b6")) +
+  labs(y = "Distance from Zb (#variants)",
+       col = "Group") + 
+  annotate("rect", 
+           xmin=26989, xmax=28160, 
+           ymin=0, ymax=200, 
+           alpha=0.4, fill=blues[[4]])
+
+p2 = full_join(temp, IPO323_windows) %>%
+  group_by(IPO323_window, X12) %>%
+  dplyr::count() %>% ungroup() %>%
+  pivot_wider(names_from = X12, values_from = n) %>%
+  mutate(diff = mt - scaf182) %>%
+  ggplot(aes(x = IPO323_window, y = diff)) +
+  geom_point(alpha = 0.4)  + 
+  theme_bw() +
+  scale_color_manual(values = c("#ff9f1c", "#2ec4b6")) +
+  labs( y = "Difference between distances from Zb (#variants)") + 
+  annotate("rect", 
+           xmin=26989, xmax=28160, 
+           ymin=0, ymax=6, 
+           alpha=0.4, fill=blues[[4]])
+cowplot::plot_grid(p1, p2, ncol = 1, rel_heights = c(1.4, 1))
+
+full_join(temp, IPO323_windows) %>%
+  group_by(IPO323_window, X12) %>%
+  dplyr::count() %>%
+  filter(IPO323_window > 20000 & IPO323_window < 30000 ) %>%
+  ggplot(aes(x = IPO323_window, y = n, col = X12)) +
+  geom_point(alpha = 0.4)  +
+  geom_line(alpha = 0.4) + 
+  theme_bw() +
+  scale_color_manual(values = c("#ff9f1c", "#2ec4b6")) +
+  theme(legend.position = "bottom") +
+  labs(y = "Distance from Zb (#variants)",
+       col = "Group") + 
+  annotate("rect", 
+           xmin=26989, xmax=28160, 
+           ymin=0, ymax=200, 
+           alpha=0.4, fill=blues[[4]])
+
+
+bind_rows(read_tsv("~/Documents/Software/mummer-4.0.0rc1/IPO323_vs_SRR5194479_.snps", 
+                  col_names = F) %>% mutate(X12 = "Mitogroup0"),
+read_tsv("~/Documents/Software/mummer-4.0.0rc1/IPO323_vs_SRR5194475.snps", 
+                  col_names = F)%>% mutate(X12 = "Mitogroup1")) %>%
+  mutate(window = round(X1/100)*100)%>%
+  group_by(window, X12) %>%
+  dplyr::count() %>%
+  ggplot(aes(x = window, y = n, col = X12)) +
+  geom_point(alpha = 0.4)  +
+  geom_line(alpha = 0.4) + 
+  theme_bw() +
+  scale_color_manual(values = c("#ff9f1c", "#2ec4b6")) +
+  theme(legend.position = "bottom") +
+  labs(y = "Distance from IPO323 (#variants)",
+       col = "Group") + 
+  annotate("rect", 
+           xmin=26989, xmax=28160, 
+           ymin=0, ymax=20, 
+           alpha=0.4, fill=blues[[4]]) 
+```
+
+
+
+
+### Check the validity of the variant calling
+
+The whole two-group thing look very strange. So I decided to do some checks of the validity of variants around the region of interest.
+```{bash inputs per mitogroup, eval = F}
+for x in 0 1 ; 
+do 
+
+#VCF with only variants within groups
+vcftools --gzvcf ${VCFDIR}${VCFNAME_MITO}.recode.vcf.gz \
+  --keep ${MITOPOPSTR}Sample_list_mito_group${x}.txt \
+  --non-ref-ac-any 1 \
+  --min-alleles 2 --max-alleles 2 \
+  --remove-filtered-all --recode --recode-INFO-all \
+  --out ${MITOPOPSTR}${VCFNAME_MITO}.mito_group${x}
+  
+#VCF with all positions but within group samples only
+vcftools --gzvcf ${VCFDIR}${VCFNAME_MITO}.recode.vcf.gz \
+  --keep ${MITOPOPSTR}Sample_list_mito_group${x}.txt \
+  --recode --recode-INFO-all \
+  --out ${MITOPOPSTR}${VCFNAME_MITO}.ALL_POS.mito_group${x}
+ 
+#Depth per group
+vcftools --vcf ${MITOPOPSTR}${VCFNAME_MITO}.ALL_POS.mito_group${x}.recode.vcf \
+  --site-depth \
+  --out ${MITOPOPSTR}${VCFNAME_MITO}.ALL_POS.mito_group${x}
+
+# Allelic freq per group
+vcftools --vcf ${MITOPOPSTR}${VCFNAME_MITO}.ALL_POS.mito_group${x}.recode.vcf \
+  --freq --min-alleles 2 --max-alleles 2 \
+  --out ${MITOPOPSTR}${VCFNAME_MITO}.ALL_POS.mito_group${x}
+  
+#Genotypes for all samples for each group
+~/Documents/Software/bcftools/bcftools query \
+  -f '%CHROM\t%POS[\t%AD]\n' \
+  ${MITOPOPSTR}${VCFNAME_MITO}.ALL_POS.mito_group${x}.recode.vcf \
+   > ${MITOPOPSTR}${VCFNAME_MITO}.ALL_POS.mito_group${x}.AD.tsv
+   
+ done
+```
+
+For a start, I want to look at the depth per genotype. The first is to detect a potential duplication/deletion of the region of interest which would lead to SNPs being called in this region when in reality.
+```{r}
+#Depth in general
+temp = bind_rows(read_tsv(paste0(mito_PS_dir, vcf_name_mito, ".ALL_POS.mito_group1.ldepth")) %>%
+mutate(Mito_group = 1),
+read_tsv(paste0(mito_PS_dir, vcf_name_mito, ".ALL_POS.mito_group0.ldepth")) %>%
+mutate(Mito_group = 0))
+
+mean_depth = temp %>% 
+  dplyr::group_by(Mito_group) %>% 
+  dplyr::summarize(average = mean(SUM_DEPTH))
+
+temp = left_join(temp, mean_depth) %>% 
+  mutate(norm_site_depth = SUM_DEPTH/average)
+
+y_lim = max(temp$norm_site_depth)
+p1 = ggplot(temp, aes(x = POS, y = norm_site_depth, col = as.factor(Mito_group))) +
+    annotate("rect", alpha=0.3, fill=blues[[4]],
+           xmin=28000, xmax=30000, ymin=0, ymax=y_lim) +
+  geom_point(alpha = 0.4) +
+  theme_bw() + 
+  labs(title = "Depth per mito group along the mt genome",
+       x = "Position",
+       y= "Normalized read depth") +
+  scale_color_manual(values = c("#ff9f1c", "#2ec4b6"))
+
+p1
+```
+
+
+The depth looks a bit strange around the region of interest. This 
+
+
+In order to check further if the variants could be erroneously called around a structural variation of some type that the mapping + SNP calling would be confused by, I want to see if I can recover the  variants in pairwise alignments between the reference mitochondria and assembled mitochondria from the resequencing. To limit problems due to low quality assemblies or alignments, I only use the mitochondrial genomes which are completely assembled, i.e. a contig which represent 90% of the length aligned to the mitochondria in the assembly and is longer than 30kb. 
+
+
+```{r}
+#Rewrite and/or check!
+# Mitogroup + complete
+complete_mito = pca_mito2 %>%
+  dplyr::select(sample_id, Mito_group) %>%
+  inner_join(., complete_mito, by = c("sample_id" = "ID_file"))
+
+nb_complete_mito_per_group = as.data.frame(table(complete_mito$Mito_group))
+names(nb_complete_mito_per_group) = c("Mito_group", "Total_nb")
+nb_complete_mito_per_group
+```
+
+
+On the cluster, I extract these identified mitochondrial genomes from the whole assemblies and align them using dnadiff from mummer. 
+
+WARN: the frequencies calculated on the GATK dataset are not based on the same set of samples as the other other one since it includes all good quality samples and not just the ones with complete mitochondria.
+```{r comparison SNP mito}
+
+#Output of dna_diff in terms of snps
+snps_from_aln = read_tsv(paste0(mito_SV, "All_complete_mitochondria.snps")) %>%
+  left_join(., pca_mito2 %>% dplyr::select(sample_id, Mito_group)) #%>%
+  #pivot_wider(names_from = sample_id, values_from = ALT)
+#rm(snps_list) 
+
+snps_from_aln %>%
+  mutate(window = round(POS/100)) %>%
+  group_by(sample_id, window) %>%
+  dplyr::count() %>%
+  inner_join(pca_mito2 %>% dplyr::select(sample_id, Mito_group), .) %>%
+  group_by(Mito_group, window) %>%
+  dplyr::summarize(ave_SNP_nb = mean(n)) %>%
+  ggplot(aes(x = window, y = ave_SNP_nb, col = Mito_group)) + 
+  geom_point() + theme_bw() +
+  scale_color_manual(values = c("#ff9f1c", "#2ec4b6"))
+
+#Looking at the frequencies in the GATK SNP calling
+Freq_GATK_per_group = bind_rows(read_tsv(paste0(mito_PS_dir, vcf_name_mito, ".ALL_POS.mito_group0.frq"), skip = 1 ,
+                                         col_names = c("CHROM", "POS", "N_ALLELES", "N_CHR", "ALL1", "ALL2")) %>%
+                                    mutate(Mito_group = 0),
+                                read_tsv(paste0(mito_PS_dir, vcf_name_mito, ".ALL_POS.mito_group1.frq"), skip = 1 ,
+                                         col_names = c("CHROM", "POS", "N_ALLELES", "N_CHR", "ALL1", "ALL2")) %>%
+                                    mutate(Mito_group = 1)) %>% 
+  separate(ALL2, into = c("ALLELE", "FREQ"), sep = ":") %>%
+  dplyr::select(-N_CHR, -N_ALLELES, -ALL1) %>%
+  pivot_wider(values_from = FREQ, names_from = Mito_group) %>% 
+  mutate(Diff_freq_in_GATK = as.numeric(`0`) - as.numeric(`1`))
+
+
+#Comparing the presence of SNPs with high differenciation between the two groups
+Freq_aln_per_group = snps_from_aln %>% 
+  filter( !is.na(Mito_group) ) %>%
+  dplyr::select(POS, sample_id, Mito_group) %>% distinct() %>%
+  group_by(Mito_group, POS) %>%  dplyr::count() %>% ungroup() %>%
+  left_join(., nb_complete_mito_per_group) %>% 
+  mutate(Freq_non_ref = n/Total_nb) %>% 
+  dplyr::select(POS, Mito_group, Freq_non_ref) %>%
+  pivot_wider(names_from = Mito_group, values_from = Freq_non_ref) %>%
+  dplyr::select(POS, Freq_var0_aln = `0`, Freq_var1_aln = `1`) %>% 
+  mutate(Freq_var0_aln = ifelse(is.na(Freq_var0_aln), 0, Freq_var0_aln),
+         Freq_var1_aln = ifelse(is.na(Freq_var1_aln), 0, Freq_var1_aln),
+         Diff_freq_in_aln = Freq_var0_aln - Freq_var1_aln)
+
+compared_freq = full_join(Freq_GATK_per_group, Freq_aln_per_group) %>%
+  dplyr::select(POS, Alignment = Diff_freq_in_aln, SNP_calling = Diff_freq_in_GATK) %>%
+  pivot_longer(-POS, names_to = "Method", values_to = "Difference")
+
+
+ggplot(compared_freq, aes(x = POS, y =Difference, col = Method)) +
+  geom_point(alpha = .4) + 
+  theme_bw() +
+  facet_grid(rows = vars(Method)) +
+  labs(y = "Difference in frequency between group 1 and group 0")
+``` 
+The SNPs we are interested in are indeed found using both methods. 
+
+```{r}
+temp = read_tsv("~/Documents/Software/mummer-4.0.0rc1/IPO323_vs_Zp.B02.snps", 
+         col_names = c("POS", "REF", "Zp", "Ref", "Whatever",
+                       "V1", "V2", "V3", "V4", "V5", "CHROM", "scaf"))
+
+alleles = inner_join(snps_from_aln, check_relevant_SNPS %>% dplyr::select(CHROM, POS)) %>%
+  filter(Mito_group == 0) %>%
+   group_by(POS, ALT) %>%
+  dplyr::count() %>%
+  pivot_wider(names_from = ALT, values_from = n) %>%
+  left_join(., temp %>% dplyr::select(Zp, POS))
+
+temp = read_tsv("~/Documents/Software/mummer-4.0.0rc1/IPO323_vs_Zb.B01.snps", 
+         col_names = c("POS", "REF", "Zb", "Ref", "Whatever",
+                       "V1", "V2", "V3", "V4", "V5", "CHROM", "scaf"))
+
+alleles = alleles %>%
+  left_join(., temp %>% dplyr::select(Zb, POS))
+
+
+temp = read_tsv("~/Documents/Software/mummer-4.0.0rc1/IPO323_vs_Za.B01.snps", 
+         col_names = c("POS", "REF", "Za", "Ref", "Whatever",
+                       "V1", "V2", "V3", "V4", "V5", "CHROM", "scaf"))
+alleles = alleles %>%
+  left_join(., temp %>% dplyr::select(Za, POS))
+
+
+```
+
+
+
+Now that the SNPs are compared and confirmed, I want to look at the structural variants and in particular break points in the alignment between the genomes and the mitochondria of the reference strain.
+
+```{r breaks mito}
+#Gathered on the cluster and imported as such
+coords_from_aln = read_tsv(paste0(mito_SV, "All_complete_mitochondria.mcoords")) %>%
+  mutate(TEMP = gsub("_scaf", ":scaf", scaf)) %>%
+  separate(TEMP, into = c("sample_id", "scaffold"), sep = ":") %>%
+  left_join(., pca_mito2 %>% dplyr::select(sample_id, Mito_group)) 
+
+temp = coords_from_aln %>%
+  dplyr::select(Mito_group, Ref_start, Ref_end, sample_id) %>%
+  group_by(Mito_group, Ref_start) %>%
+  dplyr::count() %>%
+  left_join(., nb_complete_mito_per_group) %>% 
+  mutate(Freq_break = n/Total_nb) %>%
+  pivot_wider(names_from = Mito_group, values_from = Freq_break) %>%
+  dplyr::select(Ref_start, Freq_break0 = `0`, Freq_break1 = `1`) %>% 
+  mutate(Freq_break0 = ifelse(is.na(Freq_break0), 0, Freq_break0),
+         Freq_break1 = ifelse(is.na(Freq_break1), 0, Freq_break1),
+         Diff_freq_in_breaks = Freq_break0 - Freq_break1,
+         More_freq_in_0 = Diff_freq_in_breaks >= 0) 
+
+temp %>% ggplot(aes(x = Ref_start, y = Diff_freq_in_breaks, 
+                    col = More_freq_in_0, alpha = abs(Diff_freq_in_breaks) + 0.01)) +
+  geom_point() + 
+  theme_bw() +
+  scale_color_manual(values = c(unname(myColors)[3], unname(myColors)[1])) +
+  labs(title = "Difference in frequency of breakpoints between the two mito_groups",
+       subtitle = str_wrap(paste0("Two breakpoints seem to be found in ",
+                                  "all genomes from group 0, including one ",
+                                  "in the region of interest.")),
+       alpha = "Difference intensity",
+       col = "Breakpoint more frequent in group 0",
+       x = "Position on the mitochondrial genome",
+       y = "Difference in frequency") +
+  theme(legend.position = "bottom")
+  
+```
+
+
+
+### Structure per mito group
+
+```{r PCA per mito group}
+## Mito group 0
+snpgdsVCF2GDS(paste0(mito_PS_dir, vcf_name_mito, ".mito_group0.recode.vcf"),
+              paste0(mito_PS_dir, vcf_name, ".mito_group0.recode.gds"),
+              method="biallelic.only")
+genofile_mito_gp0 <- snpgdsOpen(paste0(mito_PS_dir, vcf_name, 
+                                   ".mito_group0.recode.gds"))
+pca_mito_gp0 <-snpgdsPCA(genofile_mito_gp0, autosome.only=FALSE)
+snpgdsClose(genofile_mito_gp0)
+
+pca_mito_gp0_2 = as_tibble(pca_mito_gp0$eigenvect) %>% dplyr::select(V1:V4)
+colnames(pca_mito_gp0_2) = c("PC1", "PC2", "PC3", "PC4")
+pca_mito_gp0_2 = pca_mito_gp0_2 %>%
+  dplyr::mutate(sample_id = pca_mito_gp0$sample.id ) %>%
+  dplyr::right_join(., Zt_meta, by = c("sample_id" = "ID_file")) %>%
+  unite(sample_id, Country, col = "for_display", remove = F) %>%
+  filter(!is.na(PC1))
+
+
+eigen_sum = sum(pca_mito_gp0$eigenval[!is.na(pca_mito_gp0$eigenval)])
+p = pca_mito_gp0_2 %>%
+  ggplot(aes(x = PC1, y= PC2, text = for_display)) +
+  geom_point(aes(color = Continent)) +
+  labs(x = paste0("PC 1 (", round(pca_mito_gp0$eigenval[1]*100/eigen_sum, 2), "%)"),
+       y = paste0("PC 2 (", round(pca_mito_gp0$eigenval[2]*100/eigen_sum, 2), "%)")) +
+  Color_Continent +
+  theme_bw() + 
+  labs(subtitle = "Only mito group 0") +
+  theme(plot.title = ggtext::element_markdown(),
+        legend.position = "none")
+p2 = pca_mito_gp0_2 %>%
+  ggplot(aes(x = PC3, y= PC4, text = for_display)) +
+  geom_point(aes(color = Continent)) +
+  labs(x = paste0("PC 3 (", round(pca_mito_gp0$eigenval[3]*100/eigen_sum, 2), "%)"),
+       y = paste0("PC 4 (", round(pca_mito_gp0$eigenval[4]*100/eigen_sum, 2), "%)")) +
+  Color_Continent +
+  theme_bw() +
+  theme(plot.title = ggtext::element_markdown(),
+        legend.position = "bottom")
+
+col1 = cowplot::plot_grid(p, p2, ncol = 1)
+
+
+## Mito group 1
+snpgdsVCF2GDS(paste0(mito_PS_dir, vcf_name_mito, ".mito_group1.recode.vcf"),
+              paste0(mito_PS_dir, vcf_name, ".mito_group1.recode.gds"),
+              method="biallelic.only")
+genofile_mito_gp1 <- snpgdsOpen(paste0(mito_PS_dir, vcf_name, 
+                                   ".mito_group1.recode.gds"))
+pca_mito_gp1 <-snpgdsPCA(genofile_mito_gp1, autosome.only=FALSE)
+snpgdsClose(genofile_mito_gp1)
+
+pca_mito_gp1_2 = as_tibble(pca_mito_gp1$eigenvect) %>% dplyr::select(V1:V4)
+colnames(pca_mito_gp1_2) = c("PC1", "PC2", "PC3", "PC4")
+pca_mito_gp1_2 = pca_mito_gp1_2 %>%
+  dplyr::mutate(sample_id = pca_mito_gp1$sample.id ) %>%
+  dplyr::right_join(., Zt_meta, by = c("sample_id" = "ID_file")) %>%
+  unite(sample_id, Country, col = "for_display", remove = F) %>%
+  filter(!is.na(PC1))
+
+
+eigen_sum = sum(pca_mito_gp1$eigenval[!is.na(pca_mito_gp1$eigenval)])
+p = pca_mito_gp1_2 %>%
+  ggplot(aes(x = PC1, y= PC2, text = for_display)) +
+  geom_point(aes(color = Continent)) +
+  labs(x = paste0("PC 1 (", round(pca_mito_gp1$eigenval[1]*100/eigen_sum, 2), "%)"),
+       y = paste0("PC 2 (", round(pca_mito_gp1$eigenval[2]*100/eigen_sum, 2), "%)")) +
+  Color_Continent +
+  theme_bw() + 
+  labs(subtitle = "Only mito group 1") +
+  theme(plot.title = ggtext::element_markdown(),
+        legend.position = "none")
+p2 = pca_mito_gp1_2 %>%
+  ggplot(aes(x = PC3, y= PC4, text = for_display)) +
+  geom_point(aes(color = Continent)) +
+  labs(x = paste0("PC 3 (", round(pca_mito_gp1$eigenval[3]*100/eigen_sum, 2), "%)"),
+       y = paste0("PC 4 (", round(pca_mito_gp1$eigenval[4]*100/eigen_sum, 2), "%)")) +
+  Color_Continent +
+  theme_bw() +
+  theme(plot.title = ggtext::element_markdown(),
+        legend.position = "bottom")
+
+col2 = cowplot::plot_grid(p, p2, ncol = 1)
+
+cowplot::plot_grid(col1, col2, ncol = 2)
+
+```
+It could have been expected that the geographical structure would be very clear once we separate the two groups. Although this is not the case, we can still recover part of a geographical separation in the group with most genomes.
+
+
+
+```{r mito vs pheno}
+
+phenotypes = read_tsv(paste0(project_dir, "Phenotypes/Anik_2020_phenotypes.tsv")) %>%
+  mutate(POP = str_sub(sample_id, 1, 6)) %>%
+  inner_join(pca_mito2 %>% dplyr::select(sample_id, Mito_group), .) %>% 
+  dplyr::select(-MSR) %>%
+  pivot_longer(cols = -c(sample_id, Mito_group, POP), names_to = "Phenotype", values_to = "Measure") 
+
+table(phenotypes$POP, phenotypes$Mito_group)
+
+list_phenotypes = phenotypes %>%
+  dplyr::select(Phenotype) %>% unique() %>% pull()
+
+signif_mito_phenotype <- as.data.frame(matrix(NA, length(list_phenotypes), 2))
+names(signif_mito_phenotype) <- c("Phenotype", "p-value")
+for(i in c(1:length(list_phenotypes))) {
+  pheno = list_phenotypes[i]
+  temp = phenotypes %>%
+  filter(Phenotype == pheno)
+  res.aov3 <- aov(Measure ~ POP + Mito_group + POP:Mito_group, data = temp)
+  print(summary(res.aov3))
+  signif_mito_phenotype[i, 1] = pheno
+  signif_mito_phenotype[i, 2] = summary(res.aov3)[[1]][["Pr(>F)"]][[2]]
+  print(c(pheno, summary(res.aov3)[[1]][["Pr(>F)"]][[2]]))
+}
+
+phenotypes %>%
+  left_join(signif_mito_phenotype, .) %>%
+  filter(`p-value` < 0.05) %>%
+  filter(POP %in% c("ST01AU", "ST92IS")) %>%
+  ggplot(aes(Mito_group, Measure, col = Mito_group)) +
+  geom_boxplot() + 
+  theme_bw() +
+  facet_grid(Phenotype ~ POP, scales = "free_y")
+```
+
+
+<br><br>
+
