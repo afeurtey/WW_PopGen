@@ -522,23 +522,31 @@ errorsGR = makeGRangesFromDataFrame(err_var_list %>%
 cat("Total number of unfiltered errors:", sum(width(unfilterrorsGR)), "\n")
 cat("Total number of errors post-filtering:", sum(width(errorsGR)), "\n")
 cat("Total length of TEs:", sum(width(TEGR)), "\n")
-cat("Error number of errors post-filtering in TEs:", sum(width(intersect(errorsGR, TEGR))) , "\n")
-cat("Error number of errors post-filtering outside of TEs:", sum(width(setdiff(errorsGR, TEGR))), "\n")
+cat("Error number of errors post-filtering in TEs:", 
+    sum(width(GenomicRanges::intersect(errorsGR, TEGR))) , "\n")
+cat("Error number of errors post-filtering outside of TEs:", 
+    sum(width(GenomicRanges::setdiff(errorsGR, TEGR))), "\n")
 
 
 ```
-```{bash}
+```{bash, eval = F}
 cat /data2/alice/WW_project/1_Variant_calling/5_Quality_checks/Ztritici_global_March2021.genotyped.*.filtered.clean.frq.count | grep -v "CHROM" > /data2/alice/WW_project/1_Variant_calling/5_Quality_checks/Ztritici_global_March2021.genotyped.concat.filtered.clean.frq.count.concat
 ```
 
 
 ```{r allele counts}
-counts =read_tsv("/data2/alice/WW_project/1_Variant_calling/5_Quality_checks/Ztritici_global_March2021.genotyped.concat.filtered.clean.frq.count.concat", 
-                     col_names = c("CHROM", "POS", "N_ALLELES", "N_CHR", "Count1", "Count2", "Count3"), 
-                     col_types = cols(col_character(), col_double(), col_double(), col_double(), 
-                                      col_double(), col_double(), col_double())) %>%
-  rowwise() %>%
-  mutate(minorAC = min(Count1, Count2, Count3, na.rm = T), 
+#counts = read_tsv("/data2/alice/WW_project/1_Variant_calling/5_Quality_checks/Ztritici_global_March2021.genotyped.concat.filtered.clean.frq.count.concat", 
+#                     col_names = c("CHROM", "POS", "N_ALLELES", "N_CHR", "Count1", "Count2", "Count3"), 
+#                     col_types = cols(col_character(), col_double(), col_double(), col_double(), 
+#                                      col_double(), col_double(), col_double()),
+#                  guess_max = 1000) 
+
+all_counts = read.table(paste0(vcf_qual_check_dir, 
+                  "Ztritici_global_March2021.genotyped.concat.filtered.clean.frq.count.concat"), 
+           sep="\t",fill=TRUE,header = F,
+           col.names=c("CHROM", "POS", "N_ALLELES", "N_CHR", "Count1", "Count2", "Count3")) %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(minorAC = min(Count1, Count2, Count3, na.rm = T), 
          majorAC = max(Count1, Count2, Count3, na.rm = T),
          freq = minorAC/N_CHR)
 
@@ -547,10 +555,10 @@ temp = err_var_list %>%
  # filter(Filter == "2_Filtered_on_quality") %>%
   select(CHROM, POS) %>% 
   unique() %>% 
-  left_join(., counts) %>%
+  left_join(., all_counts) %>%
   mutate(Variant_type = "Erroneous")
 
-bind_rows(temp, counts %>% mutate(Variant_type = "All_variants"))  %>%
+bind_rows(temp, all_counts %>% mutate(Variant_type = "All_variants"))  %>%
 ggplot(aes(x = freq, fill = Variant_type, col = Variant_type)) +
   geom_density(alpha =.4) +
   scale_fill_manual(values = c("#FF9F1C", "#2EC4B6")) +
@@ -644,10 +652,14 @@ cat("Total number of unfiltered errors:", sum(width(unfilterrorsGR)), "\n",
     "Total number of errors post-AB filtering :", sum(width(errorsAB)), "\n",
     "----\n",
     "Total length of TEs:", sum(width(TEGR)), "\n",
-    "Error number of errors post-quality filtering in TEs:", sum(width(intersect(errorsGR, TEGR))) , "\n",
-    "Error number of errors post-quality filtering outside of TEs:", sum(width(setdiff(errorsGR, TEGR))), "\n",
-    "Error number of errors post-AB filtering in TEs:", sum(width(intersect(errorsAB, TEGR))) , "\n",
-    "Error number post-AB filtering outside of TEs:", sum(width(setdiff(errorsAB, TEGR))), "\n")
+    "Error number of errors post-quality filtering in TEs:", 
+       sum(width(GenomicRanges::intersect(errorsGR, TEGR))) , "\n",
+    "Error number of errors post-quality filtering outside of TEs:",
+       sum(width(GenomicRanges::setdiff(errorsGR, TEGR))), "\n",
+    "Error number of errors post-AB filtering in TEs:", 
+       sum(width(GenomicRanges::intersect(errorsAB, TEGR))) , "\n",
+    "Error number post-AB filtering outside of TEs:", 
+       sum(width(GenomicRanges::setdiff(errorsAB, TEGR))), "\n")
 
 
 
@@ -773,10 +785,12 @@ info_per_ind %>%
 The samples with too much missing data or low depth (in grey, on the right of the vertical gold or below the horizontal gold line) will be removed. These samples happen to come in large part from one particular collection: among the 135 samples, 92 (68%) are from the Swiss collection of 2016.
 
 ```{r}
-ibs = read_tsv(paste0(subset_vcf_name, ".mibs.id"), col_names = c("Whatever", "ID")) %>% select(ID) %>% pull()
-related = read_tsv(paste0(subset_vcf_name, ".mibs"), col_names = ibs) %>%
+ibs = read_tsv(paste0(subset_vcf_name, ".mibs.id"), 
+               col_names = c("Whatever", "ID")) %>% select(ID) %>% pull()
+related = readr::read_delim(paste0(subset_vcf_name, ".mibs"), col_names = ibs, 
+                            na = c("nan", "NA", ""), delim = "\t") %>%
   mutate(ID1 = ibs) %>%
-  pivot_longer(names_to = "ID2", values_to = "Relatedness", cols = -ID1) 
+  pivot_longer(names_to = "ID2", values_to = "Relatedness", cols = -ID1, ) 
 
 p1 = related %>%
   filter(ID1 != ID2) %>%
@@ -999,7 +1013,10 @@ temp = depth %>% add_row(CHROM = "mt", n = max_samples) %>%
   mutate(Threshold_80 = max_samples - round(n * 0.8)) %>%
   select(CHROM, Nb_present = n, Threshold_80) 
 temp
-write_tsv(temp, paste0(data_dir, "Missing_data_thresholds.tab"), col_names = F)
+```
+
+```{r, eval =F}
+#write_tsv(temp, paste0(data_dir, "Missing_data_thresholds.tab"), col_names = F)
 
 ```
 
@@ -1074,20 +1091,140 @@ ggplot(aes(x=as.numeric(CHROM), y =n, fill = Var_type)) +
   theme_minimal() +
   scale_fill_manual(values = c("#FFD399", "#ff9f1c", "#cbf3f0", "#2ec4b6"))
 
+
+
+next_steps  %>%
+  filter(Filter == "5_Filtered_80_NA") %>%
+  filter(Var_type == "Indel_2") %>%
+  filter(CHROM != "mt") %>%
+  mutate(CHROM = as.numeric(CHROM)) %>%
+  mutate(window = trunc(POS / 10000)) %>%
+  group_by(CHROM, window) %>%
+  summarize(Nb_indel_per_win = n()) %>%
+  group_by(CHROM) %>%
+  dplyr::summarize(Average = mean(Nb_indel_per_win)) %>%
+  dplyr::mutate(Chromosome_type = ifelse(as.numeric(CHROM) < 14, "core", "accessory")) %>%
+  ggplot(aes(x = reorder(as.character(CHROM), CHROM), y = Average, fill = Chromosome_type)) +
+  geom_bar(stat = "identity") +
+  theme_bw() + 
+  scale_fill_manual(values = c("#2ec4b6","#cbf3f0")) +
+  labs(title = "Number of insertions per 10kb window", 
+       x = "Chromosome", y = "Mean # insertions") +
+  theme(legend.position = "none")
 ```
 
+
+Count of variants per 10kb window and per chromosome. I also put this in the context of the number of number of copies of each chromosome across the whole sampling.
+```{r count var per chr}
+
+#Bar plot: SNPs per chromosomes
+temp = next_steps %>%
+  filter(Filter == "5_Filtered_80_NA") %>%
+  filter(Indel != "SNP") %>%
+  mutate(window = trunc(POS / 10000)) %>%
+  group_by(CHROM, window) %>%
+  summarize(Nb_indel_per_win = n()) 
+
+label1 = mean(temp$Nb_indel_per_win)
+
+p1 = temp %>%
+  group_by(CHROM) %>%
+  dplyr::summarize(Average = mean(Nb_indel_per_win)) %>%
+  filter(CHROM != "mt") %>%
+  mutate(CHROM = as.numeric(CHROM),
+         Chromosome_type = ifelse(as.numeric(CHROM) < 14, "core", "accessory")) %>%
+  ggplot(aes(x = reorder(as.character(CHROM), CHROM), y = Average, fill = Chromosome_type)) +
+  geom_bar(stat = "identity") +
+  geom_hline(yintercept = label1, linetype = "dashed", col = "grey40") + 
+  theme_bw() + 
+  scale_fill_manual(values = c("#2ec4b6","#cbf3f0")) +
+  labs(title = paste0("GW insertion number average is ", round(label1)),
+       x = "Chromosome", y = "Mean # insertions per 10kb") +
+  theme(legend.position = "none")
+
+
+#Bar plot: indels per chromosomes
+temp = next_steps %>%
+  filter(Filter == "5_Filtered_80_NA") %>%
+  filter(Indel == "SNP") %>%
+  mutate(window = trunc(POS / 10000)) %>%
+  group_by(CHROM, window) %>%
+  summarize(Nb_indel_per_win = n()) 
+label2 = mean(temp$Nb_indel_per_win)
+p2 = temp %>%
+  group_by(CHROM)   %>%
+  dplyr::summarize(Average = mean(Nb_indel_per_win)) %>%
+  filter(CHROM != "mt") %>%
+  mutate(CHROM = as.numeric(CHROM),
+         Chromosome_type = ifelse(as.numeric(CHROM) < 14, "core", "accessory")) %>%
+  ggplot(aes(x = reorder(as.character(CHROM), CHROM), y = Average, fill = Chromosome_type)) +
+  geom_hline(yintercept = label2, linetype = "dashed", col = "grey40") +
+  geom_bar(stat = "identity") +
+  theme_bw() + 
+  scale_fill_manual(values = c("#2ec4b6","#cbf3f0")) +
+  labs(title = paste0("GW SNP number average is ", round(label2, 2)),
+       x = "Chromosome", y = "Mean # SNP per 10kb") +
+  theme(legend.position = "none")
+
+
+#Lollipop chart: PAV chromosomes
+p3 = ggplot(depth, aes(x = reorder(as.character(CHROM), as.numeric(CHROM)), y = n)) +
+    geom_segment(aes(xend=reorder(as.character(CHROM), as.numeric(CHROM)), y=0, yend=1109),
+                  color="grey80", size = 1) +
+    geom_segment(aes(xend=reorder(as.character(CHROM), as.numeric(CHROM)), y=0, yend=n),
+                  color="grey20", size = 1) +
+    geom_point( color="#2ec4b6", size=4)  +
+    geom_text(aes( label = n,
+                     y= n), stat= "identity",
+              hjust = -0.5, vjust = -0.2) +
+    theme_light() +
+    theme(panel.grid.major.y = element_blank(), panel.border = element_blank(),
+          axis.ticks.x = element_blank(),
+          axis.text.x = element_text(size = 10), axis.text.y = element_text(size = 10)) +
+    ylim(c(0,max(temp$n)+ max(temp$n)*0.1)) +
+    labs(x= "Chromosome", y = "Number of isolates with chromosome") +
+    coord_flip()
+
+cowplot::plot_grid(p3, p1 + coord_flip(), p2 + coord_flip(), nrow = 1)
+```
+For one of the figures of the manuscript, I want to categorize the variants into different frequency categories, so I can get a quick comparison of low/very low freq variants between SNPs, short indels, and transposable element insertions.
 ```{r allele counts filtered}
-counts = list.files(path = vcf_qual_check_dir, 
-                    pattern = "filtered.clean.AB_filtered.variants.good_samples.frq.count", 
-                    full.names = T)  %>% 
-    map_df(~read_tsv(., skip = 1, 
-                     col_names = c("CHROM", "POS", "N_ALLELES", "N_CHR", "Count1", "Count2", "Count3"), 
-                     col_types = cols(col_character(), col_double(), col_double(), col_double(), 
-                                      col_double(), col_double(), col_double()))) %>%
+temp = all_counts %>%
+  filter(CHROM != "mt") %>%
+  mutate(CHROM = as.numeric(CHROM)) %>%
+  right_join(filter(next_steps, Filter == "5_Filtered_80_NA" & CHROM != "mt") %>% 
+               mutate(CHROM = as.numeric(CHROM))) %>%
   rowwise() %>%
   dplyr::mutate(minorAC = min(Count1, Count2, Count3, na.rm = T), 
          majorAC = max(Count1, Count2, Count3, na.rm = T),
-         freq = minorAC/N_CHR)
+         freq = minorAC/N_CHR) 
 
 
+ungroup(temp) %>%
+  filter(N_ALLELES == 2) %>%
+  dplyr::slice_sample(prop = 0.1) %>%
+  mutate(for_bar = case_when(minorAC == 1 ~ "01", 
+                             minorAC == 2 ~ "02",
+                             minorAC <= 10 ~ "10",
+                             minorAC <= 100 ~ "100",
+                             minorAC >= 100 ~ "100 +")) %>%
+  dplyr::count(for_bar, Indel) %>%
+  ggplot(aes(x = Indel, y = n, fill = for_bar)) + 
+    geom_bar(stat = "identity", position = "fill") +
+    theme_bw() +
+    scale_fill_manual(values = c("#CBF3F0", "#2EC4B6", "#1F847A", "#1B746B", "#041F1E")) 
+
+# Minor allele SFS for biallelic
+ungroup(temp) %>%
+  filter(N_ALLELES == 2) %>%
+  dplyr::slice_sample(prop = 0.1) %>%
+  ggplot(aes(minorAC, col = Indel, fill = Indel)) +
+  geom_histogram()  +
+  theme_bw() + 
+  scale_color_manual(values = c("#ff9f1c", "#2ec4b6")) +
+  scale_fill_manual(values = c("#FFD399", "#cbf3f0")) +
+  scale_y_continuous(trans = "log10") +
+  facet_wrap(vars(Indel)) +
+  theme(strip.background = element_rect(fill = "white", color = "grey40", size = 1),
+        strip.text = element_text(colour = "grey20", face = "bold"))
 ```
