@@ -139,8 +139,8 @@ genotyped_samples = read_tsv(Zt_list, col_names = "ID_file")
 ## Metadata of genotyped samples 
 temp = read_tsv(paste0(metadata_dir, metadata_name, "_Description.tab"), col_names = F) %>% pull()
 
-Zt_meta = read_tsv(paste0(metadata_dir, metadata_name, "_with_collection.tab"), 
-                 col_names = temp,
+Zt_meta = read_delim(paste0(metadata_dir, metadata_name, "_with_collection.tab"), 
+                 col_names = temp, delim = "\t",
                  na = "\\N", guess_max = 2000) %>%
   unite(Coordinates, Latitude, Longitude, sep = ";", remove = F) %>%
   inner_join(., genotyped_samples)  %>%
@@ -513,24 +513,40 @@ p1 = biases %>%
   ggplot(aes(x = MEAN_DEPTH, y = Total_insertions)) +
      geom_point(alpha = .5) +
      theme_bw()  +
-     geom_smooth()
+     geom_smooth(method = "lm")
 p2 = biases %>%
   filter(MEAN_DEPTH < 25) %>%
   ggplot(aes(x = MEAN_DEPTH, y = Total_insertions)) +
      geom_point(alpha = .5) +
      theme_bw()  +
-     geom_smooth()
+     geom_smooth(method = "lm")
 bloc = cowplot::plot_grid(p1 + theme(legend.position = "none"), p2+ theme(legend.position = "none"))
 titre = ggplot() + geom_text(aes(x = 1, y = 1, label = "Depth bias is mostly found below 20 or 25."), size = 6) + theme_void()
 cowplot::plot_grid(titre, bloc, ncol = 1, rel_heights = c(0.1, 1))
 
 
+```
 
-model = lm(Percent_TE_Reads ~ Mean_GC + MEAN_DEPTH, data = biases)
+```{r}
+model = lm(Percent_TE_Reads ~ Mean_GC + MEAN_DEPTH, data = filter(biases, MEAN_DEPTH < 25))
 summary(model)
 
-model = lm(Total_insertions ~ Mean_GC + MEAN_DEPTH, data = biases)
-summary(model)
+model = lm(Total_insertions ~ Mean_GC + MEAN_DEPTH, data = filter(biases, MEAN_DEPTH < 25))
+round(summary(model)$coefficients, 4)
+
+rsq = round(summary(model)$r.squared, 2)
+
+  
+temp = biases %>%
+  filter(MEAN_DEPTH < 25) %>%
+  pivot_longer(cols = c(Total_insertions, Percent_TE_Reads), names_to = "Method", values_to = "TE_estimate") 
+y_values = summarize(temp, max(TE_estimate))
+
+ggplot(temp, aes(x = MEAN_DEPTH, y = TE_estimate)) +
+     geom_point(alpha = .5) +
+     theme_bw()  +
+     geom_smooth(method = "lm") +
+     facet_wrap(vars(Method), scales = "free")
 
 ```
 
@@ -599,6 +615,20 @@ cowplot::plot_grid(ggplot() + theme_void() +
 
 
 # Doughnut chart of frequencies
+TE_insertions_counts %>%
+  mutate(for_bar = case_when(n == 1 ~ "01", 
+                             n == 2 ~ "02",
+                             n <= 10 ~ "10",
+                             n <= 100 ~ "100",
+                             n >= 100 ~ "100 +")) %>%
+ggplot(aes(x = 1, fill=for_bar)) +
+  geom_bar(position = "fill") +
+  theme_bw()  +
+  scale_fill_manual(values = c("#CBF3F0", "#2EC4B6", "#1F847A", "#1B746B", "#041F1E")) +
+  labs(fill = "Number of strains",
+       title = "Three quarter of all TE insertions are singletons.")
+
+
 data = TE_insertions_counts %>%
   mutate(for_bar = case_when(n == 1 ~ "01", 
                              n == 2 ~ "02",
@@ -606,7 +636,7 @@ data = TE_insertions_counts %>%
                              n <= 100 ~ "100",
                              n >= 100 ~ "100 +")) %>%
   dplyr::count(for_bar)
-  
+
 data$fraction = data$n / sum(data$n)
 data$ymax = cumsum(data$fraction) # Compute the cumulative percentages (top of each rectangle)
 data$ymin = c(0, head(data$ymax, n=-1)) # Compute the bottom of each rectangle
@@ -617,7 +647,7 @@ data$label2 <- ifelse(round(data$fraction*100) > 2, "", paste0(round(data$fracti
 ggplot(data, aes(ymax=ymax, ymin=ymin, xmax=4, xmin=3, fill=for_bar)) +
   geom_rect() +
   coord_polar(theta="y") + 
-  xlim(c(2, 4)) +
+  xlim(c(2,4)) + 
   theme_void() +
   geom_text( x=3.5, aes(y=labelPosition, label=label1), size=4) +
   geom_text( x=4.2, aes(y=labelPosition, label=label2), size=4) +
@@ -648,6 +678,8 @@ ggplot(temp, aes(x = Length, y = for_bar, fill = for_bar)) +
 
 
 ```
+
+
 
 Although most TIPs are found a low to very low frequency in our analysis, there are some that are identified in several samples. Among the TE insertions which are found multiple times, are the TIPs shared by isolates from different clusters or are they always from a single cluster?
 ```{r TIP sharedness}
@@ -929,7 +961,8 @@ cowplot::plot_grid(p1 + coord_flip() + theme(legend.position = "none"),
 ```
 Aside from the repeating pattern of low TE content in the Middle-East/Africa, the most striking difference is the European samples containing more reference insertions. Considering, that the reference genome is a sample isolated from Denmark, it is expected that other European samples would be closer.
 
-As a last confirmation, I want to try and compare the clusters intra-collection to ensure that the results observed previously can be confirmed within each collection.
+
+I know for sure that my estimates are biased, either because of depth, GC content, or both. So I want to make some more checks to ensure that I am confident in the results I show. First, I want to try and compare the clusters intra-collection to ensure that the results observed previously can be confirmed within each collection.
 
 ```{r}
 temp = TE_qty %>%
@@ -970,6 +1003,72 @@ ggplot() +
 
 ```
 
+Second, I check whether a plot and statistics including the depth of coverage still recovers the difference between groups that I have observed above.
+
+```{r check depth filtered TIP}
+
+threshold = 10 #Number of minimum presence count
+
+# 
+temp = inner_join(filter(TE_insertions_counts, n > 10), TE_insertions) %>%
+  inner_join(dplyr::select(non_pop_spe, TE_insertion)) %>%
+  group_by(ID_file, Continent) %>%
+  dplyr::count() %>%
+  inner_join(depth, by = c("ID_file" = "INDV")) 
+
+ggplot(temp, aes(x = MEAN_DEPTH, y = n, col = Continent)) +
+     geom_point(alpha = .5) +
+     theme_bw() +
+     labs(title = "Depth bias check after TIP comparison between continent",
+          subtitle = "Only non-population specific",
+          x = "Mean depth of coverage", 
+          y = paste0("Number of TIP with more than ", threshold, " presence")) +
+     Color_Continent
+
+ggplot(temp, aes(x = MEAN_DEPTH, y = n, col = Continent)) +
+     geom_point(alpha = .5) +
+     theme_bw() +
+     labs(title = "Depth bias check after TIP comparison between continent",
+          subtitle = "Only non-population specific",
+          x = "Mean depth of coverage", 
+          y = paste0("Number of TIP with more than ", threshold, " presence")) +
+     Color_Continent +
+  geom_smooth(method = "glm", formula = y~log(x), se = F, 
+                      method.args = list(family = gaussian(link = 'log')))
+
+# 
+inner_join(filter(TE_insertions_counts, n > threshold), TE_insertions) %>%
+  group_by(ID_file, Continent, Cluster) %>%
+  dplyr::count() %>%
+  inner_join(depth, by = c("ID_file" = "INDV")) %>%
+  ggplot(aes(x = MEAN_DEPTH, y = n, col = Cluster, shape = Cluster)) +
+     geom_point(alpha = .5) +
+     theme_bw() +
+     labs(title = "Depth bias check TIP comparison between continent",
+          subtitle = "All TIPs (population specific and others)",
+          x = "Mean depth of coverage", 
+          y = paste0("Number of TIP with more than ", threshold, " presence")) +
+     scale_shape_manual(values = c(0,1,2,3,4,5,6,7,8,9,10)) + 
+     Color_Cluster #+
+#    geom_smooth(method = "lm", se = F)
+inner_join(filter(TE_insertions_counts, n > threshold), TE_insertions) %>%
+  group_by(ID_file, Continent, Cluster) %>%
+  dplyr::count() %>%
+  inner_join(depth, by = c("ID_file" = "INDV")) %>%
+  ggplot(aes(x = MEAN_DEPTH, y = n, col = Cluster, shape = Cluster)) +
+     geom_point(alpha = .5) +
+     theme_bw() +
+     labs(title = "Depth bias check TIP comparison between continent",
+          subtitle = "All TIPs (population specific and others)",
+          x = "Mean depth of coverage", 
+          y = paste0("Number of TIP with more than ", threshold, " presence")) +
+     scale_shape_manual(values = c(0,1,2,3,4,5,6,7,8,9,10)) + 
+     Color_Cluster 
+
+
+model = lm(n ~ Continent + MEAN_DEPTH, data = temp)
+summary(model)
+```
 
 ### Non-guided clustering
 
@@ -979,7 +1078,7 @@ First, I will use the ngs_te_mapper2 results, and use each insertion identified 
 
 ```{r clustering insertions}
 matrice = TE_insertions %>%
-  filter(!is.na(Cluster)) %>%
+  #filter(!is.na(Cluster)) %>%
   inner_join(dplyr::select(non_pop_spe, TE_insertion)) %>%
   inner_join(filter(TE_insertions_counts, n > 5))%>%
   dplyr::count(TE_insertion, Cluster) %>%
@@ -989,14 +1088,16 @@ matrice = TE_insertions %>%
   pivot_wider(names_from = TE_insertion, values_from = Freq, values_fill = 0) 
 
 
+#Heatmap per genetic cluster
 temp = as.matrix(matrice[,c(3:ncol(matrice))])[, which(apply(as.matrix(matrice[,c(3:ncol(matrice))]), 2, var) != 0)]
 
 rownames(temp) = matrice$Cluster
 pheatmap(temp, show_colnames = F)
 
+
+#PCA per cluster
 TE.pca = prcomp(temp, center = TRUE,scale. = TRUE)
 
-#And now all against all but not interactive
 temp = as.tibble(cbind(matrice, as.data.frame(TE.pca$x))) %>%
   dplyr::select(Cluster, PC1, PC2, PC3, PC4, PC5, PC6, PC7, PC8)
 
@@ -1019,6 +1120,7 @@ p4 = ggplot(temp, aes(x = PC7, y = PC8, label = Cluster, col = Cluster)) +
 cowplot::plot_grid(p1, p2, p3, p4)
 
 
+#PCA per isolate
 matrice = TE_insertions %>%
   filter(!is.na(Cluster)) %>%
   inner_join(filter(TE_insertions_counts, n > 10)) %>%
@@ -1059,7 +1161,6 @@ cowplot::plot_grid(p1, p2, p3, p4)
 It does look like there is clustering of samples according to geography. This is interesting as it shows that the types of TEs are different in different populations.
 
 ```{r}
-
 
 
 temp = TE_insertions %>%
@@ -1164,6 +1265,9 @@ p
 
 
 ## TE insertions per chromosomes
+I want to gain some insights about where, in the genome, are these TIPs we have detected: are they on specific chromosomes? Is there a difference between core and accessory chromosomes? 
+
+I'll consider the number of TIP and normalize it by length to take into account the widely different chromosome size.
 ```{r}
 chromosomes_lengths = readxl::read_excel(paste0(metadata_dir, "Chromosomes_cumulative_lengths.xlsx")) 
 
@@ -1192,7 +1296,8 @@ cowplot::plot_grid(p1, p2, ncol = 1, rel_heights = c(1, 1.2), align = "hv")
 
 ```
 
-```{r, TE along chr}
+It looks like the accessory chromosomes might be a bit higher than the core chromosome. I also want to get finer in the scale: are there places in the genome which tend to have more TIPs than others? 
+```{r, TE win outlier}
 TE_insertions_per_window = TE_insertions %>%
   mutate(CHR = as.numeric(CHR),
          window = trunc(((position + end)/2)/10000)) %>%
@@ -1248,7 +1353,12 @@ filter(TE_insertions_per_window, as.numeric(CHR) >= 14) %>%
 
 ```
 
+
+
 ```{r acc vs core TE}
+label1 = ungroup(TE_insertions_per_window) %>%
+  filter(!is.na(CHR)) %>%
+  dplyr::summarize(Average = mean(n)) %>% pull()
 p1 = ungroup(TE_insertions_per_window) %>%
   filter(!is.na(CHR)) %>%
   group_by(CHR) %>%
@@ -1256,10 +1366,11 @@ p1 = ungroup(TE_insertions_per_window) %>%
   dplyr::mutate(Chromosome_type = ifelse(CHR < 14, "core", "accessory")) %>%
   ggplot(aes(x = reorder(as.character(CHR), CHR), y = Average, fill = Chromosome_type)) +
   geom_bar(stat = "identity") +
+  geom_hline(yintercept = label1, linetype = "dashed", col = "grey40") + 
   theme_bw() + 
   scale_fill_manual(values = c("#2ec4b6","#cbf3f0")) +
-  labs(title = "Number of insertions per 10kb window", 
-       x = "Chromosome", y = "Mean # insertions") +
+  labs(title = paste0("GW TIP number average is ", round(label1, 2)), 
+       x = "Chromosome", y = "Mean # TIPs per 10kb") +
   theme(legend.position = "none")
 
 
@@ -1291,6 +1402,7 @@ ungroup(TE_insertions_per_window) %>%
 ungroup(TE_insertions_per_window) %>% dplyr::count(outlier) 
 ```
 
+There is one window that is much higher than anything else on chromosome 12. This is strange, so I started looking more specifically at this partilar locus. Is the increase in TIPs due to only one type of TE? Is it even more localized than the 10kb-window I've looked at?
 
 ```{r weird outlier chr12}
 temp = TE_insertions %>% filter(CHR == 12) %>%
@@ -1319,11 +1431,11 @@ temp %>%
 
 
 ```{r}
-bind_rows(read_tsv(paste0(TE_RIP_dir, "Non-ref_all_strains.bed"), 
-           col_names = c("ID_file", "chromosome", "position", "end", "info", "score", "strand")) %>%
+bind_rows(read_delim(paste0(TE_RIP_dir, "Non-ref_all_strains.bed"), 
+           col_names = c("ID_file", "chromosome", "position", "end", "info", "score", "strand"), delim = "\t") %>%
              mutate(ref_non_ref_TIP = "non_ref"),
-          read_tsv(paste0(TE_RIP_dir, "Ref_all_strains.bed"), 
-           col_names = c("ID_file", "chromosome", "position", "end", "info", "score", "strand")) %>%
+          read_delim(paste0(TE_RIP_dir, "Ref_all_strains.bed"), 
+           col_names = c("ID_file", "chromosome", "position", "end", "info", "score", "strand"), delim = "\t") %>%
              mutate(ref_non_ref_TIP = "ref")) %>%
   separate(col = chromosome, into = c("X1", "CHR", "X2", "X3", "X4"), sep = "_") %>%
   separate(col = info, into = c("TE_family", "TSD", "Allele_Frequency", "3_support", "5_support", "ref_reads"), sep = "\\|") %>%
@@ -1333,7 +1445,8 @@ bind_rows(read_tsv(paste0(TE_RIP_dir, "Non-ref_all_strains.bed"),
   write_tsv(paste0(TE_RIP_dir, "Insertions.real.bed"), col_names = F)
   
 
-gff = read_tsv(gff_file, col_names = c("CHR", "X1", "mRNA", "Start", "Stop", "X2", "X3", "X4", "Annot"))  %>%
+gff = read_delim(gff_file, col_names = c("CHR", "X1", "mRNA", "Start", "Stop", "X2", "X3", "X4", "Annot"), 
+                 delim = "\t", comment = "#")  %>%
   filter(mRNA == "mRNA") %>%
   separate(col = Annot, into = c("ID", "Parent", "Name"), sep = ";") %>%
   mutate(Name = str_remove(Name, "Name=")) 
@@ -1349,9 +1462,9 @@ gff = read_tsv(gff_file, col_names = c("CHR", "X1", "mRNA", "Start", "Stop", "X2
 ```
 
 ```{r}
-distance_TE_genes = read_tsv(paste0(TE_RIP_dir, "Insertions_closest_genes.tab"),
+distance_TE_genes = read_delim(paste0(TE_RIP_dir, "Insertions_closest_genes.tab"),
          col_names = c("CHR", "position", "end", "TE_family", "X5", "X1", "mRNA", 
-                       "Start", "Stop", "X2", "X3", "X4", "Annot", "Distance")) %>%
+                       "Start", "Stop", "X2", "X3", "X4", "Annot", "Distance"), delim = "\t") %>%
   dplyr::select(-c(X1, X2, X3, X4, X5, mRNA)) %>% 
   mutate(CHR = as.character(CHR)) %>%  
   mutate(position = 100*trunc(position/100), end = 100*trunc(end/100)) %>%
@@ -1404,16 +1517,16 @@ cowplot::plot_grid(p1, p2)
 
 
 #
-temp = inner_join(read_tsv(paste0(TE_RIP_dir, "Insertions_closest_genes.downstream.tab"),
+temp = inner_join(read_delim(paste0(TE_RIP_dir, "Insertions_closest_genes.downstream.tab"),
          col_names = c("CHR", "position", "end", "TE_family", "X5", "X1", "mRNA", 
-                       "Start", "Stop", "X2", "X3", "X4", "Annot", "Distance")) %>% 
+                       "Start", "Stop", "X2", "X3", "X4", "Annot", "Distance"), delim = "\t") %>% 
   mutate(CHR = as.character(CHR)) %>%  
   mutate(position = 100*trunc(position/100), end = 100*trunc(end/100)) %>%
   unite(TE_family, CHR, position, end, col = "TE_insertion", sep = ":", remove = F) %>%
   dplyr::select(TE_insertion, Distance_downstream = Distance),
-  read_tsv(paste0(TE_RIP_dir, "Insertions_closest_genes.upstream.tab"),
+  read_delim(paste0(TE_RIP_dir, "Insertions_closest_genes.upstream.tab"),
          col_names = c("CHR", "position", "end", "TE_family", "X5", "X1", "mRNA", 
-                       "Start", "Stop", "X2", "X3rm", "X4", "Annot", "Distance")) %>% 
+                       "Start", "Stop", "X2", "X3rm", "X4", "Annot", "Distance"), delim = "\t") %>% 
   mutate(CHR = as.character(CHR)) %>%  
   mutate(position = 100*trunc(position/100), end = 100*trunc(end/100)) %>%
   unite(TE_family, CHR, position, end, col = "TE_insertion", sep = ":", remove = F) %>%
@@ -1463,7 +1576,8 @@ I now look at the repeat-induced point mutations in reads that map on the differ
 #while read p; do fichier_list=$(ls -1 /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/3_RIP_estimation/${p}\.*txt) ; for fichier in $fichier_list; do short_name=$(echo $fichier | cut -f 8 -d "/" | cut -f 2 -d "." ) ; comp=$(grep Composite $fichier) ; echo $p $short_name $comp ;  done; done < Keep_lists_samples/Ztritici_global_March2021.genotyped.good_samples.args > /data2/alice/WW_project/4_TE_RIP/0_RIP_estimation/Composite_index.txt 
 
 RIP=read_delim(paste0(RIP_DIR, "Composite_index.txt"),
-             col_names = c("ID_file", "TE",  "Variable", "Composite_median", "Composite_mean" ), delim = " ") %>%
+             col_names = c("ID_file", "TE",  "Variable", "Composite_median", "Composite_mean" ), 
+             delim = " ", na = c("nan", "NA", "")) %>%
   separate(TE, into = c("Superfamily", "TE_id"), sep = "_", remove = F, extra = "merge") %>%
   mutate(Order = ifelse(!grepl('^D',TE), "Class II (DNA transposons)", "Class I (retrotransposons)"))%>%
   left_join(Zt_meta %>% dplyr::select(Continent, Country, Collection, ID_file)) %>%
@@ -1588,9 +1702,9 @@ temp %>%
 #As relating to TE size
 #NB: in the following plot, the alpha parameter is set to make the TE without any reads (or near so) invisible
 #This means that not all consensus are visible. In particular, some, annotated  by Ursula as "verylowcopy" are not.
-TE_consensus_faidx =read_tsv(paste0(TE_RIP_dir, "Badet_BMC_Biology_2020_TE_consensus_sequences.fasta.fai"),
+TE_consensus_faidx =read_delim(paste0(TE_RIP_dir, "Badet_BMC_Biology_2020_TE_consensus_sequences.fasta.fai"),
              col_names = c("TE",  "length",  "offset",  
-             "number of bases per line",  "number of bytes per line"))
+             "number of bases per line",  "number of bytes per line"), delim = "\t")
 
 p = inner_join(RIP, TE_consensus_faidx) %>%
   dplyr::group_by(Order, TE, length) %>%
@@ -1726,8 +1840,9 @@ The RIP index does seem consistent so far with what Cécile has found, with high
 ## RIP along the chromosomes
 
 ```{r, fig.height = 5}
-RIP_in_high_copies_TE = read_tsv(paste0(TE_RIP_dir, "All_genomes.all_TEs.GC.RIP.tab"),
-             col_names = c("Sample", "Seq_ID", "GC", "Product_index", "Substrate_index", "Composite_index"))
+RIP_in_high_copies_TE = read_delim(paste0(TE_RIP_dir, "All_genomes.all_TEs.GC.RIP.tab"),
+             col_names = c("Sample", "Seq_ID", "GC", "Product_index", "Substrate_index", "Composite_index"),
+             delim = "\t")
 
 temp = RIP_in_high_copies_TE %>%
   separate(Seq_ID, into = c("Sample", "Chrom", "Start", "End"),
@@ -2490,9 +2605,9 @@ stand = left_join(TE_RIP, duplicated_loci) %>%
   dplyr::select(ID_file, Percent_TE_Reads, Composite_median, Composite_mean, Acc_chr, Duplicated_genes, Non_ref_insertions) %>%
   pivot_longer(cols = -c(ID_file), names_to = "Variable", values_to = "Value") %>%
   group_by(Variable) %>%
-  mutate(Standard_value = scale(Value)) %>%
+  dplyr::mutate(Standard_value = scale(Value)) %>%
   dplyr::select(-Value) %>%
-  pivot_wider(names_from = Variable, values_from = Standard_value)
+  pivot_wider(names_from = Variable, values_from = Standard_value, values_fn = length)
 
 
 #The fam file should be same for all core chromosomes, hopefully. So I only have to create one to get the file format including the phenotypes. This can then be used for all chromosomes.
@@ -2502,7 +2617,7 @@ temp2 = left_join(read_tsv(Zt_list, col_names = "ID_file") %>% mutate(ID2 = ID_f
   inner_join(., stand) 
 
 dplyr::select(temp2, -Latitude, -Longitude) %>%
- write_delim(., paste0(TE_RIP_dir, "Phenotypes_for_GWAS.fam"), delim = " ", col_names = F)
+ write_delim(file = paste0(TE_RIP_dir, "Phenotypes_for_GWAS.fam"), delim = " ", col_names = F)
 
 #Adding PC info as covariates
 left_join(read_tsv(Zt_list, col_names = "ID_file"), read_tsv(paste0(PopStr_dir, vcf_name, ".PCA_results.tab"))) %>%
@@ -2642,7 +2757,7 @@ significant_TE %>% dplyr::select(CHR, Locus_nb, Phenotype) %>%
 
 For each region, I would like to be able to get more information about the variants: what is the distribution of the alleles compared to the phenotype with which this position was significantly associated? What is the minor allele frequency at this locus? Since it is impossible to represent all thousands of associated variants, I chose one position in particular for each significant locus identified previously. 
 ```{r one pos per locus}
-i=2
+#i=2
 min_length_locus = 1000
 
 whatever <- function(min_length_locus, pheno, expected_output){
@@ -2651,23 +2766,25 @@ whatever <- function(min_length_locus, pheno, expected_output){
     group_by(CHR, Locus_nb) %>%
     mutate(Locus_length = 1 + max(BP) - min(BP)) %>%
     filter(Locus_length >= min_length_locus) %>%
-    mutate(Rank = rank(P)) %>%
+    dplyr::mutate(Rank = rank(P)) %>%
     arrange(Rank) %>%
     ungroup() %>%
     filter(Rank == 1) %>%
     dplyr::select(SNP, CHR, BP)
-  
+
   relevant_pheno = TE_RIP %>% 
     dplyr::select(ID_file, TE = Percent_TE_Reads, RIP_med = Composite_median, RIP_mean = Composite_mean) %>%
     pivot_longer(cols = -c(ID_file), names_to = "Phenotype", values_to = "Value") %>%
     filter(Phenotype == pheno)
+
   
-  temp = read_tsv(paste0(TE_RIP_dir, "2_GWAS/Significant_TE.ann.tab"), na = ".") %>%
+  temp = read_delim(paste0(TE_RIP_dir, "2_GWAS/Significant_TE.ann.tab"), na = c("."), delim = "\t") %>%
     inner_join(temp, by = c("CHROM" = "CHR", "POS" = "BP")) %>%
     pivot_longer(-c(CHROM, POS, REF, ALT, SNP), 
                  names_to = "ID_file", values_to = "Allele") %>%
     inner_join(., relevant_pheno) %>%
     filter(Allele != "NA")
+
   
   if (expected_output == "plot"){
   temp  %>%
@@ -2840,9 +2957,13 @@ Manhattan_one_pheno("RIP_med", c("#cbf3f0", "#2ec4b6")) +
 #min_coord = 800048
 #max_coord = 1129645
 
-chromosome = 3
-min_coord = 3190000
-max_coord = 3218000
+#chromosome = 3
+#min_coord = 3190000
+#max_coord = 3218000
+
+chromosome = 5
+min_coord = 220000
+max_coord = 270000
 genes_to_highlight = c("Zt09_model_5_00047")
 TE_gff = "~/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/Cecile_IPO323_refTEs_match.gff"
 gene_gff = "~/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/Zymoseptoria_tritici.MG2.Grandaubert2015.mRNA.gff3"

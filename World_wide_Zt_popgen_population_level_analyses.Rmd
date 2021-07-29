@@ -33,7 +33,6 @@ library(maps)
 library(geosphere)
 
 #Data wrangling and data viz
-library(tidyverse)
 library(purrr)
 library(RColorBrewer)
 library(plotly)
@@ -48,6 +47,7 @@ library(igraph)
 library(ggraph)
 library(ggtext)
 library(scatterpie)
+library(tidyverse)
 
 #Pop structure and pop genomic
 library(GenomicFeatures)
@@ -152,7 +152,7 @@ genotyped_samples = read_tsv(Zt_list, col_names = "ID_file")
 ## Metadata of genotyped samples 
 temp = read_tsv(paste0(metadata_dir, metadata_name, "_Description.tab"), col_names = F) %>% pull()
 
-Zt_meta = read_tsv(paste0(metadata_dir, metadata_name, "_with_collection.tab"), 
+Zt_meta = read_delim(paste0(metadata_dir, metadata_name, "_with_collection.tab"), 
                  col_names = temp,
                  na = "\\N", guess_max = 2000) %>%
   unite(Coordinates, Latitude, Longitude, sep = ";", remove = F) %>%
@@ -161,7 +161,9 @@ Zt_meta = read_tsv(paste0(metadata_dir, metadata_name, "_with_collection.tab"),
   mutate(Country = ifelse(Country == "Australia", paste(Country, Region, sep = "_"), Country)) %>%
   mutate(Country = ifelse(Country == "NZ", "New Zealand", Country)) %>%
   mutate(Country = ifelse(Country == "CH", "Switzerland", Country)) %>%
-  mutate(Latitude2 = round(Latitude, 2), Longitude2 = round(Longitude, 2))
+  mutate(Latitude2 = round(Latitude, 2), Longitude2 = round(Longitude, 2)) %>%
+  dplyr::select(ID_file, Sampling_Date, Collection,
+                Country, Continent, Latitude, Longitude, Latitude2, Longitude2)
 
 #genotyped_samples %>%
 #  filter(!(ID_file %in% filtered_samples$ID_file)) %>%
@@ -638,98 +640,6 @@ __Methods__: Analyses to create would be:
  * Map with cluster if clusters #TODO
 
 
-## Principal Component Analysis
-
-### PCA with all continents
-As a first method to investigate the population structure of _Z.tritici_ at the world-wide scale, I chose to do a principal component analysis based on a subset of the SNPs. This PCA confirms previous results of a geographically structured species. Oceania emerges quite distincly as three separate clusters: one in New-Zealand and two Australian (see below for a more in-depth analysis of this pattern). North-America is also quite serapate. The distinction between the rest of the geographical location is not clear in this PCA, although PC3 might show a slight differenciation between Europe and the Middle-East.
-
-
-
-```{r PCA All run and plot, results = F}
-snpgdsVCF2GDS(paste0(vcf_dir, vcf_name, ".recode.vcf"),
-              paste0(PopStr_dir, vcf_name, ".recode.gds"), method="biallelic.only")
-genofile <- snpgdsOpen(paste0(PopStr_dir, vcf_name, ".recode.gds"))
-pca <-snpgdsPCA(genofile)
-snpgdsClose(genofile)
-
-pca2 = as_tibble(pca$eigenvect) %>% dplyr::select(V1:V8)
-colnames(pca2) = c("PC1", "PC2", "PC3", "PC4", "PC5", "PC6", "PC7", "PC8")
-pca2 = pca2 %>%
-  dplyr::mutate(sample_id = pca$sample.id ) %>%
-  dplyr::right_join(., Zt_meta, by = c("sample_id" = "ID_file")) %>%
-  unite(sample_id, Country, col = "for_display", remove = F) %>%
-  filter(!is.na(PC1))
-
-#Writing table to store PCA results
-pca2 %>%
-dplyr::select(ID_file = sample_id, PC1, PC2, PC3, PC4, PC5, PC6, PC7, PC8, 
-              Collection, Continent, Country, Latitude, Longitude) %>%
-write_tsv(., file = paste0(PopStr_dir, vcf_name, ".PCA_results.tab"),
-            col_names = T)
-
-#
-as.tibble(pca$eigenval[!is.na(pca$eigenval)]) %>%
-  ggplot(aes(x = c(1:length(pca$eigenval[!is.na(pca$eigenval)])),
-             y =value)) + 
-  geom_point() +
-  theme_bw()
-
-eigen_sum = sum(pca$eigenval[!is.na(pca$eigenval)])
-p1 = ggplot(pca2, aes(x = PC1, y= PC2, text = for_display)) +
-  geom_point(aes(color = Continent)) +
-  labs(x = paste0("PC 1 (", round(pca$eigenval[1]*100/eigen_sum, 2), "%)"),
-       y = paste0("PC 2 (", round(pca$eigenval[2]*100/eigen_sum, 2), "%)")) +
-  Color_Continent +
-  theme_bw()
-
-p2 = ggplot(pca2, aes(x = PC3, y= PC4, text = for_display)) +
-  geom_point(aes(color = Continent), alpha = .4) +
-  labs(x = paste0("PC 3 (", round(pca$eigenval[3]*100/eigen_sum, 2), "%)"),
-       y = paste0("PC 4 (", round(pca$eigenval[4]*100/eigen_sum, 2), "%)")) +
-  Color_Continent +
-  theme_bw()
-
-p3 = ggplot(pca2, aes(x = PC5, y= PC6, text = for_display)) +
-  geom_point(aes(color = Continent), alpha = .4) +
-  labs(x = paste0("PC 5 (", round(pca$eigenval[5]*100/eigen_sum, 2), "%)"),
-       y = paste0("PC 6 (", round(pca$eigenval[6]*100/eigen_sum, 2), "%)")) +
-  Color_Continent +
-  theme_bw()
-
-p4 = ggplot(pca2, aes(x = PC7, y= PC8, text = for_display)) +
-  geom_point(aes(color = Continent), alpha = .4) +
-  labs(x = paste0("PC 7 (", round(pca$eigenval[7]*100/eigen_sum, 2), "%)"),
-       y = paste0("PC 8 (", round(pca$eigenval[8]*100/eigen_sum, 2), "%)")) +
-  Color_Continent +
-  theme_bw()
-cowplot::plot_grid(p1 + theme(legend.position = "none"), p2 + theme(legend.position = "none"), 
-                   p3 + theme(legend.position = "none"), p4 + theme(legend.position = "none"))
-
-
-
-```
-
-
-
-
-
-``` {r PCA ggpairs}
-ggplot2::theme_set(theme_light())
-p = ggpairs(pca2, columns = c(1:6),
-            ggplot2::aes(col=Continent, fill = Continent, alpha = 0.6),
-            title = "PCA based thinned SNPs",
-            upper = list(continuous = "points", combo = "box_no_facet"))
-
-for(i in 1:p$nrow) {
-  for(j in 1:p$ncol){
-    p[i,j] <- p[i,j] + theme_light() + Color_Continent + Fill_Continent
-  }
-}
-
-p
-```
-
-
 ## Structure-like clustering
 
 The clustering here is done by using the snmf method from the LEA R package (http://membres-timc.imag.fr/Olivier.Francois/LEA/) on the same subset of SNPs as the PCA, but without any missing data. I ran the analysis for a K (number of cluster inferred) ranging from 1 to 15 and with 10 repeats for each K.
@@ -754,8 +664,8 @@ datamash transpose < ~/Documents/Postdoc_Bruce/Projects/WW_project/2_Population_
 ```
 
 ```{r run snmf, eval =F}
-project = snmf(paste0(PopStr_dir, vcf_name, ".geno"), K=1:15, entropy = TRUE,
-                        repetitions = 10, project = "new", ploidy = 1)
+#project = snmf(paste0(PopStr_dir, vcf_name, ".geno"), K=1:15, entropy = TRUE,
+#                        repetitions = 10, project = "new", ploidy = 1)
 ```
 
 
@@ -900,7 +810,7 @@ for (i in K_list){
   colnames(cross_ent[[i]] ) <- c("Run", "Crossentropy", "K")
 }
 cross_ent = bind_rows(cross_ent)
-temp = cross_ent %>% group_by(K) %>% summarize(average = mean(Crossentropy), minimum = min(Crossentropy))
+temp = cross_ent %>% group_by(K) %>% dplyr::summarize(average = mean(Crossentropy), minimum = min(Crossentropy))
 
 p1 = ggplot() +
   geom_point(data = cross_ent, aes(x = as.factor(K), y = Crossentropy), alpha = 0.4, size = 2, col = "#82c0cc") +
@@ -914,7 +824,7 @@ p2 = pure_by_threshold %>%
   dplyr::group_by(Cluster, K) %>%
   dplyr::count()%>%
   group_by(K) %>%
-  summarize(Size_smallest_cluster = min(n)) %>%
+  dplyr::summarize(Size_smallest_cluster = min(n)) %>%
   ggplot(aes(x = as.factor(K), label = Size_smallest_cluster)) +
     geom_bar(aes(y = Size_smallest_cluster, fill = K), stat = "identity") + 
     theme_cowplot() +
@@ -994,12 +904,17 @@ max_continent = dplyr::count(high_anc_coef_snmf, Cluster, Continent) %>%
 
 clusters = dplyr::count(high_anc_coef_snmf, Cluster, Continent)
 
-ggplot(high_anc_coef_snmf, aes(x = Cluster, fill = Continent)) +
-  geom_bar() +
-  theme_cowplot() +
-  labs(x = element_blank(), y = "Number of samples") +
-  theme(axis.text.x = element_text(angle = 40, hjust = 1, vjust = 1)) +
-  Fill_Continent
+high_anc_coef_snmf %>% 
+  dplyr::count(Cluster, Continent) %>%
+  group_by(Cluster) %>%
+  dplyr::mutate(Nb_per_cluster = sum(n)) %>%
+  filter(!is.na(Continent)) %>%
+  ggplot(aes(x = reorder(Cluster, Nb_per_cluster), y = n, fill = Continent)) +
+    geom_bar(stat = "identity") +
+    theme_bw() +
+    labs(x = element_blank(), y = "Number of samples") +
+    theme(axis.text.x = element_text(angle = 40, hjust = 1, vjust = 1)) +
+    Fill_Continent
 
 #Files with all pure isolates per cluster
 for (cluster in max_continent %>% pull(Cluster)) {
@@ -1026,9 +941,10 @@ for (cluster in max_continent %>% pull(Cluster)) {
 }
 
 ```
-For each country, we would like to identify which cluster is the local cluster. Here we define this with "votes": the cluster to which more than half of the non-admixed isolates are originating is considered to be the local cluster. Once, we have identified the local cluster, we can quantify for each country to isolates which are non-admixed (or "pure") isolates from the local cluster, non-admixed from another cluster, or hybrid.
 
-```{r Hybrid category per country}
+The clustering data can also be represented as an average of ancestry coefficient per country. This is done here first with barplots. 
+```{r per country ancestry coef}
+
 chosen_coef = snmf_results_per_K %>% 
   filter(K == chosen_K) %>%
   filter(Country != "NA") %>%
@@ -1038,21 +954,155 @@ chosen_coef = snmf_results_per_K %>%
 #Identifying the main cluster per country
 cluster_per_country = high_anc_coef_snmf %>%
   group_by(Country, Cluster) %>%
-  summarise(n = n()) %>%
-  mutate(freq = n / sum(n)) %>%
+  dplyr::summarise(n = n()) %>%
+  dplyr::mutate(freq = n / sum(n)) %>%
   filter(freq > 0.5) %>%
   dplyr::select(Country, Main_country_cluster = Cluster)
 
+# Cluster composition per country for all continents
+temp = chosen_coef %>%
+  group_by(Continent, Country, Cluster) %>%
+  dplyr::summarize(average_coef = mean(Admix_coef),
+                   Nb_per_country = n()) %>%
+  dplyr::mutate(Cluster2 = ifelse(average_coef < 0.1, "Other", Cluster))  %>%
+  filter(Nb_per_country >= 6) 
+
+#Bar plot per country
+temp %>% filter(Continent != "NA") %>%
+  filter(Continent != "Asia") %>%
+  ggplot(aes(x = Country, y = average_coef, fill = Cluster2))  + 
+    geom_bar(stat = "identity") +
+    scale_fill_manual(values = c("grey", K_colors) ) + 
+    theme_cowplot() +
+     labs(subtitle = "All continents, limited to countries with 6 or more isolates",
+         title = "Cluster ancestry per country",
+         y = "Average of the ancestry coefficient", fill = "Cluster") +
+    facet_grid(cols = vars(Continent), switch = "x", scales = "free_x", space = "free_x") +
+    theme(axis.title.x = element_blank(), 
+          axis.title.y = element_text(size = 12),
+          axis.text.x = element_text(angle = 50, hjust = 1, vjust = 1, size = 8),
+          axis.text.y = element_text(hjust = 1, vjust = 1, size = 10),
+          panel.spacing = unit(0, "lines"), 
+          strip.background = element_blank(),
+          strip.placement = "bottom",
+          strip.text = element_text(size = 10),
+          legend.position = "bottom")
+
+```
+Such visualization is useful but not as intuitive as a map! Let's use the same summarising method but with a more local viewpoint (I use rounded coordinates instead of country).
+```{r scatter pies}
+#Summarizing based on samples found in neighbouring areas
+temp = chosen_coef  %>%
+  mutate(Latitude = round(Latitude/2)*2, Longitude = round(Longitude/2)*2)%>%
+  group_by(Continent, Country, Cluster, Longitude, Latitude) %>%
+  summarize(average_coef = mean(Admix_coef), number_of_isolates = n()) %>%
+  filter(!is.na(Latitude))
+
+write_tsv(temp, file = paste0(PopStr_dir, vcf_name, ".chosen_coef_pies.tab"))
+
+#Transforming to fit the scatter pie requirements
+pies  = temp %>% #filter(number_of_isolates > 2) %>%
+  mutate(Cluster2 = ifelse(average_coef < 0.1, "Other", Cluster)) %>%
+  group_by(Continent, Longitude, Latitude, Country, Cluster2, number_of_isolates) %>%
+  dplyr::summarize(to_plot = sum(average_coef)) %>%
+  arrange(Cluster2) %>%
+  pivot_wider(names_from = Cluster2, values_from = to_plot, values_fill = 0) %>%
+  mutate(radius = ifelse(number_of_isolates > 10, 1.5, log(number_of_isolates))) %>%
+  dplyr::select(-number_of_isolates)  
+
+
+
+
+# Simple map of the world
+K_colors = c("#0D6E82", #V1 Aus (TAS)
+             "#49810E", #V10 USA
+             "#E16684", #V11 North Africa
+             "#FFBA0A", #V2 Europe
+             "#C7F1F9", #V3 NZ
+             "#21C7E8", #V4 Australia (NSW)
+             "#8FA253", #V5 Uruguay + Argentina
+             "#650104", #V6 Israel + Turkey
+             "#DE020A", #V7 Iran
+             "#2A4908", #V8 Canada
+             "#B3C186") #V9 Boliva + Chile + Ecuador
+
+
+map1 = ggplot() + 
+  theme_void() +
+  geom_polygon(data = map_data("world"), aes(x=long, y = lat, group = group), fill="#ede7e3")  +
+  scale_size("Number of genomes", limits = c(1, max_circle))  +
+  theme(legend.position = "None", 
+        panel.border  = element_rect(fill=NA, colour = "grey",size = 0.5, linetype = 1)) +
+    scale_fill_manual(values = c(c("grey"), K_colors))
+
+#Splitting the map into our 3 main focus areas
+p1 = map1 + coord_cartesian(xlim=c(-20, 60), ylim=c(20, 70)) + 
+  geom_scatterpie(data = pies, mapping = aes(x=Longitude, y=Latitude, group=Country, r = radius), 
+                  cols = c("Other", "V1", "V10", "V11", "V2", "V3", "V4", 
+                           "V5", "V6", "V7", "V8", "V9"), color=NA, alpha=.8)
+p2 = map1 + coord_cartesian(xlim=c(-160, -40), ylim=c(-80, 80)) + 
+  geom_scatterpie(data = pies, mapping = aes(x=Longitude, y=Latitude, group=Country, r = radius*2), 
+                   cols = c("Other", "V1", "V10", "V11", "V2", "V3", "V4", 
+                           "V5", "V6", "V7", "V8", "V9"), color=NA, alpha=.8)
+p3 = map1 + coord_cartesian(xlim=c(115, 185), ylim=c(-65, 10)) + 
+  geom_scatterpie(data = pies, mapping = aes(x=Longitude, y=Latitude, group=Country, r = radius*2), 
+                   cols = c("Other", "V1", "V10", "V11", "V2", "V3", "V4", 
+                           "V5", "V6", "V7", "V8", "V9"), color=NA, alpha=.8)
+
+#Plotting all the maps together! 
+aus_map = cowplot::plot_grid(p3, get_legend(p1), ncol = 2, rel_widths = c(1, 0.75))
+ligne = cowplot::plot_grid(p1, aus_map, ncol = 1,  rel_heights = c(1, 0.7))
+cowplot::plot_grid(p2, ligne, ncol = 2, rel_widths = c(0.75, 1)) 
+
+#ggsave(paste0(fig_dir, "Str_scatter_pie.pdf"), width = 18, height = 10, units = "cm")
+```
+For each country, we define the local cluster with "votes": the cluster to which more than half of the non-admixed isolates are originating is considered to be the local cluster. We can quantify for each country the isolates which are non-admixed (or "pure") isolates from the local cluster, non-admixed from another cluster, or hybrid.
+
+```{r Hybrid category per country}
 
 #For each sample, identify if is hybrid, local pure or pure from somewhere else.
 status_admix = inner_join(chosen_coef, cluster_per_country) %>% 
   group_by(Sample, Continent, Country) %>%
-  mutate(max_admix = max(Admix_coef),
+  dplyr::mutate(max_admix = max(Admix_coef),
          max_cluster = ifelse(Admix_coef == max_admix, Cluster, "")) %>%
   filter(max_cluster != "") %>%
-  mutate(Status = ifelse(max_admix < chosen_threshold, "Hybrid",
+  dplyr::mutate(Status = ifelse(max_admix < chosen_threshold, "Hybrid",
                          ifelse(max_cluster == Main_country_cluster, "Pure local", 
                                 "Pure other")))
+
+# Summary of hybrid category per country
+temp = status_admix %>% 
+  group_by(Continent, Country, Main_country_cluster) %>% 
+  dplyr::count(Status)
+
+## As table
+kable(pivot_wider(temp, names_from = Status, values_from = n, values_fill = 0))
+
+## As a figure
+ungroup(temp) %>%
+  dplyr::mutate(Nb_per_country = sum(n)) %>%
+  filter(Nb_per_country >= 10) %>%
+  ggplot(aes(x = Country, y = n, fill = Status)) +
+    geom_bar(stat = "identity", position = "fill") + 
+    theme_cowplot() +
+    scale_fill_manual(values =c("#16697a", "#EDE7E3", "#82c0cc")) +
+    labs(y = "Proportion of isolates")+
+    facet_grid(rows = vars(Continent), switch = "y", scales = "free_y", space = "free_y") +
+    theme(axis.title.y = element_blank(), 
+          axis.title.x = element_text(size = 14),
+          axis.text.x = element_text(size =10),
+          axis.text.y = element_text(hjust = 1, vjust = 1, size = 8),
+          panel.spacing = unit(0, "lines"), 
+          strip.background = element_blank(),
+          strip.placement = "bottom",
+          strip.text = element_text(size = 10),
+          legend.position = "top") +
+  coord_flip()
+    #facet_wrap(vars(Continent), scales = "free")
+```
+
+
+```{r Hybrids and pure non local}
 
 #Table hybrids assigned to several clusters, and pure foreign
 temp = inner_join(chosen_coef, 
@@ -1070,120 +1120,178 @@ opts <- options(knitr.kable.NA = "")
 kable(temp, digits = 3, )
 write_tsv(x = temp, file = paste0(PopStr_dir, "Hybrids_and_pure_foreign.tab"))
 
-# Summary of hybrid category per country
-## As table
-kable(status_admix %>% group_by(Country) %>% 
-  dplyr::count(Status) %>% 
-  pivot_wider(names_from = Status, values_from = n, values_fill = 0))
-
-## As a figure
-ggplot(status_admix, aes(x = Country, fill = Status)) +
-  geom_bar(position = "fill") + 
-  theme_cowplot() +
-  theme(axis.title.x = element_blank(), 
-        axis.text.x = element_text(angle = 50, hjust = 1, vjust = 1, size = 10)) +
-  scale_fill_manual(values =c("#16697a", "#EDE7E3", "#82c0cc")) +
-  facet_wrap(vars(Continent), scales = "free")
-
-
-
-```
-The clustering data can also be represented as an average of ancestry coefficient per country. This is done here first with barplots. 
-```{r per country ancestry coef}
-# Cluster composition per country for all continents
-temp = chosen_coef %>%
-  group_by(Continent, Country, Cluster) %>%
-  summarize(average_coef = mean(Admix_coef)) %>%
-  mutate(Cluster2 = ifelse(average_coef < 0.1, "Other", Cluster)) 
-
-#Plot for all continents
-temp %>% filter(Continent != "NA") %>%
-  filter(Continent != "Asia") %>%
-  ggplot(aes(x = Country, y = average_coef, fill = Cluster2))  + 
-    geom_bar(stat = "identity") +
-    scale_fill_manual(values = c("grey", K_colors) ) +
-    facet_wrap(vars(Continent), scales = "free") +
-    theme_bw() +
-    labs(subtitle = "All continents",
-         title = "Cluster ancestry per country",
-         xlab = "Average of the ancestry coefficient")
-
-# For North American countries only
-temp %>%
-  filter(Continent == "North America")  %>%
-  ggplot(aes(x = Country, y = average_coef, fill = Cluster2)) + 
-    geom_bar(stat = "identity") +
-    scale_fill_manual(values = c("grey", K_colors) ) +
-    theme_bw()+
-  theme(axis.title.x = element_blank(), 
-        axis.text.x = element_text(angle = 50, hjust = 1, vjust = 1, size = 10))  +
-    labs(subtitle = "North America",
-         title = "Cluster ancestry per country",
-         xlab = "Average of the ancestry coefficient")
-
-# For European countries only
-temp %>%
-  filter(Continent == "Europe")  %>%
-  ggplot(aes(x = Country, y = average_coef, fill = Cluster2)) + 
-    geom_bar(stat = "identity") +
-    scale_fill_manual(values = c("grey", K_colors) ) +
-    theme_bw()+
-  theme(axis.title.x = element_blank(), 
-        axis.text.x = element_text(angle = 50, hjust = 1, vjust = 1, size = 10))  +
-    labs(subtitle = "Europe",
-         title = "Cluster ancestry per country",
-         xlab = "Average of the ancestry coefficient")
-```
-Such visualization is useful but not as intuitive as a map! Let's use the same summarising method but with a more local viewpoint (I use rounded coordinates instead of country).
-```{r scatter pies}
-#Summarizing based on samples found in neighbouring areas
-temp = chosen_coef  %>%
-  mutate(Latitude = round(Latitude/2)*2, Longitude = round(Longitude/2)*2)%>%
-  group_by(Continent, Country, Cluster, Longitude, Latitude) %>%
-  summarize(average_coef = mean(Admix_coef), number_of_isolates = n()) %>%
-  filter(!is.na(Latitude))
-
-write_tsv(temp, file = paste0(PopStr_dir, vcf_name, ".chosen_coef_pies.tab"))
-
-#Transforming to fit the scatter pie requirements
-pies  = temp %>% #filter(number_of_isolates > 2) %>%
-  mutate(Cluster2 = ifelse(average_coef < 0.1, "Other", Cluster)) %>%
-  group_by(Continent, Longitude, Latitude, Country, Cluster2, number_of_isolates) %>%
-  summarize(to_plot = sum(average_coef)) %>%
-  pivot_wider(names_from = Cluster2, values_from = to_plot, values_fill = 0) %>%
-  mutate(radius = ifelse(number_of_isolates > 10, 1.5, log(number_of_isolates))) %>%
-  dplyr::select(-number_of_isolates)  
 
 
 # Simple map of the world
 map1 = ggplot() + 
   theme_void() +
   geom_polygon(data = map_data("world"), aes(x=long, y = lat, group = group), fill="#ede7e3")  +
-  scale_size("Number of genomes", limits = c(1, max_circle))  +
-  theme(legend.position = "None", 
-        panel.border  = element_rect(fill=NA, colour = "grey",size = 0.5, linetype = 1)) +
-    scale_fill_manual(values = c("grey", K_colors) )
+  theme(panel.border  = element_rect(fill=NA, colour = "grey",size = 0.5, linetype = 1))
 
 #Splitting the map into our 3 main focus areas
 p1 = map1 + coord_cartesian(xlim=c(-20, 60), ylim=c(20, 70)) + 
-  geom_scatterpie(data = pies, mapping = aes(x=Longitude, y=Latitude, group=Country, r = radius), 
-                  cols = c("Other", "V10", "V6", "V9", "V3", "V7", "V1", 
-                           "V2", "V8", "V11", "V5", "V4"), color=NA, alpha=.8) 
-p2 = map1 + coord_cartesian(xlim=c(-160, -40), ylim=c(-80, 80)) + 
-  geom_scatterpie(data = pies, mapping = aes(x=Longitude, y=Latitude, group=Country, r = radius*2), 
-                  cols = c("Other", "V10", "V6", "V9", "V3", "V7", "V1", 
-                           "V2", "V8", "V11", "V5", "V4"), color=NA, alpha=.8)
+  geom_jitter(data = temp, aes(Longitude, Latitude, col = Status), width = 1, height = 1) 
+p2 = map1 + coord_cartesian(xlim=c(-160, -40), ylim=c(-80, 80))+ 
+  geom_jitter(data = temp, aes(Longitude, Latitude, col = Status), width = 1, height = 1) 
 p3 = map1 + coord_cartesian(xlim=c(115, 175), ylim=c(-65, 10)) + 
-  geom_scatterpie(data = pies, mapping = aes(x=Longitude, y=Latitude, group=Country, r = radius*2), 
-                  cols = c("Other", "V10", "V6", "V9", "V3", "V7", "V1", 
-                           "V2", "V8", "V11", "V5", "V4"), color=NA, alpha=.8)
+  geom_jitter(data = temp, aes(Longitude, Latitude, col = Status), width = 2, height = 2) 
 
 #Plotting all the maps together! 
-aus_map = cowplot::plot_grid(p3, get_legend(p1), ncol = 2, rel_widths = c(1, 0.9))
-ligne = cowplot::plot_grid(p1, aus_map, ncol = 1,  rel_heights = c(1, 0.7))
-cowplot::plot_grid(p2, ligne, ncol = 2, rel_widths = c(0.7, 1)) 
+aus_map = cowplot::plot_grid(p3 + theme(legend.position = "none"), get_legend(p1), ncol = 2, rel_widths = c(1, 0.9))
+ligne = cowplot::plot_grid(p1 + theme(legend.position = "none"), aus_map, ncol = 1,  rel_heights = c(1, 0.7))
+cowplot::plot_grid(p2 + theme(legend.position = "none"), ligne, ncol = 2, rel_widths = c(0.7, 1)) 
 
-ggsave(paste0(fig_dir, "Str_scatter_pie.pdf"), width = 18, height = 10, units = "cm")
+#ggsave(paste0(fig_dir, "Str_scatter_pie.pdf"), width = 18, height = 10, units = "cm")
+
+```
+
+
+
+## Principal Component Analysis
+
+As a first method to investigate the population structure of _Z.tritici_ at the world-wide scale, I chose to do a principal component analysis based on a subset of the SNPs. This PCA confirms previous results of a geographically structured species. Oceania emerges quite distincly as three separate clusters: one in New-Zealand and two Australian (see below for a more in-depth analysis of this pattern). North-America is also quite serapate. The distinction between the rest of the geographical location is not clear in this PCA, although PC3 might show a slight differenciation between Europe and the Middle-East.
+
+```{r PCA All run and plot, results = F}
+snpgdsVCF2GDS(paste0(vcf_dir, vcf_name, ".recode.vcf"),
+              paste0(PopStr_dir, vcf_name, ".recode.gds"), method="biallelic.only")
+genofile <- snpgdsOpen(paste0(PopStr_dir, vcf_name, ".recode.gds"))
+pca <-snpgdsPCA(genofile)
+snpgdsClose(genofile)
+
+pca2 = as_tibble(pca$eigenvect) %>% dplyr::select(V1:V8)
+colnames(pca2) = c("PC1", "PC2", "PC3", "PC4", "PC5", "PC6", "PC7", "PC8")
+pca2 = pca2 %>%
+  dplyr::mutate(sample_id = pca$sample.id ) %>%
+  dplyr::right_join(., status_admix, by = c("sample_id" = "Sample")) %>%
+  filter(!is.na(PC1))
+
+#Writing table to store PCA results
+pca2 %>%
+dplyr::select(ID_file = sample_id, PC1, PC2, PC3, PC4, PC5, PC6, PC7, PC8, 
+              Continent, Country, Latitude, Longitude) %>%
+write_tsv(., file = paste0(PopStr_dir, vcf_name, ".PCA_results.tab"),
+            col_names = T)
+
+#
+as.tibble(pca$eigenval[!is.na(pca$eigenval)]) %>%
+  ggplot(aes(x = c(1:length(pca$eigenval[!is.na(pca$eigenval)])),
+             y =value)) + 
+  geom_point() +
+  theme_bw()
+
+eigen_sum = sum(pca$eigenval[!is.na(pca$eigenval)])
+```
+
+```{r PCA vs clusters}
+
+for_plot = pca2 %>% mutate(Cluster = ifelse(Status == "Hybrid", Status, Cluster))
+
+#Defining colors per cluster based on cluster
+myColors2 <- c("grey", "#129eba", "#3F6E0C", "#DA4167", "#ffba0a", "#129eba", "#129eba", 
+               "#8fa253", "#A20106", "#A20106", "#3F6E0C", "#8fa253")
+myShapes <- c(1, 1, 1, 1, 1, 2, 0, 
+               1, 1, 0, 0, 0)
+
+names(myColors2) = levels(factor(for_plot$Cluster))
+names(myShapes) = levels(factor(for_plot$Cluster))
+Color_Cluster = ggplot2::scale_colour_manual(name = "Cluster", values = myColors2)
+Fill_Cluster = ggplot2::scale_fill_manual(name = "Cluster", values = myColors2)
+Shape_Cluster = ggplot2::scale_shape_manual(name = "Cluster", values = myShapes)
+
+# Dot plots
+p1 = ggplot(for_plot, aes(x = PC1, y= PC2, shape = Cluster)) +
+  geom_point(aes(color = Cluster)) +
+  labs(x = paste0("PC 1 (", round(pca$eigenval[1]*100/eigen_sum, 2), "%)"),
+       y = paste0("PC 2 (", round(pca$eigenval[2]*100/eigen_sum, 2), "%)")) +
+  Color_Cluster + Shape_Cluster + 
+  theme_bw()
+
+p2 = ggplot(for_plot, aes(x = PC3, y= PC4, shape = Cluster)) +
+  geom_point(aes(color = Cluster)) +
+  labs(x = paste0("PC 3 (", round(pca$eigenval[3]*100/eigen_sum, 2), "%)"),
+       y = paste0("PC 4 (", round(pca$eigenval[4]*100/eigen_sum, 2), "%)")) +
+  Color_Cluster + Shape_Cluster +
+  theme_bw()
+
+p3 = ggplot(for_plot, aes(x = PC5, y= PC6, shape = Cluster)) +
+  geom_point(aes(color = Cluster)) +
+  labs(x = paste0("PC 5 (", round(pca$eigenval[5]*100/eigen_sum, 2), "%)"),
+       y = paste0("PC 6 (", round(pca$eigenval[6]*100/eigen_sum, 2), "%)")) +
+  Color_Cluster + Shape_Cluster +
+  theme_bw()
+
+p4 = ggplot(for_plot, aes(x = PC7, y= PC8, shape = Cluster)) +
+  geom_point(aes(color = Cluster)) +
+  labs(x = paste0("PC 7 (", round(pca$eigenval[7]*100/eigen_sum, 2), "%)"),
+       y = paste0("PC 8 (", round(pca$eigenval[8]*100/eigen_sum, 2), "%)")) +
+  Color_Cluster + Shape_Cluster +
+  theme_bw()
+
+PCA_grid  = cowplot::plot_grid(p1 + theme(legend.position = "none"), p2 + theme(legend.position = "none"),
+                               p3 + theme(legend.position = "none"), p4 + theme(legend.position = "none"))
+cowplot::plot_grid(PCA_grid, get_legend(p1 + theme(legend.position = "bottom")), ncol =1, rel_heights = c(1, 0.2))
+
+
+
+  
+p11 = filter(for_plot, Cluster != "Hybrid") %>%
+  ggplot(aes(PC1, color = Cluster, fill = Cluster)) + 
+  geom_density(alpha = .3)+
+  Color_Cluster + Fill_Cluster +
+  theme_cowplot() + 
+  theme(axis.title = element_blank(), axis.text = element_blank(),
+        plot.margin = unit(c(0,0,0,0), "cm"), axis.ticks = element_blank())
+
+p12 = filter(for_plot, Cluster != "Hybrid") %>%
+  ggplot(aes(PC2, color = Cluster, fill = Cluster)) + 
+  geom_density(alpha = .3)+
+  Color_Cluster + Fill_Cluster +
+  theme_cowplot() + 
+  theme(axis.title = element_blank(), axis.text = element_blank(),
+        plot.margin = unit(c(0,0,0,0), "cm"), axis.ticks = element_blank())
+
+p13 = filter(for_plot, Cluster != "Hybrid") %>%
+  ggplot(aes(PC3, color = Cluster, fill = Cluster)) + 
+  geom_density(alpha = .3)+
+  Color_Cluster + Fill_Cluster +
+  theme_cowplot() + 
+  theme(axis.title = element_blank(), axis.text = element_blank(),
+        plot.margin = unit(c(0,0,0,0), "cm"), axis.ticks = element_blank())
+
+cowplot::plot_grid(p11+ theme(legend.position = "none"), 
+                   p12 + theme(legend.position = "none"), 
+                   p13 + theme(legend.position = "none"),
+                   ncol = 1, align = "hv") 
+
+
+ggMarginal(ggplot(for_plot, aes(x = PC2, y= PC3, shape = Cluster)) +
+  geom_point(aes(color = Cluster)) +
+  labs(x = paste0("PC 2 (", round(pca$eigenval[2]*100/eigen_sum, 2), "%)"),
+       y = paste0("PC 3 (", round(pca$eigenval[3]*100/eigen_sum, 2), "%)")) +
+  Color_Cluster + Shape_Cluster +
+  theme_bw() + theme(legend.position = "bottom"), groupColour = TRUE, groupFill = TRUE)
+
+
+```
+
+
+
+
+
+``` {r PCA ggpairs}
+ggplot2::theme_set(theme_light())
+p = ggpairs(pca2, columns = c(1:6),
+            ggplot2::aes(col=Continent, fill = Continent, alpha = 0.6),
+            title = "PCA based thinned SNPs",
+            upper = list(continuous = "points", combo = "box_no_facet"))
+
+for(i in 1:p$nrow) {
+  for(j in 1:p$ncol){
+    p[i,j] <- p[i,j] + theme_light() + Color_Continent + Fill_Continent
+  }
+}
+
+p
 ```
 
 
@@ -1192,7 +1300,8 @@ In the steps before, I have learned about population history indirectly by infer
 
 Because the populations in the clustering were not perfectly distinct from one another, I start with "discretized" populations by choosing only the isolates with high ancestry in one of the sNMF clusters.
 ```{bash discretized pop vcf, eval = F}
-vcftools --vcf ${VCFDIR}$VCFNAME.recode.vcf \
+~/Documents/Software/vcftools_jydu/src/cpp/vcftools \
+  --vcf ${VCFDIR}$VCFNAME.recode.vcf \
   --keep ${POPSTR}$VCFNAME.high_anc_coef_snmf.ind \
   --remove-filtered-all --extract-FORMAT-info GT \
   --max-missing 1.0 --min-alleles 2 --max-alleles 2 \
@@ -1205,7 +1314,7 @@ cat  ${POPSTR}$VCFNAME.high_anc_coef_snmf.GT.FORMAT | cut -f 3- \
 
 
 ```{python convert genotype file to treemix, eval = F}
-
+#conda activate r-reticulate
 from collections import defaultdict
 
 #For each isolate, store its pop (as in sampling site) in a dictionary
@@ -1214,13 +1323,14 @@ dict_pop = dict(zip(r.high_anc_coef_snmf["Sample"],
 
 #Keep a list of the pop names/coordinates to write in the same order later
 all_pops = sorted(list(set(r.high_anc_coef_snmf["Cluster"])))
-out_name = r.PopStr_dir + r.vcf_name + ".high_anc_coef_snmf.treemix"
-
+#out_name = r.PopStr_dir + r.vcf_name + ".high_anc_coef_snmf.treemix"
+out_name =  "/Users/afeurtey/Documents/Postdoc_Bruce/Projects/WW_project/2_Population_structure/Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.biall_SNP.max-m-1.maf-0.05.thin-1000bp.high_anc_coef_snmf.treemix"
 
 out = open(out_name, "w")
 shutup = out.write(" ".join(all_pops) + "\n")
 
-with open(r.PopStr_dir + r.vcf_name + ".high_anc_coef_snmf.GT.FORMAT2", "r") as input_snps :
+#with open(r.PopStr_dir + r.vcf_name + ".high_anc_coef_snmf.GT.FORMAT2", "r") as input_snps :
+with open("/Users/afeurtey/Documents/Postdoc_Bruce/Projects/WW_project/2_Population_structure/Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.biall_SNP.max-m-1.maf-0.05.thin-1000bp.high_anc_coef_snmf.GT.FORMAT2", "r") as input_snps :
   for i, snp in enumerate(input_snps) :
     
     #Setting two dictionaries with values at 0
@@ -1255,6 +1365,7 @@ out.close()
 ```
 
 ```{bash run treemix, eval = F, message = F, results = F}
+POPSTR="/Users/afeurtey/Documents/Postdoc_Bruce/Projects/WW_project/2_Population_structure/"
 
 if [ -f ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix ] ;
 then
@@ -1315,13 +1426,27 @@ The three-population test is of the form f3(A;B;C), where a significantly negati
 ```{bash run threepop, eval = F}
 #threepop -i ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix.gz -k 500 | grep "^V" > ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix.3pop.tab
 
-threepop -i /Users/afeurtey/Documents/Postdoc_Bruce/Projects/WW_project/2_Population_structure/Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.biall_SNP.max-m-1.maf-0.05.thin-1000bp.high_anc_coef_snmf.treemix.gz -k 500 | grep "^V" > /Users/afeurtey/Documents/Postdoc_Bruce/Projects/WW_project/2_Population_structure/Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.biall_SNP.max-m-1.maf-0.05.thin-1000bp.high_anc_coef_snmf.treemix.3pop.tab #${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix.3pop.tab
+threepop \
+   -i /Users/afeurtey/Documents/Postdoc_Bruce/Projects/WW_project/2_Population_structure/Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.biall_SNP.max-m-1.maf-0.05.thin-1000bp.high_anc_coef_snmf.treemix.gz \
+   -k 500 | \
+   grep "^V" > \
+   /Users/afeurtey/Documents/Postdoc_Bruce/Projects/WW_project/2_Population_structure/Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.biall_SNP.max-m-1.maf-0.05.thin-1000bp.high_anc_coef_snmf.treemix.3pop.tab
+   
+#${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix.3pop.tab
 ```
 
-```{r}
-kable(read_delim(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.treemix.3pop.tab"), delim = " ", 
+```{r 3pop results}
+temp = read_delim(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.treemix.3pop.tab"), delim = " ", 
            col_names = c("populations", "f3 statistic", "standard error", "Z-score")) %>%
-  filter(`f3 statistic` < 0))
+  filter(`f3 statistic` < 0)
+
+kable(temp)
+
+separate(tempcol = populations, into = c("Introgressed_pop", "Pop1", "Pop2"), remove = F) %>%
+  ggplot(aes(x = Pop1, y = Pop2, fill = `Z-score`)) +
+    geom_tile() + 
+    theme_cowplot()
+  
 ```
 
 
@@ -1339,9 +1464,9 @@ temp = Zt_meta %>%
   mutate(x = round(Latitude, 1), y = round(Longitude, 1)) %>%
   unite(Coord_for_filter, x, y, sep = ";", remove = F) %>%
   group_by(Coord_for_filter) %>% 
-  mutate(Nb_per_coord = n()) %>% 
+  dplyr::mutate(Nb_per_coord = n()) %>% 
   group_by(Country) %>% 
-  mutate(Nb_per_country= n())
+  dplyr::mutate(Nb_per_country= n())
   
 small_pop = temp %>%
   filter(Nb_per_coord <= threshold_per_pop) %>%
@@ -1435,11 +1560,12 @@ ordering_table = tibble(Cluster = c("V1", "V2", "V3", "V4", "V5", "V6", "V7", "V
 
 diversity_values = read_tsv(paste0(Sumstats_dir, "Diversity_per_cluster.tsv"), na = "nan")
 
-temp = diversity_values %>% dplyr::select(-Theta) %>%
+temp = diversity_values %>% 
+  dplyr::select(-Theta) %>%
   mutate(Subset_samples = str_remove(Subset_samples, "Sample_list_")) %>%
   separate(Subset_samples, into = c("Cluster", "Rep")) %>%
   group_by(Cluster, Chromosome, Start, Stop) %>%
-  summarize(Pi = mean(Pi, na.rm = T), TajimaD = mean(TajimaD, na.rm = T)) %>%
+  dplyr::summarize(Pi = mean(Pi, na.rm = T), TajimaD = mean(TajimaD, na.rm = T)) %>%
   pivot_longer(cols = c(Pi, TajimaD), names_to = "Estimate", values_to = "Value") %>%
   left_join(., ordering_table) %>%
   arrange(Order_tree) 
