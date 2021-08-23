@@ -18,7 +18,7 @@ logo: ~/Documents/Postdoc_Bruce/Communication/Logo_WWZt.png
 
 <br><br>
 
-> Here, I analyse and document my progress with the analysis of a world-wide whole genome sampling of *Zymoseptoria tritici*. Some of the analysis are just exploratory while some other are lined up in a clear path to answering questions related to the history of *Z.tritici* and to better understand its adaptation to various climates.
+> Here, I analyse the transposable elements (TE) of a world-wide whole genome sampling of *Zymoseptoria tritici*, as well as the defence mechanism against TE that is RIP.
 
 ```{r setup, warning=FALSE, message = FALSE}
 
@@ -171,23 +171,40 @@ names(myColors) = levels(factor(Zt_meta$Continent))
 Color_Continent = ggplot2::scale_colour_manual(name = "Continent", values = myColors)
 Fill_Continent = ggplot2::scale_fill_manual(name = "Continent", values = myColors)
 
-myColors2 <- c("#129eba", "#3F6E0C", "#DA4167", "#ffba0a", "#129eba", "#129eba", 
-               "#8fa253", "#A20106", "#A20106", "#3F6E0C", "#8fa253")
-names(myColors2) = levels(factor(Zt_meta$Cluster))
-Color_Cluster = ggplot2::scale_colour_manual(name = "Cluster", values = myColors2)
-Fill_Cluster = ggplot2::scale_fill_manual(name = "Cluster", values = myColors2)
 
-## For clustering
-K_colors = c("#f9c74f", "#f9844a", "#90be6d", "#f5cac3", 
-"#83c5be", "#f28482", "#577590", "#e5e5e5", "#a09abc",  "#52796f",
-"#219ebc", "#003049", "#82c0cc", "#283618", "white")
+#For clusters
+## Simplified color scheme
+myColors_clust <- c("#129eba", "#3F6E0C", "#DA4167", "#ffba0a", "#129eba", "#129eba", 
+               "#8fa253", "#A20106", "#A20106", "#3F6E0C", "#8fa253")
+names(myColors_clust) = levels(factor(Zt_meta$Cluster))
+Color_Cluster = ggplot2::scale_colour_manual(name = "Cluster", values = myColors_clust)
+Fill_Cluster = ggplot2::scale_fill_manual(name = "Cluster", values = myColors_clust)
+
+## Detailed color scheme
+K_colors = c("#0D6E82", #V1 Aus (TAS)
+             "#49810E", #V10 USA
+             "#E16684", #V11 North Africa
+             "#FFBA0A", #V2 Europe
+             "#C7F1F9", #V3 NZ
+             "#21C7E8", #V4 Australia (NSW)
+             "#8FA253", #V5 Uruguay + Argentina
+             "#650104", #V6 Israel + Turkey
+             "#DE020A", #V7 Iran
+             "#2A4908", #V8 Canada
+             "#B3C186") #V9 Boliva + Chile + Ecuador
+names(K_colors) = levels(factor(Zt_meta$Cluster))
+Color_Cluster2 = ggplot2::scale_colour_manual(name = "Cluster", values = K_colors)
+Fill_Cluster2 = ggplot2::scale_fill_manual(name = "Cluster", values = K_colors)
+
+## Shapes for clusters
+myShapes <- c(1, 1, 1, 1, 2, 0, 1, 1, 0, 0, 0)
+names(myShapes) = levels(factor(Zt_meta$Cluster))
+Shape_Cluster = ggplot2::scale_shape_manual(name = "Cluster", values = myShapes)
+
 
 ## For correlations
 mycolorsCorrel<- colorRampPalette(c("#0f8b8d", "white", "#a8201a"))(20)
 
-#Random gradients
-greens=c("#1B512D", "#669046", "#8CB053", "#B1CF5F", "#514F59")
-blues=c("#08386E", "#1C89C9", "#28A7C0", "#B0DFE8", "grey")
 ```
 
 ```{bash perwin stats, eval =F}
@@ -545,7 +562,8 @@ y_values = summarize(temp, max(TE_estimate))
 ggplot(temp, aes(x = MEAN_DEPTH, y = TE_estimate)) +
      geom_point(alpha = .5) +
      theme_bw()  +
-     geom_smooth(method = "lm") +
+     geom_smooth(method = "glm", formula = y~log(x), se = F, 
+                      method.args = list(family = gaussian(link = 'log'))) +
      facet_wrap(vars(Method), scales = "free")
 
 ```
@@ -1023,9 +1041,12 @@ ggplot(temp, aes(x = MEAN_DEPTH, y = n, col = Continent)) +
           subtitle = "Only non-population specific",
           x = "Mean depth of coverage", 
           y = paste0("Number of TIP with more than ", threshold, " presence")) +
-     Color_Continent
-
-ggplot(temp, aes(x = MEAN_DEPTH, y = n, col = Continent)) +
+     Color_Continent +
+  geom_smooth(method = "glm", formula = y~log(x), se = F, 
+                      method.args = list(family = gaussian(link = 'log')))
+temp %>%
+  filter(MEAN_DEPTH < 40) %>%
+ggplot(aes(x = MEAN_DEPTH, y = n, col = Continent)) +
      geom_point(alpha = .5) +
      theme_bw() +
      labs(title = "Depth bias check after TIP comparison between continent",
@@ -1036,38 +1057,7 @@ ggplot(temp, aes(x = MEAN_DEPTH, y = n, col = Continent)) +
   geom_smooth(method = "glm", formula = y~log(x), se = F, 
                       method.args = list(family = gaussian(link = 'log')))
 
-# 
-inner_join(filter(TE_insertions_counts, n > threshold), TE_insertions) %>%
-  group_by(ID_file, Continent, Cluster) %>%
-  dplyr::count() %>%
-  inner_join(depth, by = c("ID_file" = "INDV")) %>%
-  ggplot(aes(x = MEAN_DEPTH, y = n, col = Cluster, shape = Cluster)) +
-     geom_point(alpha = .5) +
-     theme_bw() +
-     labs(title = "Depth bias check TIP comparison between continent",
-          subtitle = "All TIPs (population specific and others)",
-          x = "Mean depth of coverage", 
-          y = paste0("Number of TIP with more than ", threshold, " presence")) +
-     scale_shape_manual(values = c(0,1,2,3,4,5,6,7,8,9,10)) + 
-     Color_Cluster #+
-#    geom_smooth(method = "lm", se = F)
-inner_join(filter(TE_insertions_counts, n > threshold), TE_insertions) %>%
-  group_by(ID_file, Continent, Cluster) %>%
-  dplyr::count() %>%
-  inner_join(depth, by = c("ID_file" = "INDV")) %>%
-  ggplot(aes(x = MEAN_DEPTH, y = n, col = Cluster, shape = Cluster)) +
-     geom_point(alpha = .5) +
-     theme_bw() +
-     labs(title = "Depth bias check TIP comparison between continent",
-          subtitle = "All TIPs (population specific and others)",
-          x = "Mean depth of coverage", 
-          y = paste0("Number of TIP with more than ", threshold, " presence")) +
-     scale_shape_manual(values = c(0,1,2,3,4,5,6,7,8,9,10)) + 
-     Color_Cluster 
 
-
-model = lm(n ~ Continent + MEAN_DEPTH, data = temp)
-summary(model)
 ```
 
 ### Non-guided clustering
@@ -1095,31 +1085,6 @@ rownames(temp) = matrice$Cluster
 pheatmap(temp, show_colnames = F)
 
 
-#PCA per cluster
-TE.pca = prcomp(temp, center = TRUE,scale. = TRUE)
-
-temp = as.tibble(cbind(matrice, as.data.frame(TE.pca$x))) %>%
-  dplyr::select(Cluster, PC1, PC2, PC3, PC4, PC5, PC6, PC7, PC8)
-
-p1 = ggplot(temp, aes(x = PC1, y = PC2, label = Cluster, col = Cluster)) +
-  geom_text() +
-  Color_Cluster +
-  theme_bw() + theme(legend.position = "none")
-p2 = ggplot(temp, aes(x = PC3, y = PC4, label = Cluster, col = Cluster)) +
-  geom_text() +
-  Color_Cluster +
-  theme_bw()+ theme(legend.position = "none")
-p3 = ggplot(temp, aes(x = PC5, y = PC6, label = Cluster, col = Cluster)) +
-  geom_text() +
-  Color_Cluster +
-  theme_bw()+ theme(legend.position = "none")
-p4 = ggplot(temp, aes(x = PC7, y = PC8, label = Cluster, col = Cluster)) +
-  geom_text() +
-  Color_Cluster +
-  theme_bw()+ theme(legend.position = "none")
-cowplot::plot_grid(p1, p2, p3, p4)
-
-
 #PCA per isolate
 matrice = TE_insertions %>%
   filter(!is.na(Cluster)) %>%
@@ -1138,23 +1103,26 @@ TE.pca = prcomp(temp, center = TRUE, scale. = TRUE)
 temp = as.tibble(cbind(matrice, as.data.frame(TE.pca$x))) %>%
   dplyr::select(ID_file, Cluster, PC1, PC2, PC3, PC4, PC5, PC6, PC7, PC8)
 
-p1 = ggplot(temp, aes(x = PC1, y = PC2, col = Cluster)) +
+p1 = ggplot(temp, aes(x = PC1, y = PC2, col = Cluster, shape = Cluster)) +
   geom_point() +
-  Color_Cluster +
+  Color_Cluster + Shape_Cluster +
   theme_bw() + theme(legend.position = "none")
-p2 = ggplot(temp, aes(x = PC3, y = PC4, col = Cluster)) +
+p2 = ggplot(temp, aes(x = PC3, y = PC4, col = Cluster, shape = Cluster)) +
   geom_point() +
-  Color_Cluster +
+  Color_Cluster + Shape_Cluster +
   theme_bw() + theme(legend.position = "none")
-p3 = ggplot(temp, aes(x = PC5, y = PC6, col = Cluster)) +
+p3 = ggplot(temp, aes(x = PC5, y = PC6, col = Cluster, shape = Cluster)) +
   geom_point() +
-  Color_Cluster +
+  Color_Cluster + Shape_Cluster +
   theme_bw() + theme(legend.position = "none")
-p4 = ggplot(temp, aes(x = PC7, y = PC8, col = Cluster)) +
+p4 = ggplot(temp, aes(x = PC7, y = PC8, col = Cluster, shape = Cluster)) +
   geom_point() +
-  Color_Cluster +
+  Color_Cluster + Shape_Cluster +
   theme_bw() + theme(legend.position = "none")
 cowplot::plot_grid(p1, p2, p3, p4)
+
+ggsave(paste0(fig_dir, "PCA_TEs_PC1_to_8.pdf"), width = 16, height = 16, units = "cm")
+
 
 ```
 
@@ -1284,7 +1252,7 @@ p1 = TE_insertions %>%
 p2 = TE_insertions %>%
   dplyr::count(CHR, ref_non_ref_TIP, Order) %>%
   inner_join(dplyr::select(chromosomes_lengths, CHR, Length) %>% mutate(CHR = as.character(CHR))) %>%
-  ggplot(aes(x = reorder(as.character(CHR), as.numeric(CHR)), y = n/(Length/1000000), fill = ref_non_ref_TIP)) + 
+  ggplot(aes(x = reorder(as.character(CHR), as.numeric(CHR)), y = n/(Length/1000000), fill = ref_non_ref_TIP)) +
     geom_bar(stat = "identity") + 
     theme_bw() +
   facet_wrap(vars(Order), scales = "free") +
@@ -1580,40 +1548,44 @@ RIP=read_delim(paste0(RIP_DIR, "Composite_index.txt"),
              delim = " ", na = c("nan", "NA", "")) %>%
   separate(TE, into = c("Superfamily", "TE_id"), sep = "_", remove = F, extra = "merge") %>%
   mutate(Order = ifelse(!grepl('^D',TE), "Class II (DNA transposons)", "Class I (retrotransposons)"))%>%
-  left_join(Zt_meta %>% dplyr::select(Continent, Country, Collection, ID_file)) %>%
+  left_join(Zt_meta %>% dplyr::select(Continent, Cluster, Country, Collection, ID_file)) %>%
   unite(Continent, Country, ID_file, col = "for_display", remove = F) %>%
   left_join(., reads_per_TE)
 #DONE: merge with reads_per_TE to be able to filter the points that have too few reads mapped!
 
-#Per continent
 
+#Per cluster
 world_RIP_avg <-
   RIP %>%
   filter(TE == "RIP_est") %>%
   dplyr::summarize(avg = mean(as.numeric(Composite_median), na.rm = T)) %>%
   pull(avg)
 
+ordering_table = tibble(Cluster = c("V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8", "V9", "V10", "V11"),
+                        Order_tree = c(6,9,8,7,5,2,1,10,4,11,3))
 temp = RIP %>%
   filter(TE == "RIP_est") %>%
-  filter(!is.na(Continent)) %>%
-  group_by(Continent) %>%
-  dplyr::mutate(region_avg = mean(as.numeric(Composite_median), na.rm = T))
+  filter(!is.na(Cluster)) %>%
+  group_by(Cluster) %>%
+  dplyr::mutate(region_avg = mean(as.numeric(Composite_median), na.rm = T)) %>%
+  left_join(., ordering_table) %>%
+  arrange(Order_tree) 
 
-RIP_plot = ggplot(temp, aes(x = Continent,
+RIP_plot = ggplot(temp, aes(x = reorder(Cluster, -Order_tree),
                             y = as.numeric(Composite_median),
-                            color = Continent))   +
+                            color = Cluster))   +
   coord_flip() +
-  geom_segment(aes(x = Continent, xend = Continent,
+  geom_segment(aes(x = reorder(Cluster, -Order_tree), xend = reorder(Cluster, -Order_tree),
         y = world_RIP_avg, yend = region_avg), size = 0.8) +
   geom_jitter(size = 1.5, alpha = 0.2, width = 0.2) +
   geom_hline(aes(yintercept = world_RIP_avg), color = "gray70", size = 0.6) +
   stat_summary(fun = mean, geom = "point", size = 5) +
-  Color_Continent +
+  Color_Cluster +
   theme_cowplot() +
     theme(legend.position = "none",
           axis.text.x = element_text(angle = 40, hjust = 1)) +
   labs (x = "", y = "RIP composite index",
-        title = "RIP levels per continents",
+        title = "RIP levels per Cluster",
         subtitle = str_wrap(paste("The RIP levels in reads mapping on TE consensus",
                                   "are high in the Middle-East",
                                   "and low in North America in particular."), width = 70))
@@ -1622,34 +1594,19 @@ RIP_plot = ggplot(temp, aes(x = Continent,
 #Statistical test
 #One-way ANOVA with blocks
 ##Define linear model
-model = lm(as.numeric(Composite_median) ~ Continent + Collection ,
+model = lm(as.numeric(Composite_median) ~ Cluster + Collection ,
           data=temp)
-summary(model)   ### Will show overall p-value and r-squared
-
-##Conduct analysis of variance
 Anova(model,type = "II")  
-summary(model)
-
-hist(residuals(model), col="darkgray")
-
-#Post-hoc analysis:  mean separation tests
-marginal = lsmeans(model, ~ Continent)
-
+marginal = lsmeans(model, ~ Cluster)
 pairs(marginal, adjust="sidak")
-
 CLD_RIP = cld(marginal,
           alpha   = 0.05,
           Letters = letters,  ### Use lower-case letters for .group
           adjust  = "sidak")  ### sidak-adjusted p-values
-
-CLD_RIP
-
 CLD_RIP$.group=gsub(" ", "", CLD_RIP$.group)
-
 text_y = (max(as.numeric(temp$Composite_median), na.rm = T) + 0.1*max(as.numeric(temp$Composite_median), na.rm = T))
-
 RIP_plot +
-  geom_text(data = CLD_RIP, aes(x = Continent,
+  geom_text(data = CLD_RIP, aes(x = Cluster,
                             y = text_y,
                             label = .group), color = "black")
 ```
@@ -1755,31 +1712,53 @@ temp = TE_RIP %>%
   dplyr::mutate(for_display = Continent)
 
 #TE and RIP together
-t = ggplot(TE_RIP, aes(as.numeric(Percent_TE_Reads),
-                          as.numeric(Composite_median),
-                          color = Continent,
-                          text = for_display))+
+t = ggplot(TE_RIP, aes(as.numeric(Percent_TE_Reads), as.numeric(Composite_median),
+                          color = Continent, text = for_display))+
   theme_cowplot()  +
   geom_point(alpha = 0.6) + Color_Continent +
   labs(color = "Geographical group",
        x = "Percentage of TE reads", y = "RIP composite median",
-       title = "Amount of transposable elements vs RIP level") +
+       title = "Amount of transposable elements vs RIP level",
+       subtitle = "The colors represent the geography and not the genetic clusters.") +
   geom_point(data = temp, aes(as.numeric(TE_qty),
                                 as.numeric(Composite_median),
                                 color = Continent), size = 5)
-#ggplotly(t)
 t
-TE_RIP %>%
+
+
+# RIP vs TIPS
+p1 = TE_RIP %>%
   filter(Collection != "Hartmann_FstQst_2015") %>%
-ggplot(aes(as.numeric(Total_insertions),
-                          as.numeric(Composite_median),
-                          color = Continent,
-                          text = for_display))+
-  theme_cowplot()  +
-  geom_point(alpha = 0.6) + Color_Continent +
-  labs(color = "Geographical group",
-       x = "TE insertion number", y = "RIP composite median",
-       title = "Amount of transposable elements vs RIP level") 
+  ggplot(aes(as.numeric(Total_insertions), as.numeric(Composite_median),
+                          color = Cluster, shape = Cluster))+
+    theme_cowplot()  +
+    geom_point() + 
+    Color_Cluster + Shape_Cluster + 
+    labs(color = "Genetic cluster",
+         x = "TE insertion number", y = "RIP composite median",
+         subtitle = "Without the OG Hartmann collection") 
+p2 = TE_RIP %>%
+  #filter(Collection != "Hartmann_FstQst_2015") %>%
+  ggplot(aes(as.numeric(Total_insertions), as.numeric(Composite_median),
+                          color = Cluster, shape = Cluster))+
+    theme_cowplot()  +
+    geom_point() + 
+    Color_Cluster + Shape_Cluster + 
+    labs(color = "Genetic cluster",
+         x = "TE insertion number", y = "RIP composite median",
+         subtitle = "With the OG Hartmann collection") 
+
+#title = "Amount of transposable elements vs RIP level") 
+ligne = cowplot::plot_grid(p1 + theme(legend.position = "none"), p2+ theme(legend.position = "none"))
+
+title <- ggdraw() + 
+  draw_label("Amount of transposable elements vs RIP level", fontface = 'bold',
+    x = 0, hjust = 0) + theme_void() + theme(plot.margin = margin(0, 0, 0, 55))
+  
+cowplot::plot_grid(title, ligne, get_legend(p1 + theme(legend.position = "bottom")), 
+                   ncol = 1, rel_heights = c(0.1, 1, 0.2), align = "hv")
+
+
 
 bias1 = TE_RIP %>% ggplot(aes(Percent_TE_Reads, as.numeric(Composite_median), color = Collection, text = for_display)) +
   theme_cowplot() +
@@ -2758,7 +2737,7 @@ significant_TE %>% dplyr::select(CHR, Locus_nb, Phenotype) %>%
 For each region, I would like to be able to get more information about the variants: what is the distribution of the alleles compared to the phenotype with which this position was significantly associated? What is the minor allele frequency at this locus? Since it is impossible to represent all thousands of associated variants, I chose one position in particular for each significant locus identified previously. 
 ```{r one pos per locus}
 #i=2
-min_length_locus = 1000
+min_length_locus = 500
 
 whatever <- function(min_length_locus, pheno, expected_output){
   temp = significant_TE %>% 
@@ -2801,6 +2780,8 @@ whatever <- function(min_length_locus, pheno, expected_output){
 
 whatever(min_length_locus, phenotypes[1], "plot")
 whatever(min_length_locus, phenotypes[1], "table")
+whatever(min_length_locus, phenotypes[6], "plot")
+whatever(min_length_locus, phenotypes[6], "table")
 
 whatever(min_length_locus, phenotypes[2], "plot")
 whatever(min_length_locus, phenotypes[2], "table")

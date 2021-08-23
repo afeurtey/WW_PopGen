@@ -154,8 +154,8 @@ genotyped_samples = read_tsv(Zt_list, col_names = "ID_file")
 ## Metadata of genotyped samples 
 temp = read_tsv(paste0(metadata_dir, metadata_name, "_Description.tab"), col_names = F) %>% pull()
 
-Zt_meta = read_tsv(paste0(metadata_dir, metadata_name, "_with_collection.tab"), 
-                 col_names = temp,
+Zt_meta = read_delim(paste0(metadata_dir, metadata_name, "_with_collection.tab"), 
+                 col_names = temp, delim = "\t",
                  na = "\\N", guess_max = 2000) %>%
   unite(Coordinates, Latitude, Longitude, sep = ";", remove = F) %>%
   inner_join(., genotyped_samples)  %>%
@@ -1582,7 +1582,7 @@ plot_tiles_GWAS(c(7), c("Temperature", "Precipitation")) +
 ### Manhattan plots and genes in specific loci
 
 ```{r map allele}
-i=10
+i=15
 #SNP_name = "3_444010"
 #SNP_name = "7_1449518"
 SNP_name = "10_460207"
@@ -1605,6 +1605,7 @@ aus_map = cowplot::plot_grid(p3 + theme(legend.position = "None"), get_legend(p1
 ligne = cowplot::plot_grid(p1 + theme(legend.position = "None"), aus_map, ncol = 1,  rel_heights = c(1, 0.7))
 cowplot::plot_grid(p2 + theme(legend.position = "None"), ligne, ncol = 2, rel_widths = c(0.7, 1)) 
 ggsave(paste0(fig_dir, "Map_BIO", i, ".pdf"), width = 18, height = 10, units = "cm")
+ggsave(paste0(fig_dir, "Map_BIO", i, ".svg"))
 
 allele = significant %>% 
     filter(Phenotype == Bioclim_var[i]) %>% 

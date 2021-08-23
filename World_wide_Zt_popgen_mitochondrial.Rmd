@@ -47,6 +47,7 @@ library(ggbiplot)
 library(igraph)
 library(ggraph)
 library(ggtext)
+library(scatterpie)
 
 #Pop structure and pop genomic
 library(GenomicFeatures)
@@ -151,8 +152,8 @@ genotyped_samples = read_tsv(Zt_list, col_names = "ID_file")
 ## Metadata of genotyped samples 
 temp = read_tsv(paste0(metadata_dir, metadata_name, "_Description.tab"), col_names = F) %>% pull()
 
-Zt_meta = read_tsv(paste0(metadata_dir, metadata_name, "_with_collection.tab"), 
-                 col_names = temp,
+Zt_meta = read_delim(paste0(metadata_dir, metadata_name, "_with_collection.tab"), 
+                 col_names = temp, delim  = "\t",
                  na = "\\N", guess_max = 2000) %>%
   unite(Coordinates, Latitude, Longitude, sep = ";", remove = F) %>%
   inner_join(., genotyped_samples)  %>%
@@ -160,7 +161,10 @@ Zt_meta = read_tsv(paste0(metadata_dir, metadata_name, "_with_collection.tab"),
   mutate(Country = ifelse(Country == "Australia", paste(Country, Region, sep = "_"), Country)) %>%
   mutate(Country = ifelse(Country == "NZ", "New Zealand", Country)) %>%
   mutate(Country = ifelse(Country == "CH", "Switzerland", Country)) %>%
-  mutate(Latitude2 = round(Latitude, 2), Longitude2 = round(Longitude, 2))
+  mutate(Latitude2 = round(Latitude, 2), Longitude2 = round(Longitude, 2)) %>%
+  dplyr::select(ID_file, Sampling_Date, Collection,
+                Country, Continent, Latitude, Longitude, 
+                Latitude2, Longitude2)
 
 #genotyped_samples %>%
 #  filter(!(ID_file %in% filtered_samples$ID_file)) %>%
@@ -227,9 +231,10 @@ as.tibble(pca_mito$eigenval[!is.na(pca_mito$eigenval)]) %>%
   theme_bw()
 
 
+#First jittered plot to avoid overplotting
 eigen_sum = sum(pca_mito$eigenval[!is.na(pca_mito$eigenval)])
 p = ggplot(pca_mito2, aes(x = PC1, y= PC2, text = for_display)) +
-  geom_point(aes(color = Continent)) +
+  geom_jitter(aes(color = Continent), alpha = .6, width = 0.001, height = 0.001) +
   labs(x = paste0("PC 1 (", round(pca_mito$eigenval[1]*100/eigen_sum, 2), "%)"),
        y = paste0("PC 2 (", round(pca_mito$eigenval[2]*100/eigen_sum, 2), "%)")) +
   Color_Continent +
@@ -237,7 +242,7 @@ p = ggplot(pca_mito2, aes(x = PC1, y= PC2, text = for_display)) +
 
 
 q = ggplot(pca_mito2, aes(x = PC3, y= PC4, text = for_display)) +
-  geom_point(aes(color = Continent)) +
+  geom_jitter(aes(color = Continent), alpha = .6, width = 0.001, height = 0.001) +
   labs(x = paste0("PC 3 (", round(pca_mito$eigenval[3]*100/eigen_sum, 2), "%)"),
        y = paste0("PC 4 (", round(pca_mito$eigenval[4]*100/eigen_sum, 2), "%)")) +
   Color_Continent +
@@ -468,6 +473,50 @@ temp %>%
 
 ```
 The proportions of the mitochondrial haplotypes across the genetic clusters defined with the nuclear genome is not equal: some clusters have only one mitochondrial group, while some others are 50/50. Not sure what to make of it.
+
+```{r scatter pies}
+#Summarizing based on samples found in neighbouring areas
+pies = pca_mito2 %>%
+  mutate(Mito_group = ifelse(Mito_group == 0, "Mitogroup_0", "Mitogroup_1")) %>%
+  group_by(Continent, Country, Longitude2, Latitude2, Mito_group) %>%
+  dplyr::summarize(count_mitogroup = n()) %>%
+  group_by(Continent, Country, Longitude2, Latitude2) %>%
+  dplyr::mutate(number_of_isolates = sum(count_mitogroup)) %>%
+  filter(!is.na(Latitude2)) %>%
+  pivot_wider(names_from = Mito_group, values_from = count_mitogroup, values_fill = 0) %>%
+  mutate(radius = ifelse(number_of_isolates > 10, 1.5, log(number_of_isolates))) %>%
+  dplyr::select(-number_of_isolates)
+
+max_circle = max(Zt_meta %>%
+  dplyr::count(Latitude2, Longitude2, name = "Number_genomes") %>%
+  dplyr::select(Number_genomes))
+
+# Simple map of the world
+
+map1 = ggplot() + 
+  theme_void() +
+  geom_polygon(data = map_data("world"), aes(x=long, y = lat, group = group), fill="#ede7e3")  +
+  scale_size("Number of genomes", limits = c(1, max_circle))  +
+  theme(panel.border  = element_rect(fill=NA, colour = "grey",size = 0.5, linetype = 1)) +
+    scale_fill_manual(values = c("#ff9f1c", "#2ec4b6"))
+
+#Splitting the map into our 3 main focus areas
+p1 = map1 + coord_cartesian(xlim=c(-20, 60), ylim=c(20, 70)) + 
+  geom_scatterpie(data = pies, mapping = aes(x=Longitude2, y=Latitude2, group=Country, r = radius), 
+                  cols = c("Mitogroup_0", "Mitogroup_1"), color=NA, alpha=.8)
+p2 = map1 + coord_cartesian(xlim=c(-160, -40), ylim=c(-80, 80)) + 
+  geom_scatterpie(data = pies, mapping = aes(x=Longitude2, y=Latitude2, group=Country, r = radius*2), 
+                   cols = c("Mitogroup_0", "Mitogroup_1"), color=NA, alpha=.8)
+p3 = map1 + coord_cartesian(xlim=c(115, 185), ylim=c(-65, 10)) + 
+  geom_scatterpie(data = pies, mapping = aes(x=Longitude2, y=Latitude2, group=Country, r = radius*2), 
+                   cols = c("Mitogroup_0", "Mitogroup_1"), color=NA, alpha=.8)
+
+#Plotting all the maps together! 
+aus_map = cowplot::plot_grid(p3 + theme(legend.position = "None"), get_legend(p1), ncol = 2, rel_widths = c(1, 0.75))
+ligne = cowplot::plot_grid(p1 + theme(legend.position = "None"), aus_map, ncol = 1,  rel_heights = c(1, 0.7))
+cowplot::plot_grid(p2 + theme(legend.position = "None"), ligne, ncol = 2, rel_widths = c(0.75, 1))
+```
+
 
 
 I got curious about the distance from each mitochondrial haplotype to the wild species. So I picked one isolate from each group, including IPO323 as an example of the mitogroup 1. 

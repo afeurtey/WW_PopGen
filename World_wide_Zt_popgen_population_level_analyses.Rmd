@@ -48,6 +48,7 @@ library(ggraph)
 library(ggtext)
 library(scatterpie)
 library(tidyverse)
+library(ggExtra)
 
 #Pop structure and pop genomic
 library(GenomicFeatures)
@@ -56,7 +57,7 @@ library(LEA) #Clustering
 library(pophelper)
 #library(PopGenome) #Summary statistics
 library(gridExtra)
-
+library(ggExtra)
 library(ggtree)
 library(tidytree)
 library(multcomp)
@@ -944,12 +945,26 @@ for (cluster in max_continent %>% pull(Cluster)) {
 
 The clustering data can also be represented as an average of ancestry coefficient per country. This is done here first with barplots. 
 ```{r per country ancestry coef}
-
+#Setting data with the chosen numner of K as well as the chosen coefficient threshold
 chosen_coef = snmf_results_per_K %>% 
   filter(K == chosen_K) %>%
   filter(Country != "NA") %>%
   filter(Country != "USA_NA") %>%
   dplyr::select(Sample, Continent, Country, Admix_coef, Cluster, Latitude, Longitude) 
+
+
+K_colors = c("#0D6E82", #V1 Aus (TAS)
+             "#49810E", #V10 USA
+             "#E16684", #V11 North Africa
+             "#FFBA0A", #V2 Europe
+             "#C7F1F9", #V3 NZ
+             "#21C7E8", #V4 Australia (NSW)
+             "#8FA253", #V5 Uruguay + Argentina
+             "#650104", #V6 Israel + Turkey
+             "#DE020A", #V7 Iran
+             "#2A4908", #V8 Canada
+             "#B3C186") #V9 Boliva + Chile + Ecuador
+
 
 #Identifying the main cluster per country
 cluster_per_country = high_anc_coef_snmf %>%
@@ -1014,18 +1029,6 @@ pies  = temp %>% #filter(number_of_isolates > 2) %>%
 
 
 # Simple map of the world
-K_colors = c("#0D6E82", #V1 Aus (TAS)
-             "#49810E", #V10 USA
-             "#E16684", #V11 North Africa
-             "#FFBA0A", #V2 Europe
-             "#C7F1F9", #V3 NZ
-             "#21C7E8", #V4 Australia (NSW)
-             "#8FA253", #V5 Uruguay + Argentina
-             "#650104", #V6 Israel + Turkey
-             "#DE020A", #V7 Iran
-             "#2A4908", #V8 Canada
-             "#B3C186") #V9 Boliva + Chile + Ecuador
-
 
 map1 = ggplot() + 
   theme_void() +
@@ -1054,7 +1057,7 @@ aus_map = cowplot::plot_grid(p3, get_legend(p1), ncol = 2, rel_widths = c(1, 0.7
 ligne = cowplot::plot_grid(p1, aus_map, ncol = 1,  rel_heights = c(1, 0.7))
 cowplot::plot_grid(p2, ligne, ncol = 2, rel_widths = c(0.75, 1)) 
 
-#ggsave(paste0(fig_dir, "Str_scatter_pie.pdf"), width = 18, height = 10, units = "cm")
+ggsave(paste0(fig_dir, "Str_scatter_pie.pdf"), width = 18, height = 10, units = "cm")
 ```
 For each country, we define the local cluster with "votes": the cluster to which more than half of the non-admixed isolates are originating is considered to be the local cluster. We can quantify for each country the isolates which are non-admixed (or "pure") isolates from the local cluster, non-admixed from another cluster, or hybrid.
 
@@ -1080,6 +1083,7 @@ kable(pivot_wider(temp, names_from = Status, values_from = n, values_fill = 0))
 
 ## As a figure
 ungroup(temp) %>%
+  group_by(Country) %>%
   dplyr::mutate(Nb_per_country = sum(n)) %>%
   filter(Nb_per_country >= 10) %>%
   ggplot(aes(x = Country, y = n, fill = Status)) +
@@ -1091,7 +1095,7 @@ ungroup(temp) %>%
     theme(axis.title.y = element_blank(), 
           axis.title.x = element_text(size = 14),
           axis.text.x = element_text(size =10),
-          axis.text.y = element_text(hjust = 1, vjust = 1, size = 8),
+          axis.text.y = element_text(size = 8),
           panel.spacing = unit(0, "lines"), 
           strip.background = element_blank(),
           strip.placement = "bottom",
@@ -1442,7 +1446,7 @@ temp = read_delim(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.treemix.3pop
 
 kable(temp)
 
-separate(tempcol = populations, into = c("Introgressed_pop", "Pop1", "Pop2"), remove = F) %>%
+separate(temp, col = populations, into = c("Introgressed_pop", "Pop1", "Pop2"), remove = F) %>%
   ggplot(aes(x = Pop1, y = Pop2, fill = `Z-score`)) +
     geom_tile() + 
     theme_cowplot()
@@ -1548,15 +1552,15 @@ datamash transpose < ${POPSTR}$VCFNAME.even_sampling.GT.FORMAT2  |  sed 's/^/>/'
 #    ~/Documents/Postdoc_Bruce/Projects/WW_project/3_Sumstats_demography/
 
 echo -e "Subset_samples\tChromosome\tStart\tStop\tPi\tTajimaD\tTheta" > \
-  ../3_Sumstats_demography/Diversity_per_cluster.tsv
-cat ../3_Sumstats_demography/Sample_list_V*_*_diversity_pi.tsv >>  \
-  ../3_Sumstats_demography/Diversity_per_cluster.tsv
+  ~/Documents/Postdoc_Bruce/Projects/WW_project/3_Sumstats_demography/Diversity_per_cluster.tsv
+cat ~/Documents/Postdoc_Bruce/Projects/WW_project/3_Sumstats_demography/Sample_list_V*_*_diversity_pi.tsv >>  \
+  ~/Documents/Postdoc_Bruce/Projects/WW_project/3_Sumstats_demography/Diversity_per_cluster.tsv
 
 ```
 
 ```{r diversity}
 ordering_table = tibble(Cluster = c("V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8", "V9", "V10", "V11"),
-                        Order_tree = c(4, 10, 9, 6, 7, 5, 1, 3, 2, 11, 8))
+                        Order_tree = c(6,9,8,7,5,2,1,10,4,11,3))
 
 diversity_values = read_tsv(paste0(Sumstats_dir, "Diversity_per_cluster.tsv"), na = "nan")
 
@@ -1582,12 +1586,13 @@ pi_data = temp %>%
 
 p1 = ggplot(pi_data, aes(x = reorder(Cluster, -Order_tree), y = Value, fill = Cluster))  +
   geom_boxplot(outlier.shape = NA) + 
-  #facet_wrap(vars(Estimate), scales = "free") +
   coord_flip() + ylim(c(-0.001, 0.065)) +
   labs(y = "Diversity (pi)") +
+  theme_bw() + 
   theme(legend.position = "None") +
   geom_hline(yintercept = pull(median_values %>% filter(Estimate == "Pi") %>% dplyr::select(average)),
-             linetype = "dashed")
+             linetype = "dashed") +
+  Fill_Cluster
 
 
 p2 = temp %>%
@@ -1601,7 +1606,8 @@ p2 = temp %>%
   theme_cowplot() +
   theme(legend.position = "None") +
   geom_hline(yintercept = pull(median_values %>% filter(Estimate == "TajimaD") %>% dplyr::select(average)),
-             linetype = "dashed")
+             linetype = "dashed") +
+  Fill_Cluster
 
 cowplot::plot_grid(p1, p2, ncol = 2)
 
@@ -1650,7 +1656,8 @@ p1 = ggplot(pi_data, aes(x = reorder(Cluster, -Order_tree), y = Value))  +
           axis.text.x = element_text(angle = 40, hjust = 1)) +
   labs (x = "", y = "Diversity (pi)") +
   ylim(c(-0.001, 0.055)) +
-  geom_text(data = CLD, aes(x = Cluster, label = .group, y = 0.054), color   = "black")
+  geom_text(data = CLD, aes(x = Cluster, label = .group, y = 0.054), color   = "black") +
+  Color_Cluster
 
 cowplot::plot_grid(p1, p2, ncol = 2)
 ```
