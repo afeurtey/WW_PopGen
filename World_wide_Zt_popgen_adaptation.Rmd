@@ -54,8 +54,8 @@ library(scatterpie)
 library(GenomicFeatures)
 library(gridExtra)
 
-library(ggtree)
-library(tidytree)
+#library(ggtree)
+#library(tidytree)
 library(multcomp)
 library(lsmeans)
 
@@ -236,7 +236,9 @@ pheno_table = tibble(BIO_ID = paste0("BIO", c(1:19)),
 
 
 
+
 # GEA: all data
+
 
 ***
 
@@ -356,8 +358,53 @@ ggraph(graph_cors) +
   labs(title = "Correlations between bioclimatic variables")
 
 ```
+Another way to explore the data would be to create a PCA. If the first and second PC explain a large proportion of the variance and if they are interpretable, it could be interesting to use the PC instead of the the bioclimatic variables themselves. 
+```{r}
+
+temp = as.matrix(climate_per_coordinates[,c(3:ncol(climate_per_coordinates))])[, which(apply(as.matrix(climate_per_coordinates[,c(3:ncol(climate_per_coordinates))]), 2, var) != 0)]
+
+per_place.pca = prcomp(temp, center = TRUE,scale. = TRUE)
+
+#Making custom PCA plot
+arrows = as_tibble(as.data.frame(per_place.pca$rotation)) %>%
+  mutate(label = rownames(per_place.pca$rotation))
+
+for_plot =  as.data.frame(per_place.pca$x)
+
+eigs <- per_place.pca$sdev^2
+
+ggplot() + 
+    geom_point(data = for_plot, aes(x = PC1, y = PC2), alpha = .6, shape = 1) + 
+    theme_bw() + 
+    geom_segment(data = arrows, aes(x = 0, y = 0, xend = PC1*10, yend = PC2*10 ),
+                 arrow = arrow(length = unit(0.03, "npc"))) +
+    geom_text(data = arrows, aes(x = PC1*10, y = PC2*10, label = label)) + 
+  coord_cartesian(xlim = c(-6, 10), ylim = c(-8, 7)) +
+  scale_color_manual(values = c("#ffa62b", "#2FC6B7")) +
+  labs(title = "PCA climatic conditions", 
+       subtitle = "Two first PCs",
+       x = paste0("PC1 (", round(100*eigs[1]/sum(eigs), 1), "% explained var.)"),
+       y = paste0("PC2 (", round(100*eigs[2]/sum(eigs), 1), "% explained var.)"))
+
+ggplot() + 
+    geom_point(data = for_plot, aes(x = PC3, y = PC4), alpha = .6, shape = 1) + 
+    theme_bw() + 
+    geom_segment(data = arrows, aes(x = 0, y = 0, xend = PC3*10, yend = PC4*10 ),
+                 arrow = arrow(length = unit(0.03, "npc"))) +
+    geom_text(data = arrows, aes(x = PC3*10, y = PC4*10, label = label)) + 
+  coord_cartesian(xlim = c(-6, 10), ylim = c(-8, 7)) +
+  scale_color_manual(values = c("#ffa62b", "#2FC6B7")) +
+  labs(title = "PCA climatic conditions", 
+       subtitle = "Two first PCs",
+       x = paste0("PC3 (", round(100*eigs[3]/sum(eigs), 1), "% explained var.)"),
+       y = paste0("PC4 (", round(100*eigs[4]/sum(eigs), 1), "% explained var.)"))
+
+```
+In this case, it is not so clear what the PC would represent. The first one is a mix of precipitation during the driest/warmest month, and of temperature (both annual and during warm months). The second is a a mix of temperature seasonality and of precipitation during the wettest/coldest weather. 
 
 
+
+Let's standardise the bioclimatic variable before doing the association, and prepare the input files for GEMMA.
 ```{r standard Bioclim var}
 
 #Create standardized values for the environment variables
@@ -402,7 +449,7 @@ left_join(read_tsv(Zt_list, col_names = "ID_file") %>% mutate(ID2 = ID_file),
 
 ## Identify variants significantly associated to bioclimatic variables
 
-First, I read the results that I got from running GEMMA with a LOCO strategy (i.e., leave-one-chromosome-out). 
+Once the associations have run, I read the results that I got from running GEMMA with a LOCO strategy (i.e., leave-one-chromosome-out). 
 ```{r GEMMA results}
 
 results_GEMMA = list()
@@ -421,13 +468,13 @@ results_GEMMA = bind_rows(results_GEMMA)
 
 ```
 
-Once I have the data loaded, it's time for some sanity checks. Here, I will look at the genomic inflation factor as well as some qqplots. 
+When I have the data loaded, it's time for some sanity checks. Here, I will look at the genomic inflation factor as well as some qqplots. 
 
 ```{r checks GWAS}
 #Genomic Inflation Factor
 temp = results_GEMMA %>% 
         group_by(Phenotype) %>%
-        summarize(Genomic_Inflation_Factor = median(qchisq(1-P,1))/qchisq(0.5,1))
+        dplyr::summarize(Genomic_Inflation_Factor = median(qchisq(1-P,1))/qchisq(0.5,1))
 BIO_sum_table =  full_join(pheno_table, temp) %>% arrange(Genomic_Inflation_Factor)       
 kable(BIO_sum_table)
 
@@ -451,8 +498,10 @@ Bonferroni_thresholds = results_GEMMA %>% dplyr::count(Phenotype, Nb) %>%
 results_GEMMA = full_join(results_GEMMA, Bonferroni_thresholds)
 
 significant = results_GEMMA %>%
-  filter(P <= Bonferroni_threshold)  %>% group_by(SNP, CHR, BP) %>%
-  mutate(Count = n()) %>% mutate(SNP_type = "significant")%>% 
+  filter(P <= Bonferroni_threshold)  %>% 
+  group_by(SNP, CHR, BP) %>%
+  dplyr::mutate(Count = n()) %>% 
+  dplyr::mutate(SNP_type = "significant")%>% 
   ungroup()
 
 BIO_sum_table = full_join(BIO_sum_table, results_GEMMA) %>% 
@@ -460,6 +509,7 @@ BIO_sum_table = full_join(BIO_sum_table, results_GEMMA) %>%
   dplyr::count(Phenotype) %>% 
   arrange(n) %>%
   dplyr::select(Phenotype, Nb_signif_variants = n)
+
 
 significant %>%
   dplyr::select(CHR, BP) %>% 
@@ -482,9 +532,12 @@ from_positions_to_loci <- function(tibble_pos, distance_threshold) {
     
     # Split the vectors into group based on the length threshold
     temp = split(v, cumsum(c(TRUE, diff(v) >= distance_threshold)))
+
     
-    temp2[[i]] =  temp %>% map_df(enframe, .id = 'Locus_nb') %>% rename(BP = value) %>%
-      mutate(CHR = i)
+    temp2[[i]] =  temp %>% 
+      map_df(enframe, .id = 'Locus_nb') %>% 
+      dplyr::rename(BP = value) %>%
+      dplyr::mutate(CHR = i)
     
   }
   
@@ -501,13 +554,13 @@ list_loci = list()
 for (j in c(1:length(Bioclim_var))) {
   list_loci[[j]] = from_positions_to_loci(filter(significant, Phenotype == Bioclim_var[j]),
                          distance_threshold) %>%
-    mutate(Phenotype = Bioclim_var[j])
+    dplyr::mutate(Phenotype = Bioclim_var[j])
 }
 
 #Adding locus info to the table
 significant = full_join(bind_rows(list_loci), significant) %>% 
   group_by(CHR, Locus_nb, Phenotype) %>%
-  mutate(Locus_length = 1 + max(BP) - min(BP)) %>%
+  dplyr::mutate(Locus_length = 1 + max(BP) - min(BP)) %>%
   ungroup()
 
 

@@ -45,8 +45,8 @@ library(pheatmap)
 library(ggridges)
 
 
-library(ggtree)
-library(tidytree)
+#library(ggtree)
+#library(tidytree)
 library(multcomp)
 library(lsmeans)
 
@@ -549,6 +549,7 @@ model = lm(Percent_TE_Reads ~ Mean_GC + MEAN_DEPTH, data = filter(biases, MEAN_D
 summary(model)
 
 model = lm(Total_insertions ~ Mean_GC + MEAN_DEPTH, data = filter(biases, MEAN_DEPTH < 25))
+summary(model)
 round(summary(model)$coefficients, 4)
 
 rsq = round(summary(model)$r.squared, 2)
@@ -976,6 +977,29 @@ p2 = TE_qty %>%
 
 cowplot::plot_grid(p1 + coord_flip() + theme(legend.position = "none"),
                    p2 + coord_flip(), rel_widths = c(1, 1.9))
+
+
+
+
+p1 = TE_qty %>%
+  filter(!is.na(Cluster) & Cluster != "Asia") %>%
+  ggplot(aes(x = Cluster, y = Non_ref_insertions, fill = Cluster)) +
+    geom_violin(alpha = .8)  +
+  Fill_Cluster + Color_Cluster +
+  theme_cowplot()  +
+    theme(axis.text.x = element_text(angle = 40, hjust = 1)) +
+  labs (x = "", y = str_wrap("Non-reference insertions", width = 30))
+p2 = TE_qty %>%
+  filter(!is.na(Cluster) & Cluster != "Asia") %>%
+  ggplot(aes(x = Cluster, y = Ref_insertions, fill = Cluster)) +
+    geom_violin(alpha = .8)  +
+  Fill_Cluster + Color_Cluster +
+  theme_cowplot()  +
+    theme(axis.text.x = element_text(angle = 40, hjust = 1)) +
+  labs (x = "", y = str_wrap("Reference insertions", width = 30))
+
+cowplot::plot_grid(p1 + coord_flip() + theme(legend.position = "none"),
+                   p2 + coord_flip(), rel_widths = c(1, 1.9))
 ```
 Aside from the repeating pattern of low TE content in the Middle-East/Africa, the most striking difference is the European samples containing more reference insertions. Considering, that the reference genome is a sample isolated from Denmark, it is expected that other European samples would be closer.
 
@@ -1057,6 +1081,36 @@ ggplot(aes(x = MEAN_DEPTH, y = n, col = Continent)) +
   geom_smooth(method = "glm", formula = y~log(x), se = F, 
                       method.args = list(family = gaussian(link = 'log')))
 
+
+
+# 
+
+inner_join(filter(TE_insertions_counts, n > threshold), TE_insertions) %>%
+  group_by(ID_file, Continent, Cluster) %>%
+  dplyr::count() %>%
+  inner_join(depth, by = c("ID_file" = "INDV")) %>%
+  ggplot(aes(x = MEAN_DEPTH, y = n, col = Cluster)) +
+     geom_point(alpha = .8, size = 2) +
+     theme_bw() +
+     labs(title = "Depth bias check TIP comparison between continent",
+          subtitle = "All TIPs (population specific and others)",
+          x = "Mean depth of coverage", 
+          y = paste0("Number of TIP with more than ", threshold, " presence")) +
+     Color_Cluster #+
+
+
+inner_join(filter(TE_insertions_counts, n > 0), TE_insertions) %>%
+  group_by(ID_file, Continent, Cluster) %>%
+  dplyr::count() %>%
+  inner_join(depth, by = c("ID_file" = "INDV")) %>%
+  ggplot(aes(x = MEAN_DEPTH, y = n, col = Cluster)) +
+     geom_point(alpha = .8, size = 2) +
+     theme_bw() +
+     labs(title = "Depth bias check TIP comparison between continent",
+          subtitle = "All TIPs (population specific and others)",
+          x = "Mean depth of coverage", 
+          y = paste0("Number of TIP")) +
+     Color_Cluster #+
 
 ```
 
@@ -1370,32 +1424,6 @@ ungroup(TE_insertions_per_window) %>%
 ungroup(TE_insertions_per_window) %>% dplyr::count(outlier) 
 ```
 
-There is one window that is much higher than anything else on chromosome 12. This is strange, so I started looking more specifically at this partilar locus. Is the increase in TIPs due to only one type of TE? Is it even more localized than the 10kb-window I've looked at?
-
-```{r weird outlier chr12}
-temp = TE_insertions %>% filter(CHR == 12) %>%
-  mutate(window = trunc(((position + end)/2)/10000)) %>% filter(window == 52)
-
-p1 = temp %>% 
-  dplyr::select(Superfamily, TE_family, TE_insertion ) %>% 
-  distinct() %>% 
-  ggplot(aes(x = Superfamily, fill = TE_family)) + 
-  geom_bar() + 
-  scale_fill_manual(values = rep(c("#f6bd60", "#f6ca83", "#f7ede2", "#f5cac3", "#84a59d", "#73683b", "#d0d38f", "#cd5b72", "#f28482"), 10)) 
-p1 + theme(legend.position = "none")
-cowplot::plot_grid(get_legend(p1))
-
-temp %>% 
-  mutate(pos = trunc((position + end)/200)) %>%
-  group_by(TE_insertion, TE_family, Superfamily, ref_non_ref_TIP, pos) %>% 
-  ggplot(aes(x = pos*100, fill = Continent)) +
-  geom_bar() + 
-  theme_bw() +
-  facet_grid(rows = vars(Superfamily), scales = "free_y") +
-  Fill_Continent
-  
- 
-```
 
 
 ```{r}
@@ -1473,10 +1501,15 @@ p2 = insertions_per_pop %>%
   mutate(Specificity_category = "Non_specific") %>%
   bind_rows(temp) %>%
   inner_join(distance_TE_genes) %>%
-  ggplot(aes(x = Specificity_category, y = log(Distance))) + 
-  geom_violin() +
+  ungroup() %>%
+  mutate(log_dist = log(Distance),
+         Specificity_category=fct_reorder(Specificity_category, Distance, na.rm=TRUE)) %>%
+  ggplot(aes(x = Specificity_category, y = Distance, color = Specificity_category)) + 
+  #geom_violin() +
   geom_boxplot(width = .2) + 
-  theme_bw()
+  theme_bw() +
+  scale_y_continuous(trans = "log10") +
+  Color_Cluster
 
 
 cowplot::plot_grid(p1, p2)
@@ -2580,13 +2613,15 @@ duplicated_loci = core_duplicated_genes %>%
 
 
 #Create standardized values for the environment variables
+scale_this <- function(x) as.vector(scale(x))
 stand = left_join(TE_RIP, duplicated_loci) %>% 
-  dplyr::select(ID_file, Percent_TE_Reads, Composite_median, Composite_mean, Acc_chr, Duplicated_genes, Non_ref_insertions) %>%
+  dplyr::select(ID_file, Percent_TE_Reads, Composite_median, Composite_mean, Acc_chr, Duplicated_genes, Total_insertions) %>%
+  distinct() %>%
   pivot_longer(cols = -c(ID_file), names_to = "Variable", values_to = "Value") %>%
-  group_by(Variable) %>%
-  dplyr::mutate(Standard_value = scale(Value)) %>%
+  dplyr::group_by(Variable) %>%
+  dplyr::mutate(Standard_value = scale_this(Value)) %>%
   dplyr::select(-Value) %>%
-  pivot_wider(names_from = Variable, values_from = Standard_value, values_fn = length)
+  pivot_wider(names_from = Variable, values_from = Standard_value)
 
 
 #The fam file should be same for all core chromosomes, hopefully. So I only have to create one to get the file format including the phenotypes. This can then be used for all chromosomes.
@@ -2899,18 +2934,18 @@ c
 temp = tibble(CHR = c(5, 6), Gene = c("rid", "dnmt5"), Pos = c(255000, 2527000))
 
 p = Manhattan_one_pheno("TE", c("#FFD399", "#ff9f1c")) +
-  labs(y = str_wrap("TE content (-logP)", 25)) + 
-  geom_vline(data = temp, aes(xintercept = Pos), alpha =.4, col = "grey20")
+  labs(y = str_wrap("TE content (-logP)", 25))
 
 q = Manhattan_one_pheno("TE_insertions", c("#cbf3f0", "#2ec4b6")) +
-  labs(y = str_wrap("TE insertions (-logP)", 25)) + 
-  geom_vline(data = temp, aes(xintercept = Pos), alpha =.4, col = "grey20") +
-      geom_text(data = temp, aes(label = Gene, x= Pos), 
-                y = -5, # Set the position of the text to always be at '14.25'
-                size = 4, angle = 90,
-                vjust = 0, hjust = 0) +
-      coord_cartesian(ylim = c(-3.8, 27), # This focuses the x-axis on the range of interest
-                      clip = 'off')
+  labs(y = str_wrap("TE insertions (-logP)", 25))  + 
+  coord_cartesian(ylim = c(-3.8, 27), # This focuses the x-axis on the range of interest
+                      clip = 'off') #+
+  #geom_vline(data = temp, aes(xintercept = Pos), alpha =.4, col = "grey20") + 
+   #   geom_text(data = temp, aes(label = Gene, x= Pos), 
+  #              y = -5, # Set the position of the text to always be at '14.25'
+  #              size = 4, angle = 90,
+  #              vjust = 0, hjust = 0)
+      
 
 cowplot::plot_grid(p, q, ncol = 1)
 
@@ -2918,11 +2953,6 @@ cowplot::plot_grid(p, q, ncol = 1)
 
 Manhattan_one_pheno("RIP_med", c("#cbf3f0", "#2ec4b6")) +
   labs(y = str_wrap("RIP (-logP)", 25)) + 
-  geom_vline(data = temp, aes(xintercept = Pos), alpha =.4, col = "grey20") +
-      geom_text(data = temp, aes(label = Gene, x= Pos), 
-                y = -5, # Set the position of the text to always be at '14.25'
-                size = 4, angle = 90,
-                vjust = 0, hjust = 0) +
       coord_cartesian(ylim = c(-3.8, 27), # This focuses the x-axis on the range of interest
                       clip = 'off')
 ```
@@ -2934,17 +2964,27 @@ Manhattan_one_pheno("RIP_med", c("#cbf3f0", "#2ec4b6")) +
 #min_coord = 220000
 #max_coord = 270000
 
-#chromosome = 13
-#min_coord = 800048
-#max_coord = 1129645
-
 #chromosome = 3
 #min_coord = 3190000
 #max_coord = 3218000
 
+#chromosome = 5
+#min_coord = 220000
+#max_coord = 270000
+
 chromosome = 5
-min_coord = 220000
-max_coord = 270000
+min_coord = 62000
+max_coord = 78000
+
+
+chromosome = 7
+min_coord = 1175000
+max_coord = 1190000
+
+chromosome = 13
+min_coord = 1000000
+max_coord = 1129645
+  
 genes_to_highlight = c("Zt09_model_5_00047")
 TE_gff = "~/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/Cecile_IPO323_refTEs_match.gff"
 gene_gff = "~/Documents/Postdoc_Bruce/Projects/WW_project/0_Data/Zymoseptoria_tritici.MG2.Grandaubert2015.mRNA.gff3"
@@ -2990,6 +3030,26 @@ b = results_GWAS %>% filter(CHR == chromosome) %>%
   theme(axis.title.x = element_blank()) + 
   coord_cartesian(xlim = c(min_coord, max_coord))
 cowplot::plot_grid(b,  d, c, ncol = 1, align = 'v', axis = 'lr', rel_heights = c(1, 0.3, 0.3))
+
+# Prepare the second plot for the third phenotype 
+b = results_GWAS %>% filter(CHR == chromosome) %>%
+  filter(Phenotype == "TE_insertions") %>%
+  filter(BP >= min_coord) %>%
+  filter(BP <= max_coord) %>%
+  mutate(logP = -log10(P)) %>%
+  ggplot() +
+  geom_point(aes(x = BP, y = logP, col = logP)) +
+    geom_hline(aes(yintercept=-log10(Bonferroni_threshold)),
+               linetype = "dashed", color = "grey20")+
+  theme_bw() +
+  labs(title = "GWAS based on TIPs number",
+       subtitle = paste0("The region is on the chromosome ", chromosome, 
+                           " from ", min_coord, "bp to ", max_coord, "bp.")) +
+  theme(axis.title.x = element_blank()) + 
+  coord_cartesian(xlim = c(min_coord, max_coord))
+cowplot::plot_grid(b,  d, c, ncol = 1, align = 'v', axis = 'lr', rel_heights = c(1, 0.3, 0.3))
+
+
 ```
 
 
@@ -3009,5 +3069,78 @@ q = Manhattan_one_pheno("Accessory_chr", c("#cbf3f0", "#2ec4b6")) +
 
 cowplot::plot_grid(p, q, ncol = 1)
 
+```
+
+
+## Rid locus zoom in
+
+```{r}
+
+chromosome = 5
+min_coord = 220000
+max_coord = 270000
+
+
+temp = read_delim(paste0(TE_RIP_dir, "SNPs_around_rid.tsv"), delim = "\t", col_names = F) %>%
+  inner_join(dplyr::select(significant_TE, SNP, CHR, BP, P, Phenotype, Count, Locus_nb), by = c("X1" = "CHR", "X2" = "BP")) %>%
+  pivot_longer(cols = -c(X1, X2, X3, X4, SNP, P, Phenotype, Count, Locus_nb), names_to = "temp", values_to = "temp2") %>%
+  separate(temp2, into = c("ID_file", "Allele"), sep = "=") %>%
+  dplyr::select(-temp)
+  
+  
+rip_blast_results_complete = read_delim(paste0(TE_RIP_dir, "Overall_results_blast_rid.txt"), delim = " ",
+                                col_names = c("ID_file", "gene", "qseqid", "sseqid", "pident", "length",
+                                              "mismatch", "gapopen", "qstart", "qend",
+                                              "sstart", "send", "evalue", "bitscore")) %>%
+  filter(length > 1000) %>% 
+  dplyr::select(ID_file, length)
+
+temp2 = temp %>%
+  filter(Phenotype == "TE_insertions") %>%
+  full_join(rip_blast_results_complete, by = "ID_file") %>%
+  filter(!is.na(length)) %>%
+  mutate(PAV = ifelse(length > 4500, "Presence", "Partial_del"))
+
+dplyr::count(temp2, PAV, Allele, X2) %>%
+ggplot(aes(x = PAV, y = n, fill = Allele)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(vars(X2))
+
+
+temp %>%
+  filter(Phenotype == "TE_insertions") %>%
+  left_join(rip_blast_results_complete, by = "ID_file") %>%
+  filter(!is.na(length)) %>%
+  mutate(PAV = ifelse(length > 4500, "Presence", "Partial_del")) %>%
+  left_join(TE_RIP, by = "ID_file") %>%
+  filter(Continent != "Asia" & !is.na(Continent)) %>%
+  ggplot(aes(x = PAV, y = Total_insertions)) +
+  geom_boxplot() +
+  facet_wrap(vars(Continent))
+
+
+temp %>%
+  filter(Phenotype == "TE_insertions") %>%
+  left_join(rip_blast_results_complete, by = "ID_file") %>%
+  filter(!is.na(length)) %>%
+  mutate(PAV = ifelse(length > 4500, "Presence", "Partial_del")) %>%
+  left_join(TE_RIP, by = "ID_file") %>%
+  filter(Continent != "Asia" & !is.na(Continent)) %>%
+  filter(X2 == 245525) %>%
+  ggplot(aes(x = Allele, y = Total_insertions)) +
+  geom_boxplot() +
+  facet_wrap(vars(Continent))
+
+
+temp %>%
+  filter(Phenotype == "TE_insertions") %>%
+  filter(grepl("ST16CH", ID_file)) %>%
+  left_join(rip_blast_results_complete, by = "ID_file") %>%
+  filter(!is.na(length)) %>%
+  mutate(PAV = ifelse(length > 4500, "Presence", "Partial_del")) %>%
+  left_join(TE_RIP, by = "ID_file") %>%
+  filter(X2 == 245525) %>%
+  ggplot(aes(x = Allele, y = Total_insertions)) +
+  geom_boxplot()
 ```
 

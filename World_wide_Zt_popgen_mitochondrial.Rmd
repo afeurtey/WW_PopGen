@@ -1,5 +1,5 @@
 ---
-title: "World-wide popgen Zt"
+title: "World-wide Mitochondrial Genome "
 author: "Alice Feurtey"
 date: "5/5/2020"
 output:
@@ -195,9 +195,7 @@ blues=c("#08386E", "#1C89C9", "#28A7C0", "#B0DFE8", "grey")
 
 
 
-# Mitochondrial genome
-
-##PCA with the mitochondrial genome
+# Definition of the mitochondrial groups
 ```{bash filter mito vcf, eval = F}
 vcftools --gzvcf ${VCFDIR}${VCFNAME_MITO}.recode.vcf.gz  \
   --non-ref-ac-any 1 \
@@ -279,6 +277,131 @@ pca_mito2 %>%
   write_tsv(., paste0(mito_PS_dir, "Sample_list_mito_group1.txt"))
 ```
 
+# Allelic depth check
+```{r}
+temp = names(read_delim(paste0(vcf_dir, "Ztritici_global_March2021.genotyped.ALL.filtered.clean.good_samples.mt.AB_check.header")))
+
+mito_AD = read_delim(paste0(vcf_dir, "Ztritici_global_March2021.genotyped.ALL.filtered.clean.good_samples.mt.AB_check.tab"), 
+                     col_names = temp, n_max = 1000) %>%
+  pivot_longer(cols = -c(CHROM, POS, REF, ALT), names_to = "ID_file", values_to = "temp") %>%
+  separate(col = temp, into = c("AD", "Filter"), sep = ":") %>%
+  dplyr::select(-Filter) %>%
+  separate(col = AD, into = c("AD0", "AD1", "AD2"), sep = ",", fill = "right") %>%
+  rowwise() %>%
+  mutate(max = max(as.numeric(AD0), as.numeric(AD1), as.numeric(AD2), na.rm = T),
+         total = sum(as.numeric(AD0), as.numeric(AD1), as.numeric(AD2), na.rm = T)) %>%
+  filter(max != total) %>%
+  mutate(percent = 100*max/total)
+
+temp = left_join(mito_AD, Zt_meta) %>%
+  filter(percent <= 95) 
+temp %>% 
+  ggplot(aes(x = POS, y = percent, color = Continent)) + 
+  geom_point(alpha = .4) + theme_bw() + 
+  Color_Continent
+
+
+temp  = mito_AD %>% filter(percent < 95) %>%
+  dplyr::count(ID_file) %>%
+  filter(n > 10)
+
+left_join(mito_AD, Zt_meta) %>%
+  filter(percent <= 95) %>%
+  inner_join(slice_sample(ungroup(temp), prop = 0.1)) %>%
+  ggplot(aes(y =ID_file, x = percent)) +
+  ggridges::geom_density_ridges() +
+  theme_bw()
+
+```
+
+```{r}
+left_join(mito_AD, Zt_meta) %>%
+  unite(col = "for_plot", Continent, ID_file) %>%
+  filter(POS < 5000) %>%
+  ggplot(aes(x = as.character(POS), y = for_plot, fill = percent)) +
+  geom_tile() + 
+  scale_fill_gradient(high = "white", low = "#fca311") + 
+  theme_minimal() +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(angle = 40, hjust = 1, vjust =1),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank()) 
+
+left_join(mito_AD, Zt_meta) %>%
+  unite(col = "for_plot", Continent, ID_file) %>%
+  filter(POS > 5000 & POS < 10000) %>%
+  ggplot(aes(x = as.character(POS), y = for_plot, fill = percent)) +
+  geom_tile()  + 
+  scale_fill_gradient(high = "white", low = "#fca311") + 
+  theme_minimal() +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(angle = 40, hjust = 1, vjust =1),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank()) 
+
+
+left_join(mito_AD, Zt_meta) %>%
+  unite(col = "for_plot", Continent, ID_file) %>%
+  filter(POS > 10000 & POS < 15000) %>%
+  ggplot(aes(x = as.character(POS), y = for_plot, fill = percent)) +
+  geom_tile()  + 
+  scale_fill_gradient(high = "white", low = "#fca311") + 
+  theme_minimal() +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(angle = 40, hjust = 1, vjust =1),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank()) 
+
+left_join(mito_AD, Zt_meta) %>%
+  unite(col = "for_plot", Continent, ID_file) %>%
+  filter(POS > 15000 & POS < 20000) %>%
+  ggplot(aes(x = as.character(POS), y = for_plot, fill = percent)) +
+  geom_tile()  + 
+  scale_fill_gradient(high = "white", low = "#fca311") + 
+  theme_minimal() +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(angle = 40, hjust = 1, vjust =1),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank()) 
+
+left_join(mito_AD, Zt_meta) %>%
+  unite(col = "for_plot", Continent, ID_file) %>%
+  filter(POS > 20000 & POS < 25000) %>%
+  ggplot(aes(x = as.character(POS), y = for_plot, fill = percent)) +
+  geom_tile()  + 
+  scale_fill_gradient(high = "white", low = "#fca311") + 
+  theme_minimal() +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(angle = 40, hjust = 1, vjust =1),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank()) 
+
+left_join(mito_AD, Zt_meta) %>%
+  unite(col = "for_plot", Continent, ID_file) %>%
+  filter(POS > 25000 & POS < 30000) %>%
+  ggplot(aes(x = as.character(POS), y = for_plot, fill = percent)) +
+  geom_tile()  + 
+  scale_fill_gradient(high = "white", low = "#fca311") + 
+  theme_minimal() +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(angle = 40, hjust = 1, vjust =1),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank()) 
+
+
+left_join(mito_AD, Zt_meta) %>%
+  unite(col = "for_plot", Continent, ID_file)%>%
+  filter(POS > 30000 & POS < 35000) %>%
+  ggplot(aes(x = as.character(POS), y = for_plot, fill = percent)) +
+  geom_tile()  + 
+  scale_fill_gradient(high = "white", low = "#fca311") + 
+  theme_minimal() +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(angle = 40, hjust = 1, vjust =1),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank()) 
+
+left_join(mito_AD, Zt_meta) %>%
+  unite(col = "for_plot", Continent, ID_file) %>%
+  filter(POS > 35000 & POS < 40000) %>%
+  ggplot(aes(x = as.character(POS), y = for_plot, fill = percent)) +
+  geom_tile()  + 
+  scale_fill_gradient(high = "white", low = "#fca311") + 
+  theme_minimal() +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(angle = 40, hjust = 1, vjust =1),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank()) 
+
+```
+
+
+
+# Causal variants identification
 
 Now that my groups are defined, I want to investigate the origin of this clustering. Is the variation homogeneously distributed along the mitochondrial genome? Are there areas with a higher differentiation between the two groups?
 There are around 10 percent of the samples belong to group 0. I would thus expect that alleles that are shared between these samples and specific to these samples would have a minor allele frequency of around 0.1. 
@@ -304,11 +427,13 @@ vcftools \
 
 ```{r MAF mito}
 #First let's look at the distribution of SNPs and the maf 
-temp = read_tsv(paste0(vcf_dir, vcf_name_mito, ".biall.positions"), 
-                          col_names = c("CHROM", "POS")) %>%
+temp = read_delim(paste0(vcf_dir, vcf_name_mito, ".biall.positions"), 
+                          col_names = c("CHROM", "POS"), delim = "\t") %>%
   mutate(window = trunc(POS/1000)*1000)
 
-mito_positions = read_tsv(paste0(vcf_dir, vcf_name_mito, ".biall.frq"), col_names = T) %>%
+mito_positions = read_delim(paste0(vcf_dir, vcf_name_mito, ".biall.frq"), delim = "\t", 
+                            skip = 1, 
+                            col_names = c("CHROM", "POS", "N_ALLELES", "N_CHR", "{ALLELE:FREQ}", "{ALLELE2:FREQ2}")) %>%
   separate(`{ALLELE:FREQ}`, into = c("ALLELE", "FREQ"), sep = ":") %>%
   mutate(rev_FREQ = 1-as.numeric(FREQ)) %>%
   group_by(POS) %>%
@@ -424,7 +549,11 @@ p + labs(title = "PCA from the mitochondrial genome of *Z.tritici*",
 
 As a note, there does not seem to be a clear relationship between the known mutation G143A in the cytb gene and these two groups.
 
-At first glance, it does not look like the structure is related to geography, but I want to compare the structure obtained with both types of genomes to get a clearer idea of the comparison.
+
+
+# Distribution of the two mitochondrial groups over geography and nuclear population structure
+
+At first glance, it does not look like the structure is comparable to the nuclear structure as this one was matching geography very closely. I want to compare the structure obtained with both types of genomes to get a clearer idea of the comparison. First, I'll compare the two first PCs and then, I'll check the incidence for both mitogroups in the previously identified genetic clusters.
 
 ```{r mito vs nuclear str}
 high_anc_coef_snmf = read_tsv(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.tsv"), col_names = T)
@@ -445,6 +574,11 @@ p1 = pca_mito2 %>%
 
 p1
 
+```
+
+
+
+```{r clusters vs mitogroups}
 temp = pca_mito2 %>%
   dplyr::select(Sample = sample_id, Mito_group) %>%
   full_join(., high_anc_coef_snmf) %>%
@@ -470,10 +604,10 @@ temp %>%
   labs(title = str_wrap(paste0("Number of samples belonging to the two mitochondrial",
                                " groups per nuclear genetic cluster"), width = 60))
 
-
 ```
-The proportions of the mitochondrial haplotypes across the genetic clusters defined with the nuclear genome is not equal: some clusters have only one mitochondrial group, while some others are 50/50. Not sure what to make of it.
 
+The proportions of the mitochondrial haplotypes across the genetic clusters defined with the nuclear genome is not equal: some clusters have only one mitochondrial group, while some others are 50/50.
+Since the nuclear genetic clusters are matching geography, we already have an indication that the two mitogroups are spread across the world. Let's get a better idea of the world-wide distribution with a pretty map, with some pies.
 ```{r scatter pies}
 #Summarizing based on samples found in neighbouring areas
 pies = pca_mito2 %>%
@@ -518,6 +652,7 @@ cowplot::plot_grid(p2 + theme(legend.position = "None"), ligne, ncol = 2, rel_wi
 ```
 
 
+# Distance to other species
 
 I got curious about the distance from each mitochondrial haplotype to the wild species. So I picked one isolate from each group, including IPO323 as an example of the mitogroup 1. 
 ```{r mito Zb}
@@ -609,7 +744,7 @@ read_tsv("~/Documents/Software/mummer-4.0.0rc1/IPO323_vs_SRR5194475.snps",
 
 
 
-### Check the validity of the variant calling
+# Check the validity of the variant calling
 
 The whole two-group thing look very strange. So I decided to do some checks of the validity of variants around the region of interest.
 ```{bash inputs per mitogroup, eval = F}
@@ -752,7 +887,7 @@ compared_freq = full_join(Freq_GATK_per_group, Freq_aln_per_group) %>%
   pivot_longer(-POS, names_to = "Method", values_to = "Difference")
 
 
-ggplot(compared_freq, aes(x = POS, y =Difference, col = Method)) +
+ggplot(compared_freq, aes(x = POS, y = Difference, col = Method)) +
   geom_point(alpha = .4) + 
   theme_bw() +
   facet_grid(rows = vars(Method)) +
@@ -765,9 +900,10 @@ temp = read_tsv("~/Documents/Software/mummer-4.0.0rc1/IPO323_vs_Zp.B02.snps",
          col_names = c("POS", "REF", "Zp", "Ref", "Whatever",
                        "V1", "V2", "V3", "V4", "V5", "CHROM", "scaf"))
 
-alleles = inner_join(snps_from_aln, check_relevant_SNPS %>% dplyr::select(CHROM, POS)) %>%
+#alleles = inner_join(snps_from_aln, check_relevant_SNPS %>% dplyr::select(CHROM, POS)) %>%
+alleles = snps_from_aln %>%
   filter(Mito_group == 0) %>%
-   group_by(POS, ALT) %>%
+  group_by(POS, ALT) %>%
   dplyr::count() %>%
   pivot_wider(names_from = ALT, values_from = n) %>%
   left_join(., temp %>% dplyr::select(Zp, POS))
@@ -791,6 +927,8 @@ alleles = alleles %>%
 
 
 
+# Structural variants in the two groups
+
 Now that the SNPs are compared and confirmed, I want to look at the structural variants and in particular break points in the alignment between the genomes and the mitochondria of the reference strain.
 
 ```{r breaks mito}
@@ -800,39 +938,70 @@ coords_from_aln = read_tsv(paste0(mito_SV, "All_complete_mitochondria.mcoords"))
   separate(TEMP, into = c("sample_id", "scaffold"), sep = ":") %>%
   left_join(., pca_mito2 %>% dplyr::select(sample_id, Mito_group)) 
 
+
 temp = coords_from_aln %>%
   dplyr::select(Mito_group, Ref_start, Ref_end, sample_id) %>%
-  group_by(Mito_group, Ref_start) %>%
+  pivot_longer(cols = c(Ref_start, Ref_end), names_to = "temp", values_to = "Position")%>%
+  group_by(Mito_group, Position) %>%
   dplyr::count() %>%
   left_join(., nb_complete_mito_per_group) %>% 
   mutate(Freq_break = n/Total_nb) %>%
-  pivot_wider(names_from = Mito_group, values_from = Freq_break) %>%
-  dplyr::select(Ref_start, Freq_break0 = `0`, Freq_break1 = `1`) %>% 
+  filter(!is.na(Mito_group))
+
+p1 = temp %>%
+  filter(Mito_group == 0) %>%
+  ggplot(aes(x = Position, y = Freq_break)) +
+  geom_point(col = "#ff9f1c") + 
+  theme_bw() +
+  labs(title = "Frequency of breakpoints in the two mitogroups",
+       y = str_wrap("Frequency in the mitogroup 0", width = 15)) +
+  theme(axis.title.x = element_blank(), axis.ticks.x = element_blank(), axis.text.x = element_blank())
+p2 = temp %>%
+  filter(Mito_group == 1) %>%
+  ggplot(aes(x = Position, y = Freq_break)) +
+  geom_point(col = "#2ec4b6") + 
+  theme_bw() +
+  labs(y = str_wrap("Frequency in the mitogroup 1", width = 15))
+cowplot::plot_grid(p1, p2 + scale_y_reverse(), ncol = 1)
+
+
+
+temp = coords_from_aln %>%
+  filter(!is.na(Mito_group)) %>%
+  dplyr::select(Mito_group, Ref_start, Ref_end, sample_id) %>%
+  pivot_longer(cols = c(Ref_start, Ref_end), names_to = "temp", values_to = "Position")%>%
+  group_by(Mito_group, Position)  %>%
+  dplyr::count() %>%
+  left_join(., nb_complete_mito_per_group) %>% 
+  mutate(Freq_break = n/Total_nb) %>%
+  dplyr::select(-n, -Total_nb) %>%
+  pivot_wider(names_from = Mito_group, values_from = Freq_break, values_fill = 0) %>%
+  dplyr::select(Position, Freq_break0 = `0`, Freq_break1 = `1`) %>% 
   mutate(Freq_break0 = ifelse(is.na(Freq_break0), 0, Freq_break0),
          Freq_break1 = ifelse(is.na(Freq_break1), 0, Freq_break1),
          Diff_freq_in_breaks = Freq_break0 - Freq_break1,
          More_freq_in_0 = Diff_freq_in_breaks >= 0) 
 
-temp %>% ggplot(aes(x = Ref_start, y = Diff_freq_in_breaks, 
+temp %>% ggplot(aes(x = Position, y = Diff_freq_in_breaks, 
                     col = More_freq_in_0, alpha = abs(Diff_freq_in_breaks) + 0.01)) +
   geom_point() + 
   theme_bw() +
   scale_color_manual(values = c(unname(myColors)[3], unname(myColors)[1])) +
   labs(title = "Difference in frequency of breakpoints between the two mito_groups",
-       subtitle = str_wrap(paste0("Two breakpoints seem to be found in ",
+       subtitle = str_wrap(paste0("Two breakpoints seem to be found specifically in ",
                                   "all genomes from group 0, including one ",
                                   "in the region of interest.")),
        alpha = "Difference intensity",
        col = "Breakpoint more frequent in group 0",
        x = "Position on the mitochondrial genome",
        y = "Difference in frequency") +
-  theme(legend.position = "bottom")
+  theme(legend.position = "bottom", legend.box="vertical", legend.margin=margin())
   
 ```
 
 
 
-### Structure per mito group
+# Structure per mito group
 
 ```{r PCA per mito group}
 ## Mito group 0
@@ -923,7 +1092,7 @@ cowplot::plot_grid(col1, col2, ncol = 2)
 ```
 It could have been expected that the geographical structure would be very clear once we separate the two groups. Although this is not the case, we can still recover part of a geographical separation in the group with most genomes.
 
-
+# Phenotypic correlation with groups
 
 ```{r mito vs pheno}
 

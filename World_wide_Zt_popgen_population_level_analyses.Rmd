@@ -58,8 +58,6 @@ library(pophelper)
 #library(PopGenome) #Summary statistics
 library(gridExtra)
 library(ggExtra)
-library(ggtree)
-library(tidytree)
 library(multcomp)
 library(lsmeans)
 
@@ -187,7 +185,7 @@ K_colors = c("#f9c74f", "#f9844a", "#90be6d", "#f5cac3",
 
 ## For correlations
 mycolorsCorrel<- colorRampPalette(c("#0f8b8d", "white", "#a8201a"))(20)
-
+Zt_meta
 #Random gradients
 greens=c("#1B512D", "#669046", "#8CB053", "#B1CF5F", "#514F59")
 blues=c("#08386E", "#1C89C9", "#28A7C0", "#B0DFE8", "grey")
@@ -423,6 +421,109 @@ for ( min_number in c(6, 10) ) {
 
 
 <br><br>
+
+```{bash}
+mat1_c=0
+mat2_c=0
+while read sample ; 
+do 
+   if [ -f /data2/alice/WW_project/2_Population_structure/Mat1_1_${sample}.blast_out.tsv ] ; 
+     then 
+        mat1="OK" ; 
+        mat1_c=$(($mat1_c + 1))
+     else
+        mat1="NO" ; 
+    fi ; 
+    
+    if [ -f "/data2/alice/WW_project/2_Population_structure/Mat1_2_${sample}.blast_out.tsv" ] ; 
+      then 
+        mat2="OK"; 
+        mat2_c=$(($mat2_c + 1))
+     else
+        mat2="NO" ; 
+    fi ;  
+    echo $sample $mat1 $mat2 ; 
+done < Keep_lists_samples/Ztritici_global_March2021.genotyped.good_samples.args
+
+echo $mat1_c $mat2_c
+```
+
+```{r mat genes}
+mat_genes_blast = read_delim(paste0(PopStr_dir, "Mat1_blast_all.tsv"), delim = " ",
+           col_names = c("ID_file", "gene", "qseqid", "sseqid", "pident", "length",
+                                              "mismatch", "gapopen", "qstart", "qend",
+                                              "sstart", "send", "evalue", "bitscore")) %>%
+  distinct() %>%
+  dplyr::inner_join(Zt_meta) %>%
+  group_by(ID_file, gene, Continent, Country, Latitude2, Longitude2) %>%
+  mutate(Cum_length = sum(length))%>% ungroup()
+
+mat_genes = ungroup(mat_genes_blast) %>%
+  group_by(ID_file, gene, Continent, Country, Latitude2, Longitude2) %>%
+  summarize(Cum_length = sum(length)) %>% ungroup()
+
+
+dplyr::count(mat_genes, gene, Cum_length) 
+
+mat_genes %>%
+  ggplot(aes(Cum_length)) + 
+    geom_density() + 
+    theme_bw() + 
+    facet_wrap(vars(gene))
+
+mat11_size = median(filter(mat_genes, gene == "Mat_1_1")$Cum_length)
+mat12_size = median(filter(mat_genes, gene == "Mat_1_2")$Cum_length)
+
+mat_genes_blast = mat_genes_blast %>%
+  mutate(Filtering = case_when(gene == "Mat_1_1" & Cum_length >= mat11_size - 20 & Cum_length <= mat11_size + 20 ~ "Keep",
+                               gene == "Mat_1_2" & Cum_length >= mat12_size - 20 & Cum_length <= mat12_size + 20 ~ "Keep",
+                               TRUE ~ "Filter_out"))
+
+
+# Count and plot per continent
+temp = mat_genes_blast %>% 
+  dplyr::select(ID_file, gene,Continent) %>%
+  distinct() %>%
+  dplyr::count(Continent, gene) %>%
+  filter(!is.na(Continent))
+
+ggplot(temp, aes(x = Continent, y = n, fill = gene))+ 
+    geom_bar(stat = "identity", position = "dodge") + 
+    theme_bw() +
+    labs(y = "Number of isolates" ) +
+    theme(axis.title.x = element_blank(),
+          axis.text.x = element_text(angle = 40, hjust = 1, vjust =1 ))
+
+
+# Count and plot per location
+temp = mat_genes_blast %>%
+  filter(!is.na(Latitude2)) %>% 
+  unite("Coords", Latitude2, Longitude2, sep = "_") %>% 
+  dplyr::select(ID_file, gene, Coords) %>%
+  distinct()  %>%
+  group_by(Coords) %>%
+  mutate(Nb_samples = n()) %>%
+  filter(Nb_samples >= 10) %>%
+  dplyr::count(Coords, gene)
+
+ggplot(temp, aes(x = Coords, y = n, fill = gene))+ 
+    geom_bar(stat = "identity", position = "fill") + 
+    geom_hline(yintercept = .5) +
+    theme_bw() +
+    labs(y = "Number of isolates" ) +
+    theme(axis.title.x = element_blank(),
+          axis.text.x = element_text(angle = 40, hjust = 1, vjust =1 ))
+
+#Stupid isolates with matches for the 2 mat genes
+mat_genes_blast %>% 
+  filter(Filtering == "Keep") %>%
+  dplyr::select(ID_file, gene,Continent, Cum_length) %>%
+  distinct() %>%
+  pivot_wider(names_from = gene, values_from = Cum_length, values_fill = 0)  %>%
+  filter(Mat_1_1 > 0 & Mat_1_2 > 0)
+
+```
+
 
 
 # Variant calling
@@ -1422,6 +1523,20 @@ t = plot_tree(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.m3.treemix.out")
 t = plot_tree(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.m4.treemix.out"))
 t = plot_tree(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.m5.treemix.out"))
 t = plot_tree(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.m6.treemix.out"))
+
+
+mig_events = c(1:6)
+temp = tibble(mig_events = mig_events, 
+              var_explained = sapply(paste0(PopStr_dir, vcf_name, ".high_anc_coef_snmf.m",mig_events, ".treemix.out"), get_f))
+
+ggplot(temp, aes(mig_events, var_explained)) + 
+  geom_line() + 
+  geom_point() + 
+  geom_hline(yintercept = 0.995, color = "#82c0cc", linetype = "dashed", size = 1) +
+  theme_bw() +
+  labs(x = "Number of infered migration events", y = "Proportion of explained variance",
+       title = str_wrap(paste0("Variance explained by the model of Treemix with",
+                               " different number of migration events"), 70))
 ```
 
 Along with the treemix software, are distribution the software threepop and fourpop. These measure f3 and f4 statistics which test for treeness in population trees.
@@ -1545,6 +1660,135 @@ datamash transpose < ${POPSTR}$VCFNAME.even_sampling.GT.FORMAT2  |  sed 's/^/>/'
 # Basic statistics: diversity and differenciation
 ***
 
+## Diversity in Russian dolls
+
+```{r}
+
+minimum_cluster_size = 8
+
+#Files with a similar number of isolates between subpopulations
+
+subpop_list = Zt_meta %>% 
+  dplyr::count(Sampling_Date, Latitude2, Longitude2, Country, Continent) %>% 
+  group_by(Continent) %>% 
+  dplyr::mutate(Total = sum(n)) %>% 
+  filter(n >= minimum_cluster_size) 
+
+samples_in_subpop = inner_join(ungroup(subpop_list), ungroup(Zt_meta)) %>%
+  unite(col = Population, Country, Latitude2, Longitude2, Sampling_Date, sep = "_") %>%
+  mutate(Population = str_replace(Population, " ", "_")) 
+
+file_name = paste0(PopStr_dir, "Subpopulation_list.txt")
+write_tsv(dplyr::select(samples_in_subpop, Population) %>% distinct(), file = file_name, col_names = F) 
+
+for (subpop in unique(samples_in_subpop$Population)) {
+  for (i in 1:10 ){
+    file_name = paste0(PopStr_dir, "Sample_list_", subpop, "_", i, ".args")
+    print(file_name)
+    temp = samples_in_subpop %>% 
+      filter(Population == subpop) %>%
+      sample_n(size = minimum_cluster_size) %>%
+      dplyr::select(ID_file)
+    write_tsv(temp, file = file_name, col_names = F) 
+  }
+}
+
+
+#Files with a similar number of isolates between continent
+
+file_name = paste0(PopStr_dir, "Continent_list.txt")
+samples_in_subpop %>%
+  dplyr::select(Continent) %>%
+  mutate(Continent = str_replace(Continent, " ", "_")) %>%
+  distinct() %>%
+  write_tsv(., file = file_name, col_names = F) 
+
+for (subpop in unique(samples_in_subpop$Continent)) {
+  for (i in 1:10 ){
+    file_name = paste0(PopStr_dir, "Sample_list_", 
+                       str_replace(subpop, " ", "_"), 
+                       "_", i, ".args")
+    temp = Zt_meta %>% 
+      filter(Continent == subpop) %>%
+      sample_n(size = minimum_cluster_size) %>%
+      dplyr::select(ID_file)
+    write_tsv(temp, file = file_name, col_names = F) 
+  }
+}
+
+
+#Files with a similar number of isolates across continents
+
+for ( i in 1:10 ){
+  file_name = paste0(PopStr_dir, "Sample_list_World_", i, ".args")
+  temp = Zt_meta %>% 
+    filter(Continent %in% unique(samples_in_subpop$Continent)) %>%
+    sample_n(size = minimum_cluster_size) %>%
+    dplyr::select(ID_file)
+  write_tsv(temp, file = file_name, col_names = F) 
+}
+
+
+```
+
+```{bash}
+#rsync -avP alice@130.125.25.244:/data2/alice/WW_project/3_Sumstats_demography/Sample_list_*_pi.tsv ../3_Sumstats_demography/
+echo -e "Subset_samples\tChromosome\tStart\tStop\tPi\tTajimaD\tTheta" > \
+  ~/Documents/Postdoc_Bruce/Projects/WW_project/3_Sumstats_demography/Diversity_all_subsets.tsv
+cat ~/Documents/Postdoc_Bruce/Projects/WW_project/3_Sumstats_demography/Sample_list*_pi.tsv  >>  \
+  ~/Documents/Postdoc_Bruce/Projects/WW_project/3_Sumstats_demography/Diversity_all_subsets.tsv
+```
+
+```{r}
+list_pop = bind_rows(read_delim(paste0(PopStr_dir, "Subpopulation_list.txt"), delim = "\t", col_names = c("Pop_name")) %>%
+                       mutate(Level_pop = "Population"),
+                     read_delim(paste0(PopStr_dir, "Continent_list.txt"), delim = "\t", col_names = c("Pop_name")) %>%
+                       mutate(Level_pop = "Continent")) 
+temp = tibble(Subset_name = cross(list(list_pop$Pop_name, c(1:10))) %>% map_chr(paste, sep = "_", collapse = "_"),
+          Pop_name = rep(list_pop$Pop_name, 10))
+list_pop = full_join(list_pop, temp) %>%
+  bind_rows(tibble(Subset_name = paste0("World_", c(1:10)), Pop_name = "World", Level_pop = "World"))
+
+
+#diversity_per_subset = read_delim(paste0(Sumstats_dir, "Diversity_all_subsets.tsv"), delim = "\t") %>%
+#  mutate(Subset_name = str_remove(Subset_samples, "Sample_list_")) %>%
+#  left_join(list_pop) %>%
+#  group_by(Level_pop, Pop_name, Chromosome, Start, Stop) %>%
+#  dplyr::summarize(Pi = mean(Pi, na.rm = T))
+ 
+
+diversity_per_subset = read_delim(paste0(Sumstats_dir, "Diversity_all_subsets.tsv"), delim = "\t") %>%
+  mutate(Subset_name = str_remove(Subset_samples, "Sample_list_")) %>%
+  left_join(list_pop) %>%
+  group_by(Level_pop, Pop_name, Subset_name) %>%
+  dplyr::summarize(Pi = median(Pi, na.rm = T)) 
+
+diversity_per_subset %>%
+  ggplot(aes(x = Pop_name, y = Pi)) + 
+  geom_boxplot() +
+  theme_bw() + 
+  facet_grid(cols = vars(Level_pop), scales = "free", space='free') +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(angle = 40, hjust = 1, vjust = 1))
+
+
+
+
+subpop_list %>%
+  unite(col = Pop_name, Country, Latitude2, Longitude2, Sampling_Date, sep = "_", remove = F) %>%
+  right_join(diversity_per_subset) %>%
+  filter(Level_pop == "Population") %>%
+  ggplot(aes(x = Pop_name, y = Pi, color = Continent)) + 
+  geom_boxplot(alpha =.4) +
+  theme_bw()+
+  Fill_Continent + Color_Continent + 
+  facet_grid(cols = vars(Continent), scales = "free", space='free') +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(angle = 40, hjust = 1, vjust = 1))
+  
+
+```
+
+
+
 ## Summary statistics of diversity per clusters
 
 ```{bash, eval = F}
@@ -1569,6 +1813,7 @@ temp = diversity_values %>%
   mutate(Subset_samples = str_remove(Subset_samples, "Sample_list_")) %>%
   separate(Subset_samples, into = c("Cluster", "Rep")) %>%
   group_by(Cluster, Chromosome, Start, Stop) %>%
+  #group_by(Cluster, Rep) %>%
   dplyr::summarize(Pi = mean(Pi, na.rm = T), TajimaD = mean(TajimaD, na.rm = T)) %>%
   pivot_longer(cols = c(Pi, TajimaD), names_to = "Estimate", values_to = "Value") %>%
   left_join(., ordering_table) %>%
@@ -1584,15 +1829,14 @@ pi_data = temp %>%
   group_by(Cluster) %>%
   dplyr::mutate(cluster_avg = median(Value, na.rm = T))
 
-p1 = ggplot(pi_data, aes(x = reorder(Cluster, -Order_tree), y = Value, fill = Cluster))  +
-  geom_boxplot(outlier.shape = NA) + 
-  coord_flip() + ylim(c(-0.001, 0.065)) +
+p1 = ggplot(pi_data, aes(x = reorder(Cluster, -Order_tree), y = Value))  +
+  geom_boxplot(aes(fill = Cluster), outlier.shape = NA) +
+  Fill_Cluster + #ylim(c(-0.001, 0.065)) +
   labs(y = "Diversity (pi)") +
   theme_bw() + 
   theme(legend.position = "None") +
   geom_hline(yintercept = pull(median_values %>% filter(Estimate == "Pi") %>% dplyr::select(average)),
-             linetype = "dashed") +
-  Fill_Cluster
+             linetype = "dashed") 
 
 
 p2 = temp %>%
@@ -1655,12 +1899,58 @@ p1 = ggplot(pi_data, aes(x = reorder(Cluster, -Order_tree), y = Value))  +
     theme(legend.position = "none",
           axis.text.x = element_text(angle = 40, hjust = 1)) +
   labs (x = "", y = "Diversity (pi)") +
-  ylim(c(-0.001, 0.055)) +
-  geom_text(data = CLD, aes(x = Cluster, label = .group, y = 0.054), color   = "black") +
+  ylim(c(-0.001, 0.05)) +
+  geom_text(data = CLD, aes(x = Cluster, label = .group, y = 0.049), color   = "black") +
   Color_Cluster
 
 cowplot::plot_grid(p1, p2, ncol = 2)
 ```
+## Linkage disequilibrium decay
+
+There was a clear effect of the number of samples on the LD estimated, so I switched to subsets.
+```{bash LD run, eval = F}
+# Running the LD stats for 10 subsets per cluster
+for i in {1..11} ; 
+do 
+  for repet in {1..2} ; 
+  do 
+  echo $i $repet ; 
+  sbatch -p normal.168h LD_decay.sh ./Directories_new.sh \
+      /data2/alice/WW_project/2_Population_structure/0_Nuclear_genome/Sample_list_V${i}_${repet}.args \
+      V${i}_${repet} ./temp.windows ; 
+  done ; 
+done
+
+# Gathering all tables into one
+echo -e "Pop\tRepeat\tStart\tStop\tMean\tMedian\tSstdev" ; 
+for i in {1..11} ; 
+do 
+  for repet in {1..2} ; 
+  do 
+   awk -v pop=$i -v repet=$repet 'BEGIN {OFS = "\t"} {if ( $1 ~ /[0-9]/ ) {print pop, repet, $1, $2, $3, $4, $5 } }'  \
+       /data2/alice/WW_project/2_Population_structure/0_Nuclear_genome/LD_V${i}_${repeat}.tab ; 
+  done
+done
+
+```
+
+```{r LD read and show}
+temp = read_delim(paste0(nuc_PS_dir, "LD_summary_stats.txt"),
+           delim = "\t") %>%
+  mutate(center = (Start + Stop) / 2) %>%
+  mutate(Cluster = paste0("V", Pop)) 
+
+ggplot(temp, aes(x = center, y = Median, color = Cluster, shape = Cluster)) +
+  geom_point() +
+  geom_line() +
+  Color_Cluster + Shape_Cluster + 
+  theme_bw()
+
+
+```
+
+
+
 
 
 ## Variant effects

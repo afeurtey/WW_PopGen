@@ -627,3 +627,59 @@ cowplot::plot_grid(p1 + theme(legend.position = "none"), p2, rel_widths = c(1, 1
 
 ```
 
+
+Curious to see what happens if I remove windows in accessory chromosomes.
+```{r filtered PCA2}
+temp2 = data_PCA2 %>% 
+  dplyr::select(-Mappability) %>%
+  separate(Window, into = "CHR", sep = ":", remove = F, extra = "drop") %>%
+  filter(as.numeric(CHR) < 14) %>%
+  dplyr::select(-CHR)
+
+temp = as.matrix(temp[,c(2:ncol(temp))])[, which(apply(as.matrix(temp[,c(2:ncol(temp))]), 2, var) != 0)]
+
+per_win.pca = prcomp(temp, center = TRUE,scale. = TRUE)
+
+#Making custom PCA plot
+arrows = as_tibble(as.data.frame(per_win.pca$rotation)) %>%
+  mutate(label = rownames(per_win.pca$rotation))
+
+temp = as.tibble(cbind(temp2, as.data.frame(per_win.pca$x)))
+
+for_plot = temp %>%
+  separate(col = Window, into = c("CHR"), remove = F, extra = "drop", sep = ":") %>%
+  mutate(CHR_type = ifelse(as.numeric(CHR) < 14, "Core", "Accessory"))
+eigs <- per_win.pca$sdev^2
+
+ggplot() + 
+    geom_point(data = for_plot, aes(x = PC1, y = PC2, col = CHR_type), alpha = .6, shape = 1) + 
+    theme_bw() + 
+    geom_segment(data = arrows, aes(x = 0, y = 0, xend = PC1*10, yend = PC2*10 ),
+                 arrow = arrow(length = unit(0.03, "npc"))) +
+    geom_text(data = arrows, aes(x = PC1*10, y = PC2*10, label = label)) + 
+  coord_cartesian(xlim = c(-6, 10), ylim = c(-8, 7)) +
+  scale_color_manual(values = c("#ffa62b", "#2FC6B7")) +
+  labs(title = "PCA per 10kb windows", 
+       subtitle = "Two first PCs",
+       x = paste0("PC1 (", round(100*eigs[1]/sum(eigs), 1), "% explained var.)"),
+       y = paste0("PC2 (", round(100*eigs[2]/sum(eigs), 1), "% explained var.)"))
+
+ggsave(paste0(fig_dir, "Fig1_PCA_per_10kb.pdf"), width = 20, height = 12, units = "cm")
+
+
+ggplot() + 
+    geom_point(data = for_plot, aes(x = PC3, y = PC4, col = CHR_type), alpha = .6, shape = 1) + 
+    theme_bw() + 
+    geom_segment(data = arrows, aes(x = 0, y = 0, xend = PC3*10, yend = PC4*10 ),
+                 arrow = arrow(length = unit(0.03, "npc"))) +
+    geom_text(data = arrows, aes(x = PC3*10, y = PC4*10, label = label)) + 
+  coord_cartesian(xlim = c(-6, 10), ylim = c(-8, 10)) +
+  scale_color_manual(values = c("#ffa62b", "#2FC6B7")) +
+  labs(title = "PCA per 10kb windows", 
+       subtitle = "PCs 3 and 4",
+       x = paste0("PC3 (", round(100*eigs[3]/sum(eigs), 1), "% explained var.)"),
+       y = paste0("PC4 (", round(100*eigs[4]/sum(eigs), 1), "% explained var.)"))
+
+
+
+```
