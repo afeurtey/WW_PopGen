@@ -723,6 +723,180 @@ inner_join(temp, GC_bias) %>%
 
 It is very clear that we do have a batch effect but also that some datasets are very, very biased. The older Hartmann data (also called Qst population) in particular is strongly biased.
 
+
+
+## Outgroups and ancestral alleles
+
+```{bash}
+#For both Zpa63 and Za17
+./dnadiff \
+  -p /data2/alice/WW_project/1_Variant_calling/3_Per_sample_calling/Zpa63 \
+  /data2/alice/WW_project/0_Data/Zymoseptoria_tritici.MG2.dna.toplevel.mt+.fa \
+  /legserv/NGS_data/Zymoseptoria/Zt_Reference_genomes/Sister_species_Feurtey2020/Zpa63_softmasked_for_publication.fa 
+  
+./delta-filter \
+   -1 /data2/alice/WW_project/1_Variant_calling/3_Per_sample_calling/Zpa63.delta \
+   > /data2/alice/WW_project/1_Variant_calling/3_Per_sample_calling/Zpa63.filtered.delta
+   
+./show-coords -r -T /data2/alice/WW_project/1_Variant_calling/3_Per_sample_calling/Zpa63.filtered.delta | \
+   awk 'BEGIN {OFS = "\t"} NR > 4 {print $8, $1, $2}' \
+   > /data2/alice/WW_project/1_Variant_calling/3_Per_sample_calling/Zpa63.filtered.bed
+
+# Getting the single alignments for the two species
+~/Software/bedtools intersect \
+   -a /data2/alice/WW_project/1_Variant_calling/3_Per_sample_calling/Za17.filtered.bed \
+   -b /data2/alice/WW_project/1_Variant_calling/3_Per_sample_calling/Zpa63.filtered.bed \
+   > /data2/alice/WW_project/1_Variant_calling/3_Per_sample_calling/Za17_filtered_insersect_Zpa63_filtered.bed
+
+# Filtering the snps to keep only the ones in the good intervals
+~/Software/bedtools intersect -a /data2/alice/WW_project/1_Variant_calling/3_Per_sample_calling/Zpa63.snps ^C
+
+awk 'BEGIN {OFS = "\t"} {print $11, $1, $1, $2, $3}' \
+    /data2/alice/WW_project/1_Variant_calling/3_Per_sample_calling/Zpa63.snps \
+    > /data2/alice/WW_project/1_Variant_calling/3_Per_sample_calling/Zpa63.snps.bed ;  
+    
+echo -e "CHROM\tPOS\tREF\tZpa63" > /data2/alice/WW_project/1_Variant_calling/3_Per_sample_calling/Zpa63.filtered.snps
+~/Software/bedtools intersect \
+    -a /data2/alice/WW_project/1_Variant_calling/3_Per_sample_calling/Zpa63.snps.bed \
+    -b /data2/alice/WW_project/1_Variant_calling/3_Per_sample_calling/Za17_filtered_insersect_Zpa63_filtered.bed \
+    -wa  | cut -f 1,2,4,5 >> /data2/alice/WW_project/1_Variant_calling/3_Per_sample_calling/Zpa63.filtered.snps
+
+awk 'BEGIN {OFS = "\t"} {print $11, $1, $1, $2, $3}' \
+    /data2/alice/WW_project/1_Variant_calling/3_Per_sample_calling/Za17.snps \
+    > /data2/alice/WW_project/1_Variant_calling/3_Per_sample_calling/Za17.snps.bed ; 
+    
+echo -e "CHROM\tPOS\tREF\tZa17" > /data2/alice/WW_project/1_Variant_calling/3_Per_sample_calling/Za17.filtered.snps
+~/Software/bedtools intersect \
+    -a /data2/alice/WW_project/1_Variant_calling/3_Per_sample_calling/Za17.snps.bed \
+    -b /data2/alice/WW_project/1_Variant_calling/3_Per_sample_calling/Za17_filtered_insersect_Zpa63_filtered.bed \
+    -wa | cut -f 1,2,4,5 >> /data2/alice/WW_project/1_Variant_calling/3_Per_sample_calling/Za17.filtered.snps
+
+    
+    
+# Filtering the counts from the whole vcf to keep only the ones in the good intervals
+#!/bin/bash 
+
+source $1
+
+${VCFTOOLS_PATH} \
+     --gzvcf ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.vcf.gz  \
+     --min-alleles 2 --max-alleles 2 --mac 1 --remove-indels \
+     --out ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.biall_SNPs.intersect_Za_Zpa \
+     --counts  --bed  /data2/alice/WW_project/1_Variant_calling/3_Per_sample_calling/Za17_filtered_insersect_Zpa63_filtered.bed
+
+```
+
+
+```{r}
+
+freq_Zt = read_delim(paste0(VAR_dir, 
+                            "Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.biall_SNPs.intersect_Za_Zpa.frq.count"),
+                     skip = 1, col_names = c("CHROM", "POS", "N_all", "N_chr", "REF", "ALT")) %>%
+  dplyr::select(CHROM, POS, N_chr, REF, ALT) %>%
+  separate(col = "REF", into = c("REF", "REF_count"), sep = ":") %>%
+  separate(col = "ALT", into = c("ALT", "ALT_count"), sep = ":")
+
+
+#The est-sfs software wants all positions to be sampled the exact same amount of time
+# So I want to check how many positions have one or two genotypes missing
+temp = freq_Zt %>%
+  dplyr::select(N_chr) %>%
+  dplyr::count(N_chr) 
+
+temp %>%
+  ggplot(aes(x = N_chr, y = cumsum(n))) + 
+  geom_bar(stat = "identity") + 
+  theme_bw()
+
+paste0(sum(temp$n[temp$N_chr < 1109]), " SNPs have at least one missing genotypes, including ", 
+       sum(temp$n[temp$N_chr == 1108]), " with only one missing genotype and ",
+       sum(temp$n[temp$N_chr == 1107]), " with only two missing genotypes. ",
+       "Including them, would make the SNP count go from ", sum(temp$n[temp$N_chr == 1109]),
+       " to ", sum(temp$n[temp$N_chr >= 1107]))
+
+#Too many variants only have a single missing data point
+freq_Zt = freq_Zt %>%
+  filter(N_chr >= 1107) %>%
+  mutate(REF_count2 = case_when(
+   N_chr == 1109 & (as.numeric(REF_count) >= as.numeric(ALT_count)) ~ (as.numeric(REF_count) - 2),
+   N_chr == 1108 & (as.numeric(REF_count) >= as.numeric(ALT_count)) ~ (as.numeric(REF_count) - 1),
+   TRUE ~ as.numeric(REF_count))) %>%
+  mutate(ALT_count2 = case_when(
+   N_chr == 1109 & (as.numeric(REF_count) < as.numeric(ALT_count)) ~ (as.numeric(ALT_count) - 2),
+   N_chr == 1108 & (as.numeric(REF_count) < as.numeric(ALT_count)) ~ (as.numeric(ALT_count) - 1),
+   TRUE ~ as.numeric(ALT_count))) %>%
+  mutate(Somme = REF_count2 + ALT_count2) %>%
+  mutate(REF_count3 = ifelse(as.numeric(REF_count) >= as.numeric(ALT_count), 110 - ceiling(ALT_count2/10), ceiling(REF_count2/10)),
+         ALT_count3 = ifelse(as.numeric(REF_count) >= as.numeric(ALT_count), ceiling(ALT_count2/10), 110 - ceiling(REF_count2/10)),
+         Major_allele = ifelse(REF_count3 >= ALT_count3, REF, ALT),
+         Minor_allele = ifelse(REF_count3 >= ALT_count3, ALT, REF),
+         Is_major_ref = ifelse(REF_count3 >= ALT_count3, "REF", "ALT"))%>%
+  mutate(Somme2 = REF_count3 + ALT_count3)
+
+table(freq_Zt$Somme)
+
+temp = read_delim(paste0(VAR_dir, "Zpa63.filtered.snps")) %>%
+  filter(Zpa63 != "." & REF != ".") %>%
+  distinct() %>%
+  right_join(dplyr::select(freq_Zt, CHROM, POS, REF)) %>%
+  mutate(Temp = 1, Zpa63 = ifelse(is.na(Zpa63), REF, Zpa63)) %>%
+  pivot_wider(names_from = Zpa63, values_from = Temp, values_fill = 0) %>%
+  dplyr::select(CHROM, POS, REF, A, C, G, `T`) %>%
+  unite(col = Zpa63, A, C, G, `T`, sep = ",")
+
+outgroups = read_delim(paste0(VAR_dir, "Za17.filtered.snps")) %>%
+  filter(Za17 != "." & REF != ".") %>%
+  distinct() %>%
+  right_join(dplyr::select(freq_Zt, CHROM, POS, REF)) %>%
+  mutate(Temp = 1, Za17 = ifelse(is.na(Za17), REF, Za17)) %>%
+  pivot_wider(names_from = Za17, values_from = Temp, values_fill = 0) %>%
+  dplyr::select(CHROM, POS, REF, A, C, G, `T`) %>%
+  unite(col = Za17, A, C, G, `T`, sep = ",") %>%
+  full_join(temp)
+
+temp = bind_rows(dplyr::select(freq_Zt, CHROM, POS, REF, Major_allele, Minor_allele, Is_major_ref, Allele_count = REF_count3) %>% mutate(Allele = REF),
+                 dplyr::select(freq_Zt, CHROM, POS, REF, Major_allele, Minor_allele, Is_major_ref, Allele = ALT, Allele_count = ALT_count3)) %>%
+  mutate(Allele_count = as.numeric(Allele_count)) %>%
+  pivot_wider(names_from = Allele, values_from = Allele_count, values_fill = 0)%>%
+  dplyr::select(CHROM, POS, REF, Major_allele, Minor_allele, Is_major_ref, A, C, G, `T`) %>%
+  unite(col = Zt, A, C, G, `T`, sep = ",") %>%
+  full_join(outgroups)
+
+arrange(temp, as.numeric(CHROM), as.numeric(POS)) %>%
+  dplyr::select(Zt, Za17, Zpa63) %>%
+  write_delim(paste0(VAR_dir, "est_sfs_input_file.txt"), delim = " ", col_names = F)
+arrange(temp, as.numeric(CHROM), as.numeric(POS)) %>%
+  dplyr::select(CHROM, POS, Major_allele, Minor_allele, Is_major_ref) %>%
+  write_delim(paste0(VAR_dir, "est_sfs_position_list.txt"), delim = "\t")
+
+table(outgroups$Za17)
+table(outgroups$Zpa63)
+
+sum(is.na(outgroups$Za17))
+sum(is.na(outgroups$Zpa63))
+
+  
+```
+
+```{bash}
+cd /Users/afeurtey/Documents/Software/est-sfs-release-old
+./est-sfs test_config_file.txt \
+    /Users/afeurtey/Documents/Postdoc_Bruce/Projects/WW_project/1_Variant_calling/est_sfs_input_file.txt \
+    seedfile.txt \
+    /Users/afeurtey/Documents/Postdoc_Bruce/Projects/WW_project/1_Variant_calling/est_sfs-sfs.txt \
+    /Users/afeurtey/Documents/Postdoc_Bruce/Projects/WW_project/1_Variant_calling/est_sfs_pval.txt
+```
+
+
+```{r}
+cbind(read_delim(paste0(VAR_dir, "est_sfs_position_list.txt"), delim = "\t"),
+      read_delim(paste0(VAR_dir, "est_sfs_pval.txt"), delim = " ", skip = 7, 
+                 col_names = c("Line_nb", "Conf_index", "Probability")) %>%
+        dplyr::select(Line_nb, Probability)) %>%
+  mutate(Ancestral_allele = ifelse(Probability > 0.95, Major_allele, ifelse(Probability < 0.05, Minor_allele, "Uncertain")))
+
+```
+
 <br><br>
 
 
