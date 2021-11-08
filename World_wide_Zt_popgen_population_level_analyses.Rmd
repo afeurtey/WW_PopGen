@@ -727,7 +727,7 @@ It is very clear that we do have a batch effect but also that some datasets are 
 
 ## Outgroups and ancestral alleles
 
-```{bash}
+```{bash outgroup snp call and masks}
 #For both Zpa63 and Za17
 ./dnadiff \
   -p /data2/alice/WW_project/1_Variant_calling/3_Per_sample_calling/Zpa63 \
@@ -787,7 +787,7 @@ ${VCFTOOLS_PATH} \
 ```
 
 
-```{r}
+```{r create est-sfs input}
 
 freq_Zt = read_delim(paste0(VAR_dir, 
                             "Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.biall_SNPs.intersect_Za_Zpa.frq.count"),
@@ -875,10 +875,10 @@ table(outgroups$Zpa63)
 sum(is.na(outgroups$Za17))
 sum(is.na(outgroups$Zpa63))
 
-  
+rm(freq_seq)
 ```
 
-```{bash}
+```{bash run est_sfs}
 cd /Users/afeurtey/Documents/Software/est-sfs-release-old
 ./est-sfs test_config_file.txt \
     /Users/afeurtey/Documents/Postdoc_Bruce/Projects/WW_project/1_Variant_calling/est_sfs_input_file.txt \
@@ -887,14 +887,31 @@ cd /Users/afeurtey/Documents/Software/est-sfs-release-old
     /Users/afeurtey/Documents/Postdoc_Bruce/Projects/WW_project/1_Variant_calling/est_sfs_pval.txt
 ```
 
-
-```{r}
-cbind(read_delim(paste0(VAR_dir, "est_sfs_position_list.txt"), delim = "\t"),
+The software est-sfs will produce a file containing the probability that what it read as the major allele is the ancestral allele. Here, I decide that if the probability is higher than 0.95, I will consider the major allele to be ancestral. If the probability is lower than 0.05, I will instead consider that the minor allele is ancestral. For any probability between these two, I consider that we do not have enough support one way or another. 
+```{r read est-sfs results}
+temp = cbind(read_delim(paste0(VAR_dir, "est_sfs_position_list.txt"), delim = "\t"),
       read_delim(paste0(VAR_dir, "est_sfs_pval.txt"), delim = " ", skip = 7, 
                  col_names = c("Line_nb", "Conf_index", "Probability")) %>%
         dplyr::select(Line_nb, Probability)) %>%
-  mutate(Ancestral_allele = ifelse(Probability > 0.95, Major_allele, ifelse(Probability < 0.05, Minor_allele, "Uncertain")))
+  mutate(Ancestral_allele = ifelse(Probability > 0.95, Major_allele, ifelse(Probability < 0.05, Minor_allele, "Uncertain"))) 
 
+p1 = temp %>%
+  dplyr::count(Ancestral_allele)%>% 
+  ggplot(aes(x = "", y = n, fill = Ancestral_allele)) +
+  geom_bar(stat = "identity", width =1, color = "white") + 
+  coord_polar("y", start = 0) + 
+  theme_void() +
+  labs(title = "Ancestral allele")
+p2 = temp %>% 
+  mutate(Ancestral_allele = ifelse(Probability > 0.95, "Major", ifelse(Probability < 0.05, "Minor", "Uncertain"))) %>%
+  dplyr::count(Ancestral_allele)%>% 
+  ggplot(aes(x = "", y = n, fill = Ancestral_allele)) +
+  geom_bar(stat = "identity", width =1, color = "white") + 
+  coord_polar("y", start = 0) + 
+  theme_void()+
+  labs(title = "")
+cowplot::plot_grid(p1 + theme(legend.position = "bottom", legend.title=element_blank(), plot.title = element_text(hjust = 0.3)),
+                   p2 + theme(legend.position = "bottom", legend.title=element_blank()))
 ```
 
 <br><br>
@@ -1579,6 +1596,8 @@ In the steps before, I have learned about population history indirectly by infer
 
 Because the populations in the clustering were not perfectly distinct from one another, I start with "discretized" populations by choosing only the isolates with high ancestry in one of the sNMF clusters.
 ```{bash discretized pop vcf, eval = F}
+
+#With only Zymoseptoria tritici (but more markers)
 ~/Documents/Software/vcftools_jydu/src/cpp/vcftools \
   --vcf ${VCFDIR}$VCFNAME.recode.vcf \
   --keep ${POPSTR}$VCFNAME.high_anc_coef_snmf.ind \
@@ -1589,7 +1608,54 @@ Because the populations in the clustering were not perfectly distinct from one a
 
 cat  ${POPSTR}$VCFNAME.high_anc_coef_snmf.GT.FORMAT | cut -f 3- \
    >  ${POPSTR}$VCFNAME.high_anc_coef_snmf.GT.FORMAT2
+
+#With only the positions found in the outgroup
+~/Documents/Software/vcftools_jydu/src/cpp/vcftools \
+   --vcf ${VCFDIR}$VCFNAME.recode.vcf \
+   --keep ${POPSTR}$VCFNAME.high_anc_coef_snmf.ind \
+   --remove-filtered-all --max-missing 1.0 --min-alleles 2 --max-alleles 2 --maf 0.05 \
+   --positions ${VCFDIR}est_sfs_position_list.for_vcftools \
+   --extract-FORMAT-info GT \
+   --out ${POPSTR}High_anc_coef_only_outgroups_positions
+
 ```
+
+```{r}
+
+#Read outgroup SNPS
+ temp = inner_join( read_delim(paste0(VAR_dir, "Za17.filtered.snps")) %>%
+  filter(Za17 != "." & REF != ".") %>% distinct(),
+  read_delim(paste0(VAR_dir, "Zpa63.filtered.snps")) %>%
+  filter(Zpa63 != "." & REF != ".") %>% distinct()) 
+ 
+#Merge to previously created GT table
+ data_for_treemix = inner_join(read_tsv(paste0(PopStr_dir, "High_anc_coef_only_outgroups_positions.alleles_info"), 
+                                               col_names = c("CHROM", "POS","REF", "ALT")),
+                               read_tsv(paste0(PopStr_dir, "High_anc_coef_only_outgroups_positions.GT.FORMAT"))) %>%
+   left_join(temp)
+ 
+ 
+# This was simply to check that everything was matching as it should
+#temp = cbind(read_delim(paste0(VAR_dir, "est_sfs_position_list.txt"), delim = "\t"),
+#    read_delim(paste0(VAR_dir, "est_sfs_pval.txt"), delim = " ", skip = 7, 
+#               col_names = c("Line_nb", "Conf_index", "Probability")) %>%
+#      dplyr::select(Line_nb, Probability)) %>%
+#mutate(Ancestral_allele = ifelse(Probability > 0.95, Major_allele, ifelse(Probability < 0.05, Minor_allele, "Uncertain"))) 
+#data_for_treemix = data_for_treemix %>% left_join(temp)
+ 
+# REmoving positions with third allele
+# Changing the format to 0/1
+data_for_treemix = data_for_treemix %>%
+  filter(is.na(Za17) | Za17 == ALT) %>%
+  filter(is.na(Zpa63) | Zpa63 == ALT) %>% 
+  dplyr::mutate(Za17 = ifelse(is.na(Za17), 0, 1),
+                Zpa63 = ifelse(is.na(Zpa63), 0, 1)) 
+
+
+data_for_treemix %>% dplyr::select(-CHROM, -POS, -REF, -ALT) %>%
+  write_delim(paste0(PopStr_dir, "High_anc_coef_only_outgroups_positions.with_outgroups.GT.FORMAT2"), delim = "\t")
+```
+
 
 
 ```{python convert genotype file to treemix, eval = F}
@@ -1643,9 +1709,127 @@ print("All done!")
 out.close()
 ```
 
+```{python convert to treemix with outgroups, eval = F}
+#conda activate r-reticulate
+from collections import defaultdict
+
+#For each isolate, store its pop (as in sampling site) in a dictionary
+dict_pop = dict(zip(list(r.high_anc_coef_snmf["Sample"]) + ["Za17", "Zpa63"],
+    list(r.high_anc_coef_snmf["Cluster"]) + ["Za17", "Zpa63"]))
+
+#Keep a list of the pop names/coordinates to write in the same order later
+all_pops = sorted(list(set(list(r.high_anc_coef_snmf["Cluster"])+ ["Za17", "Zpa63"])))
+#out_name = r.PopStr_dir + r.vcf_name + ".high_anc_coef_snmf.treemix"
+out_name =  "/Users/afeurtey/Documents/Postdoc_Bruce/Projects/WW_project/2_Population_structure/High_anc_coef_only_outgroups_positions.with_outgroups.treemix"
+
+out = open(out_name, "w")
+shutup = out.write(" ".join(all_pops) + "\n")
+
+#with open(r.PopStr_dir + r.vcf_name + ".high_anc_coef_snmf.GT.FORMAT2", "r") as input_snps :
+with open("/Users/afeurtey/Documents/Postdoc_Bruce/Projects/WW_project/2_Population_structure/High_anc_coef_only_outgroups_positions.with_outgroups.GT.FORMAT2", "r") as input_snps :
+  for i, snp in enumerate(input_snps) :
+    
+    #Setting two dictionaries with values at 0
+    dict_snp0 = defaultdict(int)
+    dict_snp1 = defaultdict(int)
+    Lets_write = True
+    
+    #The first line is the name of the isolates
+    if i == 0 :
+      indv = snp.strip().split("\t")
+      Lets_write = False
+    else :
+      #Keeping isolate name and allelic value together
+      alleles = zip(indv, snp.strip().split("\t"))
+            
+      #...and counting the O and 1 based on the pop
+      for ind, allele in alleles:
+        if allele == "0" :
+          dict_snp0[dict_pop[ind]] += 1
+        elif allele == "1" :
+          dict_snp1[dict_pop[ind]] += 1
+        else :
+          print("Only biallelic please!!!!")
+          Lets_write = False
+    #If I have not found anything weird, I will write the result to the output file.
+    if Lets_write :
+      shutup = out.write(" ".join([",".join([str(dict_snp0[pop]), str(dict_snp1[pop])])  for pop in all_pops]) + "\n")
+
+
+print("All done!")
+out.close()
+```
+
 ```{bash run treemix, eval = F, message = F, results = F}
 POPSTR="/Users/afeurtey/Documents/Postdoc_Bruce/Projects/WW_project/2_Population_structure/"
 
+
+
+#With outgroup
+if [ -f ${POPSTR}High_anc_coef_only_outgroups_positions.with_outgroups ] ;
+then
+  gzip ${POPSTR}High_anc_coef_only_outgroups_positions.with_outgroups.treemix
+fi
+
+treemix \
+  -i ${POPSTR}High_anc_coef_only_outgroups_positions.with_outgroups.treemix.gz \
+  -o ${POPSTR}High_anc_coef_only_outgroups_positions.with_outgroups.m0.treemix.out \
+  -m 0 -root Zpa63
+treemix \
+  -i ${POPSTR}High_anc_coef_only_outgroups_positions.with_outgroups.treemix.gz \
+  -o ${POPSTR}High_anc_coef_only_outgroups_positions.with_outgroups.m1.treemix.out \
+  -m 1 -root Zpa63
+treemix \
+  -i ${POPSTR}High_anc_coef_only_outgroups_positions.with_outgroups.treemix.gz \
+  -o ${POPSTR}High_anc_coef_only_outgroups_positions.with_outgroups.m2.treemix.out \
+  -m 2 -root Zpa63
+treemix \
+  -i ${POPSTR}High_anc_coef_only_outgroups_positions.with_outgroups.treemix.gz \
+  -o ${POPSTR}High_anc_coef_only_outgroups_positions.with_outgroups.m3.treemix.out \
+  -m 3 -root Zpa63
+treemix \
+  -i ${POPSTR}High_anc_coef_only_outgroups_positions.with_outgroups.treemix.gz \
+  -o ${POPSTR}High_anc_coef_only_outgroups_positions.with_outgroups.m4.treemix.out \
+  -m 4 -root Zpa63
+treemix \
+  -i ${POPSTR}High_anc_coef_only_outgroups_positions.with_outgroups.treemix.gz \
+  -o ${POPSTR}High_anc_coef_only_outgroups_positions.with_outgroups.m5.treemix.out \
+  -m 5 -root Zpa63
+treemix \
+  -i ${POPSTR}High_anc_coef_only_outgroups_positions.with_outgroups.treemix.gz \
+  -o ${POPSTR}High_anc_coef_only_outgroups_positions.with_outgroups.m6.treemix.out \
+  -m 6 -root Zpa63
+```
+```{r plot treemix}
+source("~/Documents/Software/treemix-1.13/src/plotting_funcs.R")
+p_cluster
+t = plot_tree(paste0(PopStr_dir, "High_anc_coef_only_outgroups_positions.with_outgroups.m0.treemix.out"))
+t = plot_tree(paste0(PopStr_dir, "High_anc_coef_only_outgroups_positions.with_outgroups.m1.treemix.out"))
+t = plot_tree(paste0(PopStr_dir, "High_anc_coef_only_outgroups_positions.with_outgroups.m2.treemix.out"))
+t = plot_tree(paste0(PopStr_dir, "High_anc_coef_only_outgroups_positions.with_outgroups.m3.treemix.out"))
+t = plot_tree(paste0(PopStr_dir, "High_anc_coef_only_outgroups_positions.with_outgroups.m4.treemix.out"))
+t = plot_tree(paste0(PopStr_dir, "High_anc_coef_only_outgroups_positions.with_outgroups.m5.treemix.out"))
+t = plot_tree(paste0(PopStr_dir, "High_anc_coef_only_outgroups_positions.with_outgroups.m6.treemix.out"))
+
+
+mig_events = c(1:6)
+temp = tibble(mig_events = mig_events, 
+              var_explained = sapply(paste0(PopStr_dir, "High_anc_coef_only_outgroups_positions.with_outgroups.m", 
+                                            mig_events, ".treemix.out"), get_f))
+
+ggplot(temp, aes(mig_events, var_explained)) + 
+  geom_line() + 
+  geom_point() + 
+  geom_hline(yintercept = 0.995, color = "#82c0cc", linetype = "dashed", size = 1) +
+  theme_bw() +
+  labs(x = "Number of infered migration events", y = "Proportion of explained variance",
+       title = str_wrap(paste0("Variance explained by the model of Treemix with",
+                               " different number of migration events"), 70))
+```
+
+```{bash}
+
+#Only Zt
 if [ -f ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix ] ;
 then
   gzip ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix
