@@ -4,8 +4,15 @@ author: "Alice Feurtey"
 date: "01/13/2021"
 output:
   html_document:
-    df_print: paged
+    toc: yes
+    toc_float: yes
+    css: ~/Documents/epur_css.css
+    number_sections: no
     code_folding: hide
+    keep_md: true
+  pdf_document:
+    toc: yes
+    keep_md: true
 ---
 
 ```{r setup, include=TRUE, warning=FALSE, message = FALSE}
@@ -63,6 +70,7 @@ Sys.setenv(BCFTOOLSPATH=bcftools_path)
 knitr::opts_chunk$set(message = F)
 knitr::opts_chunk$set(warning = F)
 knitr::opts_chunk$set(results = T)
+knitr::opts_chunk$set(dev=c('png', 'pdf'))
 
 ```
 
@@ -1174,18 +1182,17 @@ p3 = ggplot(depth, aes(x = reorder(as.character(CHROM), as.numeric(CHROM)), y = 
     geom_segment(aes(xend=reorder(as.character(CHROM), as.numeric(CHROM)), y=0, yend=n),
                   color="grey20", size = 1) +
     geom_point( color="#2ec4b6", size=4)  +
-    geom_text(aes( label = n,
-                     y= n), stat= "identity",
-              hjust = -0.5, vjust = -0.2) +
+    geom_text(aes( label = n, y= n), stat= "identity", hjust = -0.5, vjust = -0.2) +
     theme_light() +
     theme(panel.grid.major.y = element_blank(), panel.border = element_blank(),
           axis.ticks.x = element_blank(),
           axis.text.x = element_text(size = 10), axis.text.y = element_text(size = 10)) +
-    ylim(c(0,max(temp$n)+ max(temp$n)*0.1)) +
+    ylim(c(0,max(depth$n)+ max(depth$n)*0.3)) +
     labs(x= "Chromosome", y = "Number of isolates with chromosome") +
     coord_flip()
 
 cowplot::plot_grid(p3, p1 + coord_flip(), p2 + coord_flip(), nrow = 1)
+
 ```
 For one of the figures of the manuscript, I want to categorize the variants into different frequency categories, so I can get a quick comparison of low/very low freq variants between SNPs, short indels, and transposable element insertions.
 ```{r allele counts filtered}

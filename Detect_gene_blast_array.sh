@@ -22,11 +22,11 @@ ${BLAST_PATH}makeblastdb \
 
 else
 # Illumina
-python2 ${SCRIPTS_PATH}Rename_fragments_in_fasta.py  \
-    -i ${DENOVO_ASSEMB}${sample}/scaffolds.fasta \
-    -o ${DENOVO_ASSEMB}${sample}.fasta \
-    --simple -f spades
-    
+#python2 ${SCRIPTS_PATH}Rename_fragments_in_fasta.py  \
+#    -i ${DENOVO_ASSEMB}${sample}/scaffolds.fasta \
+#    -o ${DENOVO_ASSEMB}${sample}.fasta \
+#    --simple -f spades
+
 ${BLAST_PATH}makeblastdb \
   -dbtype nucl \
   -in ${DENOVO_ASSEMB}${sample}.fasta \
@@ -46,3 +46,4 @@ ${BLAST_PATH}blastn \
 fi;
 
 done < $sample_list
+

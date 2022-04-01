@@ -106,7 +106,7 @@ gemma \
   -bfile ${GEA_dir}${PERCHR_VCFNAME}.${sub_name} \
   -lmm 1 \
   -k output/Kinship.${sub_name}.${CHR}.cXX.txt \
-  -o GEMMA.chr${CHR}.phenotype_${c}..subset_${sub_name} \
+  -o GEMMA.chr${CHR}.phenotype_${c}.subset_${sub_name} \
   -n ${c}
 #  -c ${WWTERIP_DIR}2_GWAS/PC_for_correction.cov \
 

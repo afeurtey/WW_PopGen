@@ -166,6 +166,7 @@ bottom_row <- cowplot::plot_grid(bar_Ndepth_per_CHR + theme(legend.position = "b
 
 cowplot::plot_grid(heatmap_depth, bottom_row, labels = c('A', ''), label_size = 12, ncol = 1)
 
+
 ```
 
 
