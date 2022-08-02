@@ -34,7 +34,7 @@ out = open(A.out, "w")
 if A.gzipped:
     vcf = gzip.open(A.input, 'rt')
 else:
-    vcf = open(A.input, reading_option)
+    vcf = open(A.input, "r")
 count_filtered = 0
 count_all = 0
 
@@ -104,4 +104,4 @@ for line in vcf :
 vcf.close()
 out.close()
 
-print("I filtered out " + count_filtered + " genotypes.")
+print("I filtered out " + str(count_filtered) + " genotypes.")
