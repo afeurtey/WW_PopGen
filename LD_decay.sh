@@ -1,8 +1,10 @@
 #!/bin/bash 
 
-#Expect 3 arguments.
+#Expect 4 arguments.
 #  1 - the file with the paths to directories and software
-
+#  2 - a file containing the list of samples to keep
+#  3 - a suffix to add to the subset vcf and to the LD file
+#  4 - a file containing the windows over which to compute the LD
 
 source $1
 subset_file=$2

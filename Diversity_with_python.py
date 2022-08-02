@@ -1,5 +1,7 @@
 #/usr/bin/python3
 
+import os
+os.environ["NUMEXPR_MAX_THREADS"]="5"
 import sys
 import argparse
 import allel
@@ -14,7 +16,7 @@ import seaborn as sns
 sns.set_style('white')
 sns.set_style('ticks')
 
-
+print("Importing finished")
 
 #    <<>><<>><<>><<>><<>><<>><<>><<>><<>>
 # |  Inputs, outputs & initial variables  |

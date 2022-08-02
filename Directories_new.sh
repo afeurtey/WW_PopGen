@@ -40,6 +40,7 @@ pan_mapped=${var_cal_dir}0_Mappings/1_On_Pangenome/ #On pangenome
 pan_DP_win=${var_cal_dir}1_Depth_per_window/ #No pangenome anymore
 pan_DP_gene=${var_cal_dir}2_Depth_per_gene/ #No pangenome anymore
 mito_SV=${var_cal_dir}6_Mito_SV/
+chipseq=${var_cal_dir}7_ChipSeq_peaks/
 
 #Population structure
 pop_str_dir=${project_dir}2_Population_structure/
@@ -58,6 +59,7 @@ RIP_raw0=${RIP_DIR}0_BAM_temp/
 RIP_raw1=${RIP_DIR}1_Fastq_from_bam/
 RIP_aln=${RIP_DIR}2_Aln_TE_consensus/
 RIP_est=${RIP_DIR}3_RIP_estimation/
+RIP_per_read=${RIP_DIR}4_RIP_per_TE/
 DIM2_DIR=${WWTERIP_DIR}1_Blast_from_denovo_assemblies/
 DIM_denovo=${DIM2_DIR}0_Spades/
 DIM_blast=${DIM2_DIR}1_Blast_dim2_deRIPped/
