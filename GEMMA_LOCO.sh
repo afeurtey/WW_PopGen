@@ -2,7 +2,7 @@
 
 # This script runs GEMMA
 # It has the option of running on subsets of isolates (see options below)
-# Example command line: sbatch --array=0-13%2 ./GEMMA_LOCO_subset.sh ./Directories_new.sh /data2/alice/WW_project/5_GEA/Phenotypes_with_climatic_variables_BIO13.fam BIO13 1
+# Example command line: sbatch --array=0-13%2 ./GEMMA_LOCO.sh ./Directories_new.sh /data2/alice/WW_project/5_GEA/Phenotypes_with_climatic_variables_BIO13.fam BIO13 1
 source $1
 Pheno_fam_file=$2 #A fam formatted file containing only the samples of interest and the phenotypes
 sub_name=$3 #A name to add to the files. For ex, ALL or BIO6 or European
@@ -52,7 +52,7 @@ ${SOFTPATH}plink \
   --make-bed \
   --keep ${subset_file} \
   --out ${GEA_dir}For_kinship.${sub_name}.${CHR} \
-  --double-id --biallelic-only strict 
+  --double-id --biallelic-only strict
 
 
 cd ${GEA_dir}
@@ -106,7 +106,7 @@ gemma \
   -bfile ${GEA_dir}${PERCHR_VCFNAME}.${sub_name} \
   -lmm 1 \
   -k output/Kinship.${sub_name}.${CHR}.cXX.txt \
-  -o GEMMA.chr${CHR}.phenotype_${c}..subset_${sub_name} \
+  -o GEMMA.chr${CHR}.phenotype_${c}.subset_${sub_name} \
   -n ${c}
 #  -c ${WWTERIP_DIR}2_GWAS/PC_for_correction.cov \
 
@@ -114,4 +114,4 @@ done
 
 #Cleaning
 rm ${subset_file}
-rm ${GEA_dir}${VCFNAME}.${sub_name}.thin-200bp.wo_${CHR}.recode.vcf 
+rm ${GEA_dir}${VCFNAME}.${sub_name}.thin-200bp.wo_${CHR}.recode.vcf

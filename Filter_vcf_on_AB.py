@@ -9,7 +9,7 @@
 
 import argparse
 import gzip
-
+import time
 
 #    <<>><<>><<>><<>><<>><<>><<>><<>><<>>
 # |  Inputs, outputs & initial variables  |
@@ -34,9 +34,10 @@ out = open(A.out, "w")
 if A.gzipped:
     vcf = gzip.open(A.input, 'rt')
 else:
-    vcf = open(A.input, reading_option)
+    vcf = open(A.input, "r")
 count_filtered = 0
-count_all = 0
+count_POS = 0
+start_time = time.time()
 
 
 for line in vcf :
@@ -50,6 +51,9 @@ for line in vcf :
 
   # Start reading genotypes
   else :
+    count_POS += 1
+    if count_POS % 100000 == 0 :
+        print("Processing variant " + str(count_POS) + ". Time elapsed is " + str(round((time.time() - start_time), 2)))
     line_sp = line.strip().split("\t")
     to_write = line_sp.copy()
 
@@ -69,17 +73,17 @@ for line in vcf :
 
       if "FT" not in format :
         GT_dict["FT"] = "PASS"
-      
+
       # Allelic balance  is evaluated as the highest AD
       # divided by the sum of AD. If this value is too low,
       # I add a filter tag and, optionally, sets the genotype
-      # to no call. 
+      # to no call.
       AD_sp = [int(x) for x in GT_dict["AD"].split(",")]
       if sum(AD_sp) != 0 :
-        count_filtered += 1
         AB = max(AD_sp)/sum(AD_sp)
         genotype2  = GT_sp.copy()
         if AB < A.AB_ratio :
+          count_filtered += 1
           if GT_dict["FT"] == "PASS" :
             GT_dict["FT"] = "AB_fail"
           else :
@@ -87,13 +91,13 @@ for line in vcf :
 
           if A.set_filtered_gt_to_nocall :
             GT_dict["GT"] = "."
-      
-      # Setting up the genotype to be written 
+
+      # Setting up the genotype to be written
       # Except KeyError to take care of incomplete genotype fields
       # Not sure where they were coming from...
       to_write_list = []
       for x in  format_tw :
-        try : 
+        try :
           to_write_list.append(GT_dict[x])
         except KeyError:
           to_write_list.append(".")
@@ -104,4 +108,6 @@ for line in vcf :
 vcf.close()
 out.close()
 
-print("I filtered out " + count_filtered + " genotypes.")
+print ("\n--------------\n")
+print ("All done!")
+print("I filtered out " + str(count_filtered) + " genotypes in " + str(count_POS) + " positions.")
