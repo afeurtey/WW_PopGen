@@ -709,6 +709,13 @@ significant %>% dplyr::group_by(CHR, Locus_nb, Phenotype) %>%
   arrange(CHR, Start) %>%
   write_delim(file = paste0(GEA_dir, "Significant_loci.bed"), delim = "\t", col_names = F)
 
+#Write SNPs as bed file
+significant %>% 
+  dplyr::mutate(Start = BP - 1, Stop = BP) %>%
+  dplyr::select(CHR, Start, Stop, Locus_nb, Phenotype) %>%
+  arrange(CHR, Start) %>%
+  write_delim(file = paste0(GEA_dir, "Significant_SNPs.bed"), delim = "\t", col_names = F)
+
 significant %>% 
   dplyr::group_by(CHR, Locus_nb, Phenotype)  %>%
   dplyr::summarise(Start = min(BP), Stop = max(BP) +1 ) %>%
@@ -1611,7 +1618,26 @@ echo -e "QTL_CHR\tQTL_start\tQTL_end\tQTL_peak\tPhenotype\tSize_interval\tLocus_
    -a ${GEADIR}QTL_for_overlap.bed \
    -b ${GEADIR}Significant_loci.bed -wa -wb \
    >> ${FIGDIR}Sup_table_GEA_QTL.tsv
+
+echo -e "QTL_CHR\tQTL_start\tQTL_end\tQTL_peak\tPhenotype\tSize_interval\tLocus_CHR\tLocus_start\tLocusL_end\tLocus_nb\tBioclimatic_variable" > ${FIGDIR}Sup_table_GEA_SNPs_QTL.tsv 
+ ~/Documents/Software/bedtools2/bin/bedtools intersect \
+  -a ${GEADIR}QTL_for_overlap.bed \
+  -b ${GEADIR}Significant_SNPs.bed -wa -wb \
+  >> ${FIGDIR}Sup_table_GEA_SNPs_QTL.tsv
 ```
+
+```{r}
+read_delim(paste0(fig_dir, "Sup_table_GEA_SNPs_QTL.tsv"), delim = "\t") %>%
+  unite("QTL", Phenotype, QTL_CHR, QTL_peak) %>%
+  unite("SNP", Locus_CHR, LocusL_end) %>%
+  dplyr::select(QTL, SNP, Bioclimatic_variable) %>%
+  count(QTL, Bioclimatic_variable) %>%
+  ggplot(aes(x = QTL, y = Bioclimatic_variable)) +
+    geom_tile(aes(color = log10(n))) +
+    theme_bw()+
+    theme(axis.title.x = element_blank(), axis.text.x = element_text(angle = 40, hjust =1, vjust = 1)) 
+```
+
 
 ## Geographic location of climatic adaptation
 I want to know where the significant alleles are found. 

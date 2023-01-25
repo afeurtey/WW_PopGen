@@ -488,6 +488,63 @@ anova(model31, model32)
 ```
 The fit is indeed improved by adding the collection information, with both TE quantity estimations. 
 
+
+### Climatic check
+
+```{r Get Bioclim data}
+
+temp = Zt_meta %>%
+  #filter(!(ID_file %in% filtered_samples$ID_file)) %>%
+  filter(!is.na(Longitude)) %>%
+  mutate(X = as.numeric(unlist(Longitude)),
+                            Y = as.numeric(unlist(Latitude))) %>%
+  dplyr::select(X, Y) %>%
+  distinct()
+
+sp = SpatialPoints(temp[, c("X", "Y")])
+summary(sp)
+
+
+
+bio_list = list()
+for (i in c(1:length(Bioclim_var))) {
+  file_name=paste0(data_dir,"Climatic_data/wc2.1_10m_bio/wc2.1_10m_bio_", i, ".tif")
+  rast_temp = raster(file_name)    
+  bio_list[[Bioclim_var[i]]] = raster::extract(rast_temp, sp)
+}
+
+climate_per_coordinates = cbind(temp, do.call(cbind, bio_list))
+
+dat = TE_qty %>%
+  full_join(., climate_per_coordinates,
+                by= c("Longitude" = "X", "Latitude" = "Y"))  %>% 
+    filter(!is.na(Continent))%>% filter(!is.na(Collection)) %>% filter(!is.na(Cluster)) %>%
+  filter(!is.na(Total_insertions))
+names(dat)
+```
+```{r correl TE climate}
+
+
+ggplot(dat, aes(`Mean Diurnal Range `, Percent_TE_Reads)) +
+    theme_cowplot()  +
+    geom_point(aes(color = Cluster, shape = Cluster)) + 
+    Color_Cluster + Shape_Cluster 
+ggplot(dat, aes(`Mean Diurnal Range `, Total_insertions)) +
+    theme_cowplot()  +
+    geom_point(aes(color = Cluster, shape = Cluster)) + 
+    geom_smooth(aes(color = Cluster), method = "lm", se =F) +
+    Color_Cluster + Shape_Cluster 
+
+model_climate = lm(Total_insertions ~  Collection + Cluster + `Mean Diurnal Range `,
+          data=dat)
+summary(model_climate)
+
+
+```
+
+
+
+### Depth bias continued
 ```{r}
 depth = read_tsv(paste0(vcf_dir, "Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.idepth"))
 GC = read_delim(paste0(RIP_DIR, "GC_percent.txt"), col_names = c("ID_file", "TE", "Estimate", "Median_GC", "Mean_GC"), delim = " ") %>%

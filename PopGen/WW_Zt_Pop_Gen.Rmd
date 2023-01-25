@@ -32,7 +32,6 @@ library(rgdal)
 library(maps)
 library(geosphere)
 library(geodist)
-library(ggExtra)
 
 #Data wrangling and data viz
 library(purrr)
@@ -43,14 +42,14 @@ library(GGally)
 library(corrplot)
 library(pheatmap)
 library(ggstance)
-library('pophelper')
-library(ggbiplot)
+#library('pophelper')
+#library(ggbiplot)
 library(igraph)
 library(ggraph)
 library(ggtext)
 library(scatterpie)
 library(tidyverse)
-library(ggExtra)
+#library(ggExtra)
 library(ggpubr)
 
 #Pop structure and pop genomic
@@ -58,9 +57,7 @@ library(GenomicFeatures)
 library(SNPRelate) #PCA
 library(LEA) #Clustering
 library(pophelper)
-#library(PopGenome) #Summary statistics
 library(gridExtra)
-library(ggExtra)
 library(multcomp)
 library(lsmeans)
 
@@ -366,6 +363,17 @@ ggplot(aes(x=`Sampling year`, y =`Genome number`, fill = Continent)) +
 <br>
 
 ## Mating type
+Draft genomes were assembled de novo from the raw sequencing.
+```{r sup table assembly stats}
+assem_stats = bind_rows(read_delim(paste0(data_dir, "Stats_raw_assemblies.tab")),
+                        read_delim(paste0(data_dir, "Stats_filtered_assemblies.tab"))) 
+to_write = inner_join(assem_stats, genotyped_samples, by =c("Sample" = "ID_file")) %>%
+  unite(col = Header, Assembly_type, Estimate, sep = ": ") %>%
+  pivot_wider(names_from = Header, values_from = Value) 
+
+write_delim(to_write, paste0(data_dir, "Sup_mat_table_assemblies.tsv"))
+```
+
 
 I have blasted the known sequences of the two mating type genes against each of the assemblies and will now gather all of this data in a summary table.
 ```{bash, eval = F}

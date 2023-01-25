@@ -9,6 +9,7 @@ output:
     css: ~/Documents/epur_css.css
     number_sections: no
     code_folding: hide
+    keep_md: true
   #html_document:
    # toc: yes
    # df_print: paged
@@ -133,6 +134,7 @@ Sys.setenv(VCFNAME_MITO=vcf_name_mito)
 knitr::opts_chunk$set(message = F)
 knitr::opts_chunk$set(warning = F)
 knitr::opts_chunk$set(results = T)
+knitr::opts_chunk$set(dev=c('png', 'pdf'))
 
 
 # Metadata and sample lists
@@ -182,6 +184,7 @@ Fill_Continent = ggplot2::scale_fill_manual(name = "Continent", values = myColor
 K_colors = c("#f9c74f", "#f9844a", "#90be6d", "#f5cac3", 
 "#83c5be", "#f28482", "#577590", "#e5e5e5", "#a09abc",  "#52796f",
 "#219ebc", "#003049", "#82c0cc", "#283618", "white")
+
 
 ## For correlations
 mycolorsCorrel<- colorRampPalette(c("#0f8b8d", "white", "#a8201a"))(20)
@@ -422,7 +425,7 @@ for ( min_number in c(6, 10) ) {
 
 <br><br>
 
-```{bash}
+```{bash, eval = F}
 mat1_c=0
 mat2_c=0
 while read sample ; 
@@ -727,7 +730,7 @@ It is very clear that we do have a batch effect but also that some datasets are 
 
 ## Outgroups and ancestral alleles
 
-```{bash outgroup snp call and masks}
+```{bash outgroup snp call and masks, eval = F}
 #For both Zpa63 and Za17
 ./dnadiff \
   -p /data2/alice/WW_project/1_Variant_calling/3_Per_sample_calling/Zpa63 \
@@ -787,7 +790,7 @@ ${VCFTOOLS_PATH} \
 ```
 
 
-```{r create est-sfs input}
+```{r create est-sfs input ances}
 
 freq_Zt = read_delim(paste0(VAR_dir, 
                             "Ztritici_global_March2021.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.biall_SNPs.intersect_Za_Zpa.frq.count"),
@@ -878,7 +881,7 @@ sum(is.na(outgroups$Zpa63))
 rm(freq_seq)
 ```
 
-```{bash run est_sfs}
+```{bash run est_sfs ances, eval = F}
 cd /Users/afeurtey/Documents/Software/est-sfs-release-old
 ./est-sfs test_config_file.txt \
     /Users/afeurtey/Documents/Postdoc_Bruce/Projects/WW_project/1_Variant_calling/est_sfs_input_file.txt \
@@ -888,7 +891,7 @@ cd /Users/afeurtey/Documents/Software/est-sfs-release-old
 ```
 
 The software est-sfs will produce a file containing the probability that what it read as the major allele is the ancestral allele. Here, I decide that if the probability is higher than 0.95, I will consider the major allele to be ancestral. If the probability is lower than 0.05, I will instead consider that the minor allele is ancestral. For any probability between these two, I consider that we do not have enough support one way or another. 
-```{r read est-sfs results}
+```{r read est-sfs results ances}
 temp = cbind(read_delim(paste0(VAR_dir, "est_sfs_position_list.txt"), delim = "\t"),
       read_delim(paste0(VAR_dir, "est_sfs_pval.txt"), delim = " ", skip = 7, 
                  col_names = c("Line_nb", "Conf_index", "Probability")) %>%
@@ -956,13 +959,13 @@ datamash transpose < ~/Documents/Postdoc_Bruce/Projects/WW_project/2_Population_
 
 ```
 
-```{r run snmf, eval =F}
+```{r run snmf, eval = F}
 #project = snmf(paste0(PopStr_dir, vcf_name, ".geno"), K=1:15, entropy = TRUE,
 #                        repetitions = 10, project = "new", ploidy = 1)
 ```
 
 
-```{r reading snmf results}
+```{r reading snmf results, cache = T}
 
 # Reading the results from the snmf runs
 # ______________________________________
@@ -1237,7 +1240,7 @@ for (cluster in max_continent %>% pull(Cluster)) {
 
 The clustering data can also be represented as an average of ancestry coefficient per country. This is done here first with barplots. 
 ```{r per country ancestry coef}
-#Setting data with the chosen numner of K as well as the chosen coefficient threshold
+#Setting data with the chosen number of K as well as the chosen coefficient threshold
 chosen_coef = snmf_results_per_K %>% 
   filter(K == chosen_K) %>%
   filter(Country != "NA") %>%
@@ -1245,12 +1248,12 @@ chosen_coef = snmf_results_per_K %>%
   dplyr::select(Sample, Continent, Country, Admix_coef, Cluster, Latitude, Longitude) 
 
 
-K_colors = c("#0D6E82", #V1 Aus (TAS)
+K_colors = c("#8ECAE6", #V1 Aus (TAS)
              "#49810E", #V10 USA
              "#E16684", #V11 North Africa
              "#FFBA0A", #V2 Europe
-             "#C7F1F9", #V3 NZ
-             "#21C7E8", #V4 Australia (NSW)
+             "#126782", #V3 NZ
+             "#219EBC", #V4 Australia (NSW)
              "#8FA253", #V5 Uruguay + Argentina
              "#650104", #V6 Israel + Turkey
              "#DE020A", #V7 Iran
@@ -1347,16 +1350,25 @@ p3 = map1 + coord_cartesian(xlim=c(115, 185), ylim=c(-65, 10)) +
 #Plotting all the maps together! 
 aus_map = cowplot::plot_grid(p3, get_legend(p1), ncol = 2, rel_widths = c(1, 0.75))
 ligne = cowplot::plot_grid(p1, aus_map, ncol = 1,  rel_heights = c(1, 0.7))
-cowplot::plot_grid(p2, ligne, ncol = 2, rel_widths = c(0.75, 1)) 
+cowplot::plot_grid(p2, ligne, ncol = 2, rel_widths = c(0.8, 1)) 
 
 ggsave(paste0(fig_dir, "Str_scatter_pie.pdf"), width = 18, height = 10, units = "cm")
+
+
+#p2 + theme(
+#    legend.position = c(.05, .05),
+#    legend.justification = c("left", "bottom"),
+#    legend.box.just = "left",
+#    legend.margin = margin(1,1,1,1)
+#    )+scale_color_discrete(guide="none") 
 ```
 For each country, we define the local cluster with "votes": the cluster to which more than half of the non-admixed isolates are originating is considered to be the local cluster. We can quantify for each country the isolates which are non-admixed (or "pure") isolates from the local cluster, non-admixed from another cluster, or hybrid.
 
 ```{r Hybrid category per country}
 
 #For each sample, identify if is hybrid, local pure or pure from somewhere else.
-status_admix = inner_join(chosen_coef, cluster_per_country) %>% 
+status_admix = left_join(chosen_coef, cluster_per_country) %>% 
+  mutate(Main_country_cluster = ifelse(!is.na(Main_country_cluster), Main_country_cluster, "No_main")) %>%
   group_by(Sample, Continent, Country) %>%
   dplyr::mutate(max_admix = max(Admix_coef),
          max_cluster = ifelse(Admix_coef == max_admix, Cluster, "")) %>%
@@ -1373,11 +1385,12 @@ temp = status_admix %>%
 ## As table
 kable(pivot_wider(temp, names_from = Status, values_from = n, values_fill = 0))
 
+
 ## As a figure
 ungroup(temp) %>%
   group_by(Country) %>%
   dplyr::mutate(Nb_per_country = sum(n)) %>%
-  filter(Nb_per_country >= 10) %>%
+  filter(Nb_per_country >= 4) %>%
   ggplot(aes(x = Country, y = n, fill = Status)) +
     geom_bar(stat = "identity", position = "fill") + 
     theme_cowplot() +
@@ -1395,6 +1408,25 @@ ungroup(temp) %>%
           legend.position = "top") +
   coord_flip()
     #facet_wrap(vars(Continent), scales = "free")
+
+
+# Making a pie chart summary 
+# Compute the position of labels
+data = temp %>%group_by(Status) %>%
+  summarise(Nb_sample = sum(n))
+data <- data %>% 
+  arrange(desc(Status)) %>%
+  mutate(prop = Nb_sample / sum(data$Nb_sample) *100) %>%
+  mutate(ypos = cumsum(prop)- 0.5*prop )
+
+# Basic piechart
+ggplot(data, aes(x="", y=prop, fill=Status)) +
+  geom_bar(stat="identity", width=1, color="white") +
+  coord_polar("y", start=0) +
+  theme_void() + 
+  theme(legend.position="right") +
+  geom_text(aes(y = ypos, label = Nb_sample), color = "white", size=6) +
+  scale_fill_brewer(palette="Set1")
 ```
 
 
@@ -1437,7 +1469,9 @@ aus_map = cowplot::plot_grid(p3 + theme(legend.position = "none"), get_legend(p1
 ligne = cowplot::plot_grid(p1 + theme(legend.position = "none"), aus_map, ncol = 1,  rel_heights = c(1, 0.7))
 cowplot::plot_grid(p2 + theme(legend.position = "none"), ligne, ncol = 2, rel_widths = c(0.7, 1)) 
 
-#ggsave(paste0(fig_dir, "Str_scatter_pie.pdf"), width = 18, height = 10, units = "cm")
+ggsave(paste0(fig_dir, "Hybrids_scatter_pie.pdf"), width = 18, height = 10, units = "cm")
+
+
 
 ```
 
@@ -1447,7 +1481,7 @@ cowplot::plot_grid(p2 + theme(legend.position = "none"), ligne, ncol = 2, rel_wi
 
 As a first method to investigate the population structure of _Z.tritici_ at the world-wide scale, I chose to do a principal component analysis based on a subset of the SNPs. This PCA confirms previous results of a geographically structured species. Oceania emerges quite distincly as three separate clusters: one in New-Zealand and two Australian (see below for a more in-depth analysis of this pattern). North-America is also quite serapate. The distinction between the rest of the geographical location is not clear in this PCA, although PC3 might show a slight differenciation between Europe and the Middle-East.
 
-```{r PCA All run and plot, results = F}
+```{r PCA All run and plot, results = F, cache = T}
 snpgdsVCF2GDS(paste0(vcf_dir, vcf_name, ".recode.vcf"),
               paste0(PopStr_dir, vcf_name, ".recode.gds"), method="biallelic.only")
 genofile <- snpgdsOpen(paste0(PopStr_dir, vcf_name, ".recode.gds"))
@@ -1493,6 +1527,24 @@ names(myShapes) = levels(factor(for_plot$Cluster))
 Color_Cluster = ggplot2::scale_colour_manual(name = "Cluster", values = myColors2)
 Fill_Cluster = ggplot2::scale_fill_manual(name = "Cluster", values = myColors2)
 Shape_Cluster = ggplot2::scale_shape_manual(name = "Cluster", values = myShapes)
+
+## Detailed color scheme 
+K_colors = c("grey", 
+             "#8ECAE6", #V1 Aus (TAS)
+             "#49810E", #V10 USA
+             "#E16684", #V11 North Africa
+             "#FFBA0A", #V2 Europe
+             "#126782", #V3 NZ
+             "#219EBC", #V4 Australia (NSW)
+             "#8FA253", #V5 Uruguay + Argentina
+             "#650104", #V6 Israel + Turkey
+             "#DE020A", #V7 Iran
+             "#2A4908", #V8 Canada
+             "#B3C186") #V9 Boliva + Chile + Ecuador
+names(K_colors) = levels(factor(for_plot$Cluster))
+Color_Cluster2 = ggplot2::scale_colour_manual(name = "Cluster", values = K_colors)
+Fill_Cluster2 = ggplot2::scale_fill_manual(name = "Cluster", values = K_colors)
+
 
 # Dot plots
 p1 = ggplot(for_plot, aes(x = PC1, y= PC2, shape = Cluster)) +
@@ -1566,7 +1618,6 @@ ggMarginal(ggplot(for_plot, aes(x = PC2, y= PC3, shape = Cluster)) +
        y = paste0("PC 3 (", round(pca$eigenval[3]*100/eigen_sum, 2), "%)")) +
   Color_Cluster + Shape_Cluster +
   theme_bw() + theme(legend.position = "bottom"), groupColour = TRUE, groupFill = TRUE)
-
 
 ```
 
@@ -1799,10 +1850,16 @@ treemix \
   -i ${POPSTR}High_anc_coef_only_outgroups_positions.with_outgroups.treemix.gz \
   -o ${POPSTR}High_anc_coef_only_outgroups_positions.with_outgroups.m6.treemix.out \
   -m 6 -root Zpa63
+
+treemix \
+  -i ${POPSTR}High_anc_coef_only_outgroups_positions.with_outgroups.treemix.gz \
+  -o ${POPSTR}High_anc_coef_only_outgroups_positions.with_outgroups.m7.treemix.out \
+  -m 7 -root Zpa63
 ```
-```{r plot treemix}
+
+```{r plot treemix out}
 source("~/Documents/Software/treemix-1.13/src/plotting_funcs.R")
-p_cluster
+#p_cluster
 t = plot_tree(paste0(PopStr_dir, "High_anc_coef_only_outgroups_positions.with_outgroups.m0.treemix.out"))
 t = plot_tree(paste0(PopStr_dir, "High_anc_coef_only_outgroups_positions.with_outgroups.m1.treemix.out"))
 t = plot_tree(paste0(PopStr_dir, "High_anc_coef_only_outgroups_positions.with_outgroups.m2.treemix.out"))
@@ -1810,9 +1867,10 @@ t = plot_tree(paste0(PopStr_dir, "High_anc_coef_only_outgroups_positions.with_ou
 t = plot_tree(paste0(PopStr_dir, "High_anc_coef_only_outgroups_positions.with_outgroups.m4.treemix.out"))
 t = plot_tree(paste0(PopStr_dir, "High_anc_coef_only_outgroups_positions.with_outgroups.m5.treemix.out"))
 t = plot_tree(paste0(PopStr_dir, "High_anc_coef_only_outgroups_positions.with_outgroups.m6.treemix.out"))
+t = plot_tree(paste0(PopStr_dir, "High_anc_coef_only_outgroups_positions.with_outgroups.m7.treemix.out"))
 
 
-mig_events = c(1:6)
+mig_events = c(0:6)
 temp = tibble(mig_events = mig_events, 
               var_explained = sapply(paste0(PopStr_dir, "High_anc_coef_only_outgroups_positions.with_outgroups.m", 
                                             mig_events, ".treemix.out"), get_f))
@@ -1827,7 +1885,7 @@ ggplot(temp, aes(mig_events, var_explained)) +
                                " different number of migration events"), 70))
 ```
 
-```{bash}
+```{bash, eval = F}
 
 #Only Zt
 if [ -f ${POPSTR}$VCFNAME.high_anc_coef_snmf.treemix ] ;
@@ -2020,7 +2078,7 @@ datamash transpose < ${POPSTR}$VCFNAME.even_sampling.GT.FORMAT2  |  sed 's/^/>/'
 
 ## Diversity in Russian dolls
 
-```{r}
+```{r subpop files}
 
 minimum_cluster_size = 8
 
@@ -2089,7 +2147,7 @@ for ( i in 1:10 ){
 
 ```
 
-```{bash}
+```{bash, eval = F}
 #rsync -avP alice@130.125.25.244:/data2/alice/WW_project/3_Sumstats_demography/Sample_list_*_pi.tsv ../3_Sumstats_demography/
 echo -e "Subset_samples\tChromosome\tStart\tStop\tPi\tTajimaD\tTheta" > \
   ~/Documents/Postdoc_Bruce/Projects/WW_project/3_Sumstats_demography/Diversity_all_subsets.tsv
@@ -2097,7 +2155,7 @@ cat ~/Documents/Postdoc_Bruce/Projects/WW_project/3_Sumstats_demography/Sample_l
   ~/Documents/Postdoc_Bruce/Projects/WW_project/3_Sumstats_demography/Diversity_all_subsets.tsv
 ```
 
-```{r}
+```{r read diversity Russian dolls}
 list_pop = bind_rows(read_delim(paste0(PopStr_dir, "Subpopulation_list.txt"), delim = "\t", col_names = c("Pop_name")) %>%
                        mutate(Level_pop = "Population"),
                      read_delim(paste0(PopStr_dir, "Continent_list.txt"), delim = "\t", col_names = c("Pop_name")) %>%
@@ -2263,6 +2321,8 @@ p1 = ggplot(pi_data, aes(x = reorder(Cluster, -Order_tree), y = Value))  +
 
 cowplot::plot_grid(p1, p2, ncol = 2)
 ```
+
+
 ## Linkage disequilibrium decay
 
 There was a clear effect of the number of samples on the LD estimated, so I switched to subsets.
@@ -2280,35 +2340,214 @@ do
 done
 
 # Gathering all tables into one
-echo -e "Pop\tRepeat\tStart\tStop\tMean\tMedian\tSstdev" ; 
+echo -e "Pop\tRepeat\tStart\tStop\tMean\tMedian\tSstdev" \
+   > /data2/alice/WW_project/2_Population_structure/0_Nuclear_genome/LD_per_cluster.tab ; 
 for i in {1..11} ; 
 do 
-  for repet in {1..2} ; 
+  for repet in {1..10} ; 
   do 
    awk -v pop=$i -v repet=$repet 'BEGIN {OFS = "\t"} {if ( $1 ~ /[0-9]/ ) {print pop, repet, $1, $2, $3, $4, $5 } }'  \
-       /data2/alice/WW_project/2_Population_structure/0_Nuclear_genome/LD_V${i}_${repeat}.tab ; 
+       /data2/alice/WW_project/2_Population_structure/0_Nuclear_genome/LD_V${i}_${repet}.tab \
+       >> /data2/alice/WW_project/2_Population_structure/0_Nuclear_genome/LD_per_cluster.tab; 
   done
 done
 
 ```
 
+The different dots are the values estimated on different subsets of samples (for some, the subsets are the size of the cluster so the variance is null). The line here is the median of the subset estimates ()
 ```{r LD read and show}
-temp = read_delim(paste0(nuc_PS_dir, "LD_summary_stats.txt"),
+LD_data = read_delim(paste0(nuc_PS_dir, "LD_per_cluster.tab"),
            delim = "\t") %>%
   mutate(center = (Start + Stop) / 2) %>%
-  mutate(Cluster = paste0("V", Pop)) 
+  mutate(Cluster = paste0("V", Pop))
 
-ggplot(temp, aes(x = center, y = Median, color = Cluster, shape = Cluster)) +
-  geom_point() +
-  geom_line() +
+temp = LD_data %>% group_by(Cluster, center) %>%
+  dplyr::summarize(Median = mean(Median))
+ggplot() +
+  geom_point(data = LD_data, 
+             aes(x = center, y = Median, color = Cluster, shape = Cluster),
+             alpha = .2) +
+  geom_line(data = temp, aes(x = center, y = Median, color = Cluster, shape = Cluster)) +
+  geom_hline(yintercept = 0.2, linetype = "dashed")+
   Color_Cluster + Shape_Cluster + 
   theme_bw()
 
+ggplot() +
+  geom_point(data = LD_data, 
+             aes(x = center, y = Median, color = Cluster, shape = Cluster),
+             alpha = .2) +
+  geom_line(data = temp, aes(x = center, y = Median, color = Cluster, shape = Cluster)) +
+  geom_hline(yintercept = 0.2, linetype = "dashed") + 
+  Color_Cluster2 + Shape_Cluster + 
+  theme_bw() +
+  scale_y_log10()
+
+temp %>% 
+  filter(Median >= 0.2) %>%
+  group_by(Cluster) %>%
+  dplyr::summarize(Center = max(center)) %>%
+ggplot() +
+  geom_point(aes(x = Cluster, y = Center, color = Cluster), size = 4) +
+  geom_segment(aes(x = Cluster, xend = Cluster, y = 0, yend = Center, color = Cluster), size = 1) +
+  Color_Cluster + 
+  theme_bw() +
+  scale_y_log10() +
+  labs(y = "Distance between SNPs with a Rsquared <= 0.2",
+       title = "LD decay, summary statistic") +
+  coord_flip()
+```
+
+## Unfolded SFS
+
+```{bash, eval = F}   
+#!/bin/bash 
+
+source $1
+subset_file=$2
+out_suffix=$3
+
+${VCFTOOLS_PATH} \
+     --gzvcf ${vcf_dir}${VCFBasename}.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.vcf.gz  \
+     --min-alleles 2 --max-alleles 2 --mac 1 --remove-indels \
+     --keep ${subset_file}--thin 1000 \
+     --out ${nuc_PS_dir}Counts.thinned.intersect_Za_Zpa.${out_suffix} \
+     #--out ${nuc_PS_dir}${VCFBasename}.genotyped.ALL.filtered.clean.AB_filtered.variants.good_samples.max-m-80.biall_SNPs.intersect_Za_Zpa.${out_suffix} \
+     --counts  --bed  /data2/alice/WW_project/1_Variant_calling/3_Per_sample_calling/Za17_filtered_insersect_Zpa63_filtered.bed
 
 ```
 
 
+```{r create est-sfs input}
 
+#cluster_name = "V4"
+for (cluster_name in paste0("V", c(4:7))) {
+  freq_Zt = read_delim(paste0(PopStr_dir, 
+                              "Counts.thinned.intersect_Za_Zpa.",
+                              cluster_name ,".frq.count"),
+                       skip = 1, col_names = c("CHROM", "POS", "N_all", "N_chr", "REF", "ALT")) %>%
+    dplyr::select(CHROM, POS, N_chr, REF, ALT) %>%
+    separate(col = "REF", into = c("REF", "REF_count"), sep = ":") %>%
+    separate(col = "ALT", into = c("ALT", "ALT_count"), sep = ":")
+  
+  
+  #The est-sfs software wants all positions to be sampled the exact same amount of time
+  # So I want to check how many positions have one or two genotypes missing
+  temp = freq_Zt %>%
+    dplyr::select(N_chr) %>%
+    dplyr::count(N_chr) 
+  
+  temp %>%
+    ggplot(aes(x = N_chr, y = cumsum(n))) + 
+    geom_bar(stat = "identity") + 
+    theme_bw()
+  
+  nb_sample = max(temp$N_chr)
+  
+  
+  #Too many variants only have a single missing data point
+  freq_Zt = freq_Zt %>%
+    filter(N_chr >= nb_sample) %>%
+    mutate(REF_count = as.numeric(REF_count),
+           ALT_count = as.numeric(ALT_count),    
+           Somme = REF_count + ALT_count) %>%
+    mutate(Major_allele = ifelse(REF_count >= ALT_count, REF, ALT),
+           Minor_allele = ifelse(REF_count >= ALT_count, ALT, REF),
+           Is_major_ref = ifelse(REF_count >= ALT_count, "REF", "ALT"))
+  
+  table(freq_Zt$Somme)
+  
+  temp = read_delim(paste0(VAR_dir, "Zpa63.filtered.snps")) %>%
+    filter(Zpa63 != "." & REF != ".") %>%
+    distinct() %>%
+    right_join(dplyr::select(freq_Zt, CHROM, POS, REF)) %>%
+    mutate(Temp = 1, Zpa63 = ifelse(is.na(Zpa63), REF, Zpa63)) %>%
+    pivot_wider(names_from = Zpa63, values_from = Temp, values_fill = 0) %>%
+    dplyr::select(CHROM, POS, REF, A, C, G, `T`) %>%
+    unite(col = Zpa63, A, C, G, `T`, sep = ",")
+  
+  outgroups = read_delim(paste0(VAR_dir, "Za17.filtered.snps")) %>%
+    filter(Za17 != "." & REF != ".") %>%
+    distinct() %>%
+    right_join(dplyr::select(freq_Zt, CHROM, POS, REF)) %>%
+    mutate(Temp = 1, Za17 = ifelse(is.na(Za17), REF, Za17)) %>%
+    pivot_wider(names_from = Za17, values_from = Temp, values_fill = 0) %>%
+    dplyr::select(CHROM, POS, REF, A, C, G, `T`) %>%
+    unite(col = Za17, A, C, G, `T`, sep = ",") %>%
+    full_join(temp)
+  
+  temp = bind_rows(dplyr::select(freq_Zt, CHROM, POS, REF, Major_allele, Minor_allele, Is_major_ref, Allele_count = REF_count) %>% 
+                     mutate(Allele = REF),
+                   dplyr::select(freq_Zt, CHROM, POS, REF, Major_allele, Minor_allele, Is_major_ref, Allele = ALT, Allele_count = ALT_count)) %>%
+    mutate(Allele_count = as.numeric(Allele_count)) %>%
+    pivot_wider(names_from = Allele, values_from = Allele_count, values_fill = 0)%>%
+    dplyr::select(CHROM, POS, REF, Major_allele, Minor_allele, Is_major_ref, A, C, G, `T`) %>%
+    unite(col = Zt, A, C, G, `T`, sep = ",") %>%
+    full_join(outgroups)
+  
+  arrange(temp, as.numeric(CHROM), as.numeric(POS)) %>%
+    dplyr::select(Zt, Za17, Zpa63) %>%
+    write_delim(paste0(PopStr_dir, "est_sfs_input_file.",
+                              cluster_name ,".txt"), delim = " ", col_names = F)
+  arrange(temp, as.numeric(CHROM), as.numeric(POS)) %>%
+    dplyr::select(CHROM, POS, Major_allele, Minor_allele, Is_major_ref) %>%
+    write_delim(paste0(PopStr_dir, "est_sfs_position_list.",
+                              cluster_name ,".txt"), delim = "\t")
+  
+  table(outgroups$Za17)
+  table(outgroups$Zpa63)
+  
+  sum(is.na(outgroups$Za17))
+  sum(is.na(outgroups$Zpa63))
+  
+  rm(freq_seq)}
+```
+
+```{bash run est_sfs, eval = F}
+
+cd /Users/afeurtey/Documents/Software/est-sfs-release-old
+for i in {4..7} ;
+do 
+./est-sfs test_config_file.txt \
+    /Users/afeurtey/Documents/Postdoc_Bruce/Projects/WW_project/2_Population_structure/est_sfs_input_file.V${i}.txt \
+    seedfile.txt \
+    /Users/afeurtey/Documents/Postdoc_Bruce/Projects/WW_project/2_Population_structure/est_sfs-sfs.V${i}.txt \
+    /Users/afeurtey/Documents/Postdoc_Bruce/Projects/WW_project/2_Population_structure/est_sfs_pval.V${i}.txt
+done
+```
+
+```{r}
+list_clusters = paste0("V", c(4:7))
+for (cluster_name in list_clusters) {
+  if (cluster_name == list_clusters[1]) {
+    sfs = read_csv(paste0(PopStr_dir, "est_sfs-sfs.", cluster_name, ".txt"), col_names = F) %>% 
+      pivot_longer(cols = everything(), names_to = "Nb_sample", values_to = "Nb_positions") %>%
+      dplyr::mutate(Cluster = cluster_name)
+    
+  } else {
+    
+    sfs = bind_rows(sfs,
+                    read_csv(paste0(PopStr_dir, "est_sfs-sfs.", cluster_name, ".txt"), col_names = F) %>% 
+                      pivot_longer(cols = everything(), names_to = "Nb_sample", values_to = "Nb_positions")%>%
+                      dplyr::mutate(Cluster = cluster_name))
+  }}
+
+sfs %>% mutate(Nb_sample = as.numeric(str_remove(Nb_sample, "X"))) %>%
+  #mutate(Nb_sample = c(0:(nrow(sfs)-1))) %>%
+  filter(Nb_sample > 0) %>%
+  ggplot(aes(x = Nb_sample, y = Nb_positions)) +
+  geom_bar(stat= "identity") +
+  theme_bw() +
+  facet_wrap(vars(Cluster), scales = "free")
+
+sfs %>% mutate(Nb_sample = as.numeric(str_remove(Nb_sample, "X"))) %>%
+  #mutate(Nb_sample = c(0:(nrow(sfs)-1))) %>%
+  filter(Nb_sample > 0) %>%
+  ggplot(aes(x = Nb_sample, y = Nb_positions)) +
+  geom_bar(stat= "identity") +
+  theme_bw() +
+  facet_wrap(vars(Cluster), scales = "free")+
+  scale_y_continuous(trans = "log10")
+```
 
 
 ## Variant effects
